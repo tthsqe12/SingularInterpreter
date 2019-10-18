@@ -41,6 +41,21 @@ Therefore, the error must occur when trying to assign nothing to b, and not when
 =#
 
 
+###### these macros do not work!!!!
+
+macro warn_check(ex, msgs...)
+    msg_body = isempty(msgs) ? ex : msgs[1]
+    msg = string(msg_body)
+    return :($(esc(ex)) ? nothing : rt_warn($msg))
+end
+
+
+macro error_check(ex, msgs...)
+    msg_body = isempty(msgs) ? ex : msgs[1]
+    msg = string(msg_body)
+    return :($(esc(ex)) ? nothing : rt_error($msg))
+end
+
 
 #### singular type "?unknown type?", which is not avaliable to the user and will NOT appear in SingularTypes below
 struct SName
@@ -106,16 +121,14 @@ end
 
 #### singular type "ring"       immutable in the singular language, but also hold identifiers of ring-dependent types
 mutable struct SRing
-    valid::Bool         # if !valid, varstack should be empty and ring_ptr should be null
-    varstack::Array{Dict{Symbol, Any}, 1}
     ring_ptr::libSingular.ring
     refcount::Int
+    level::Int                  # 1->created at global, 2->created in fxn called from global, ect..
+    vars::Dict{Symbol, Any}     # global ring vars
+    valid::Bool                 # valid==false <=> ring_ptr==NULL
 
-    function SRing(valid_::Bool, ring_ptr_::libSingular.ring)
-        r = new(valid_, [Dict{Symbol, Any}()], ring_ptr_, 1)
-        if !valid_
-            pop!(r.varstack)
-        end
+    function SRing(valid_::Bool, ring_ptr_::libSingular.ring, level::Int)
+        r = new(ring_ptr_, 1, level, Dict{Symbol, Any}(), valid_)
         finalizer(rt_ring_finalizer, r)
         return r
     end
@@ -176,7 +189,7 @@ function rt_poly_finalizer(a::SPoly)
 end
 
 
-#### singular type "ideal"      unfortunately mutable like a list in the singular language
+#### singular type "ideal"      mutable like a list in the singular language
 mutable struct SIdealData
     ideal_ptr::libSingular.ideal
     parent::SRing
@@ -216,25 +229,81 @@ const _BigIntMat = Union{SBigIntMat, Array{BigInt, 2}}
 const _List      = Union{SList, SListData}
 const _Ideal     = Union{SIdeal, SIdealData}
 
-const SingularType = Union{Nothing, SProc, Int, BigInt, SString,
-                           SIntVec, SIntMat, SBigIntMat, SList,
-                           SRing, SNumber, SPoly, SIdeal}
+#const SingularType = Union{Nothing, SProc, Int, BigInt, SString,
+#                           SIntVec, SIntMat, SBigIntMat, SList,
+#                           SRing, SNumber, SPoly, SIdeal}
 
-const _SingularType = Union{SingularType,
-                           Vector{Int}, Array{Int, 2}, Array{BigInt, 2}, SListData,
-                           SIdealData}
+# the set of possible ring dependent types is finite because newstruct creates ring indep types
+const SingularRingType = Union{SNumber, SPoly, SIdeal}
+
+#const _SingularType = Union{SingularType,
+#                           Vector{Int}, Array{Int, 2}, Array{BigInt, 2}, SListData,
+#                           SIdealData}
+
+
+function rt_ringof(a::SingularRingType)
+    return rt_ref(a).parent
+end
+
+function rt_ringof(a)
+    rt_error("type " * rt_typestring(a) * " does not have a basering")    
+    return rtInvalidRing
+end
+
+
+mutable struct rtCallStackEntry
+    start_rindep_vars::Int      # index into rtGlobal.local_rindep_vars
+    start_rdep_vars::Int        # index into rtGlobal.local_rdep_vars
+    basering::SRing
+end
 
 mutable struct rtGlobalState
     last_printed::Any
     rtimer_base::UInt64
     rtimer_scale::UInt64
-    fxnstack::Array{Dict{Symbol, Any}}
-    allrings::Array{SRing}
-    currentring::SRing
+    vars::Dict{Symbol, Any}     # global ring indep vars
+    callstack::Array{rtCallStackEntry}
+    local_rindep_vars::Array{Pair{Symbol, Any}}
+    local_rdep_vars::Array{Pair{Symbol, SingularRingType}}
 end
 
-const rtNullRing = SRing(false, libSingular.rDefault_null_helper())
-const rtGlobal = rtGlobalState(nothing, time_ns(), 1000000000, [Dict{Symbol, Any}()], SRing[], rtNullRing)
+
+const rtInvalidRing = SRing(false, libSingular.rDefault_null_helper(), 1)
+const rtGlobal = rtGlobalState(nothing,
+                               time_ns(),
+                               1000000000,
+                               Dict{Symbol, Any}(),
+                               rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing)],
+                               Pair{Symbol, Any}[],
+                               Pair{Symbol, SingularRingType}[])
+
+function rt_basering()
+    return rtGlobal.callstack[end].basering
+end
+
+
+function rt_search_callstack_rindep(a::Symbol)
+    n = length(rtGlobal.callstack)
+    for i in rtGlobal.callstack[n].start_rindep_vars:length(rtGlobal.local_rindep_vars)
+        if rtGlobal.local_rindep_vars[i].first == a
+            return true, i
+        end
+    end
+    return false, 0
+end
+
+function rt_search_callstack_rdep(a::Symbol)
+    n = length(rtGlobal.callstack)
+    for i in rtGlobal.callstack[n].start_rdep_vars:length(rtGlobal.local_rdep_vars)
+        if rtGlobal.local_rdep_vars[i].first == a &&
+           rtGlobal.local_rdep_vars[i].second.parent === rtGlobal.callstack[n].basering
+            return true, i
+        end
+    end
+    return false, 0
+end
+
+
 
 # all of the singular types have trivial iterators - will be used because all arguments to functions are automatically splatted
 
@@ -261,6 +330,10 @@ Base.iterate(a::SIdeal, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::SMatrix) = iterate(a, 0)
 Base.iterate(a::SMatrix, state) = (state == 0 ? (a, 1) : nothing)
 
+function Base.deepcopy_internal(a::SProc, dict::IdDict)
+    return a
+end
+
 function Base.deepcopy_internal(a::SIntVec, dict::IdDict)
     return SIntVec(deepcopy(a.vector))
 end
@@ -281,6 +354,18 @@ function Base.deepcopy_internal(a::SList, dict::IdDict)
     return SList(deepcopy(a.list))
 end
 
+function Base.deepcopy_internal(a::SRing, dict::IdDict)
+    return a
+end
+
+function Base.deepcopy_internal(a::SNumber, dict::IdDict)
+    return a
+end
+
+function Base.deepcopy_internal(a::SPoly, dict::IdDict)
+    return a
+end
+
 function Base.deepcopy_internal(a::SIdealData, dict::IdDict)
     id = libSingular.id_Copy(a.ideal_ptr, a.parent.ring_ptr)
     return SIdealData(id, a.parent)
@@ -291,29 +376,173 @@ function Base.deepcopy_internal(a::SIdeal, dict::IdDict)
 end
 
 
-function rtcall(f::SProc, v...)
+
+########################## make and friends ###################################
+
+function rt_box_it_with_ring(n::libSingular.number, r::SRing)
+    return SNumber(n, r)
+end
+
+function rt_box_it_with_ring(p::libSingular.poly, r::SRing)
+    return SPoly(p, r)
+end
+
+
+function rt_make(a::SName, allow_unknown::Bool = false)
+    b, i = rt_search_callstack_rindep(a.name)
+    if b
+        return rt_ref(rtGlobal.local_rindep_vars[i].second)
+    end
+
+    b, i = rt_search_callstack_rdep(a.name)
+    if b
+        return rt_ref(rtGlobal.local_rdep_vars[i].second)
+    end
+
+    if haskey(rtGlobal.vars, a.name)
+        return rt_ref(rtGlobal.vars[a.name])
+    end
+
+    if haskey(rtGlobal.callstack[end].basering.vars, a.name)
+        return rt_ref(rtGlobal.callstack[end].basering.vars[a.name])
+    end
+
+    ok, p = libSingular.lookupIdentifierInRing(String(a.name), rtGlobal.callstack[end].basering.ring_ptr)
+    if ok
+        return rt_box_it_with_ring(p, rt_basering())
+    end
+
+    allow_unknown || rt_error(String(a.name) * " is undefined")
+
+    return a
+end
+
+function rtkill(a::SName)
+    b, i = rt_search_callstack_rindep(a.name)
+    if b
+        rtGlobal.local_rindep_vars[i] = rtGlobal.local_rindep_vars[end]
+        pop!(rtGlobal.local_rindep_vars)
+        return
+    end
+
+    b, i = rt_search_callstack_rdep(a.name)
+    if b
+        rtGlobal.local_rdep_vars[i] = rtGlobal.local_rdep_vars[end]
+        pop!(rtGlobal.local_rdep_vars)
+        return
+    end
+
+    if haskey(rtGlobal.vars, a.name)
+        delete!(rtGlobal.vars, a.name)
+        return
+    end
+
+    R = rt_basering()
+    if haskey(R.vars, a.name)
+        delete!(R.vars, a.name)
+        return
+    end
+
+    rt_error("cannot kill " * String(a.name))
+    return
+end
+
+
+function rt_enterfunction()
+    i1 = length(rtGlobal.local_rindep_vars) + 1
+    i2 = length(rtGlobal.local_rdep_vars) + 1
+    n = length(rtGlobal.callstack)
+    push!(rtGlobal.callstack, rtCallStackEntry(i1, i2, rtGlobal.callstack[n].basering))
+end
+
+function rt_leavefunction()
+    n = length(rtGlobal.callstack)
+    i1 = rtGlobal.callstack[n].start_rindep_vars - 1
+    i2 = rtGlobal.callstack[n].start_rdep_vars - 1
+    @assert length(rtGlobal.local_rindep_vars) >= i1
+    @assert length(rtGlobal.local_rdep_vars) >= i2
+    resize!(rtGlobal.local_rindep_vars, i1)
+    resize!(rtGlobal.local_rdep_vars, i2)
+    pop!(rtGlobal.callstack)
+end
+
+
+
+function rtcall(allow_name_ret::Bool, f::SProc, v...)
     return f.func(v...)
 end
 
-function rtcall(a::SName, v...)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        return rtcall((rtGlobal.fxnstack[n])[a.name], v...)
+function rtcall(allow_name_ret::Bool, a::SName, v...)
+
+    b, i = rt_search_callstack_rindep(a.name)
+    if b
+        return rtcall(false, rtGlobal.local_rindep_vars[i].second, v...)
     end
-    if length(rtGlobal.currentring.varstack) < n
-        # current ring has no variables on our level
-        if haskey(rtGlobal.fxnstack[1], a.name)
-            return rtcall((rtGlobal.fxnstack[1])[a.name], v...)
-        end
+
+    b, i = rt_search_callstack_rdep(a.name)
+    if b
+        return rtcall(false, rtGlobal.local_rdep_vars[i].second, v...)
+    end
+
+    if haskey(rtGlobal.vars, a.name)
+        return rtcall(false, rtGlobal.vars[a.name], v...)
+    end
+
+    if haskey(rt_basering().vars, a.name)
+        return rtcall(false, rt_basering().vars[a.name], v...)
+    end
+
+    return rtcall(allow_name_ret, [String(a.name)], v...)
+end
+
+function rtcall(allow_name_ret::Bool, a::Array{String}, v...)
+    length(v) == 1 || rt_error("bad indexed variable construction")
+    v = v[1]
+
+    V = Int[]
+    if isa(v, Int)
+        V = Int[v]
+    elseif isa(v, _IntVec)
+        V = rt_ref(v)
     else
-        # current ring has variables on our level
-        if haskey(rtGlobal.currentring.varstack[n], a.name)
-            return rtcall((rtGlobal.currentring.varstack[n])[a.name], v...)
-        elseif haskey(rtGlobal.currentring.varstack[1], a.name)
-            return rtcall((rtGlobal.currentring.varstack[1])[a.name], v...)
+        rt_error("bad indexed variable construction")
+    end
+
+    # TODO lookup a(v) in currentring vars/pars v is int or intvec
+
+    R = rt_basering()
+
+    r = Any[]
+    ok = true
+    for b in a
+        if ok && R.valid
+            for i in V
+                ok, p = libSingular.lookupIdentifierInRing(b * "(" * string(i) * ")", R.ring_ptr)
+                if ok
+                    push!(r, rt_box_it_with_ring(p, R))
+                else
+                    break
+                end
+            end
+        else
+            ok = false
+            break
         end
     end
-    return SName(Symbol(string(a.name) * "(" * join([rtprint(i).string for i in v], ",") * ")")) # TODO intvec
+
+    if ok
+        return length(r) == 1 ? r[1] : Tuple(r)
+    end
+
+    allow_name_ret || rt_error("bad indexed variable construction")
+
+    r = String[]
+    for b in a
+        for i in V
+            push!(r, b * "(" * string(i) * ")")
+        end
+    end
+    return r
 end
 
 
@@ -456,23 +685,6 @@ end
 #   rt_declare_T:            may print a warning/error on redeclaration
 #   rt_defaultconstructor_T: cannot fail
 
-rt_typetostring(::Nothing)          = "def"
-rt_typetostring(::Type{Nothing})    = "def"
-rt_typetostring(::Type{SName})      = "?unknown type?"
-rt_typetostring(::Type{SProc})      = "proc"
-rt_typetostring(::Type{Int})        = "int"
-rt_typetostring(::Type{BigInt})     = "bigint"
-rt_typetostring(::Type{SString})    = "string"
-rt_typetostring(::Type{SIntVec})    = "intvec"
-rt_typetostring(::Type{SIntMat})    = "intmat"
-rt_typetostring(::Type{SBigIntMat}) = "bigintmat"
-rt_typetostring(::Type{SList})      = "list"
-rt_typetostring(::Type{SRing})      = "ring"
-rt_typetostring(::Type{SNumber})    = "number"
-rt_typetostring(::Type{SPoly})      = "poly"
-rt_typetostring(::Type{SIdeal})     = "ideal"
-
-
 function is_valid_newstruct_member(s::String)
     if match(r"^[a-zA-Z][a-zA-Z0-9]*$", s) == nothing
         return false
@@ -481,22 +693,42 @@ function is_valid_newstruct_member(s::String)
     end
 end
 
-function rt_declarewarnerror(d::Dict{Symbol, Any}, x::Symbol, t)
-    if d[x] isa t
-        rt_warn("redeclaration of " * rt_typetostring(t) * " " * string(x))
+function rt_declare_warnerror(allow_warn::Bool, old_value::Any, x::Symbol, t)
+    if old_value isa t
+        if allow_warn
+            rt_warn("redeclaration of " * rt_typestring(old_value) * " " * string(x))
+        else
+            rt_error("redeclaration of " * rt_typestring(old_value) * " " * string(x))
+        end
     else
-        rt_error("identifier " * string(x) * " in use as a " * rt_typetostring(t))
+        rt_error("identifier " * string(x) * " in use as a " * rt_typestring(old_value))
     end
 end
 
-
-function rt_defaultconstructor_unknown() # hmm, probably won't be used
-    return SName(Symbol(""))
+function rt_check_declaration_local(rindep::Bool, a::Symbol, typ)
+    found, i = rt_search_callstack_rindep(a)
+    !found || rt_declare_warnerror(rindep, rtGlobal.local_rindep_vars[i].second, a, typ)
+    found, i = rt_search_callstack_rdep(a)
+    !found || rt_declare_warnerror(!rindep, rtGlobal.local_rdep_vars[i].second, a, typ)
 end
+
+function rt_check_declaration_global(rindep::Bool, a::Symbol, typ)
+    n = length(rtGlobal.callstack)
+    R = rtGlobal.callstack[n].basering
+    !haskey(rtGlobal.vars, a) || rt_declare_warnerror(rindep, rtGlobal.vars[a], a, typ)
+    !haskey(R.vars, a) || rt_declare_warnerror(!rindep, R.vars[a], a, typ)
+end
+
+function rt_local_identifier_does_not_exist(a::Symbol)
+    return length(rtGlobal.callstack) > 1 &&
+            !(rt_search_callstack_rindep(a.name)[1]) &&
+            !(rt_search_callstack_rdep(a.name)[1])
+end
+
 
 #### proc
 function rt_empty_proc(v...) # only used by rt_defaultconstructor_proc
-    rt_error("empty proc called")
+    rt_error("cannot call empty proc")
 end
 
 function rt_defaultconstructor_proc()
@@ -504,23 +736,20 @@ function rt_defaultconstructor_proc()
 end
 
 function rt_declare_proc(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, SProc)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SProc)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_proc()))
+    else
+        rt_check_declaration_global(true, a.name, SProc)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_proc()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, SProc)
-    end
-    rtGlobal.fxnstack[n][a.name] = rt_defaultconstructor_proc()
 end
 
 function rt_parameter_proc(a::SName, b)
-    n = length(rtGlobal.fxnstack)
-    @assert !(haskey(rtGlobal.fxnstack[n], a.name))
-    @assert !(length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name))
+    @assert rt_local_identifier_does_not_exist(a.name)
     rtGlobal.fxnstack[n][a.name] = rt_convert2proc(b)
 end
-
 
 #### int
 function rt_defaultconstructor_int()
@@ -528,21 +757,19 @@ function rt_defaultconstructor_int()
 end
 
 function rt_declare_int(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, Int)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, Int)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_int()))
+    else
+        rt_check_declaration_global(true, a.name, Int)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_int()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, Int)
-    end
-    rtGlobal.fxnstack[n][a.name] = rt_defaultconstructor_int()
 end
 
 function rt_parameter_int(a::SName, b)
-    n = length(rtGlobal.fxnstack)
-    @assert !(haskey(rtGlobal.fxnstack[n], a.name))
-    @assert !(length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name))
-    rtGlobal.fxnstack[n][a.name] = rt_convert2int(b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2int(b)))
 end
 
 #### bigint
@@ -551,21 +778,19 @@ function rt_defaultconstructor_bigint()
 end
 
 function rt_declare_bigint(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, BigInt)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, BigInt)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigint()))
+    else
+        rt_check_declaration_global(true, a.name, BigInt)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_bigint()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, BigInt)
-    end
-    rtGlobal.fxnstack[n][a.name] = rt_defaultconstructor_bigint()
 end
 
 function rt_parameter_bigint(a::SName, b)
-    n = length(rtGlobal.fxnstack)
-    @assert !(haskey(rtGlobal.fxnstack[n], a.name))
-    @assert !(length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name))
-    rtGlobal.fxnstack[n][a.name] = rt_convert2bigint(b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2bigint(b)))
 end
 
 #### string
@@ -574,26 +799,40 @@ function rt_defaultconstructor_string()
 end
 
 function rt_declare_string(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, String)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SString)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_string()))
+    else
+        rt_check_declaration_global(true, a.name, SString)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_string()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, String)
-    end
-    rtGlobal.fxnstack[n][a.name] = rt_defaultconstructor_string()
 end
 
 function rt_parameter_string(a::SName, b)
-    n = length(rtGlobal.fxnstack)
-    @assert !(haskey(rtGlobal.fxnstack[n], a.name))
-    @assert !(length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name))
-    rtGlobal.fxnstack[n][a.name] = rt_convert2string(b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2string(b)))
 end
 
 #### intvec
-function rt_defaultconstructor_SIntVec()
+function rt_defaultconstructor_intvec()
     return SIntVec(Int[])
+end
+
+function rt_declare_intvec(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SIntVec)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intvec()))
+    else
+        rt_check_declaration_global(true, a.name, SIntVec)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_intvec()
+    end
+end
+
+function rt_parameter_intvec(a::SName, b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2intvec(b)))
 end
 
 #### intmat
@@ -601,9 +840,42 @@ function rt_defaultconstructor_intmat()
     return SBigIntMat(zeros(Int, 1, 1))
 end
 
+function rt_declare_intmat(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SIntMat)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intmat()))
+    else
+        rt_check_declaration_global(true, a.name, SIntMat)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_intmat()
+    end
+end
+
+function rt_parameter_intmat(a::SName, b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2intmat(b)))
+end
+
 #### bigintmat
 function rt_defaultconstructor_bigintmat()
     return SBigIntMat(zeros(BigInt, 1, 1))
+end
+
+function rt_declare_bigintmat(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SBigIntMat)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigintmat()))
+    else
+        rt_check_declaration_global(true, a.name, SBigIntMat)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_bigintmat()
+    end
+    return nothing
+end
+
+function rt_parameter_bigintmat(a::SName, b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2bigintmat(b)))
 end
 
 #### list
@@ -612,88 +884,96 @@ function rt_defaultconstructor_list()
 end
 
 function rt_declare_list(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, SList)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SList)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_list()))
+    else
+        rt_check_declaration_global(true, a.name, SList)
+        rtGlobal.vars[a.name] = rt_defaultconstructor_list()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, SList)
-    end
-    rtGlobal.fxnstack[n][a.name] = rt_defaultconstructor_list()
+    return nothing
 end
 
 function rt_parameter_list(a::SName, b)
-    n = length(rtGlobal.fxnstack)
-    @assert !(haskey(rtGlobal.fxnstack[n], a.name))
-    @assert !(length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name))
-    rtGlobal.fxnstack[n][a.name] = rt_convert2list(b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2list(b)))
 end
 
 #### number
 function rt_defaultconstructor_number()
-    rtGlobal.currentring.valid || rt_error("cannot construct a number when no basering is active")
-    r1 = libSingular.n_Init(0, rtGlobal.currentring.ring_ptr)
-    return SNumber(r1, rtGlobal.currentring)
+    R = rt_basering()
+    @error_check(R.valid, rt_error("cannot construct a number when no basering is active"))
+    r1 = libSingular.n_Init(0, R.ring_ptr)
+    return SNumber(r1, R)
 end
 
 function rt_declare_number(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, SNumber)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(false, a.name, SNumber)
+        push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_number()))
+    else
+        rt_check_declaration_global(false, a.name, SNumber)
+        rtGlobal.callstack[n].basering.vars[a.name] = rt_defaultconstructor_number()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, SNumber)
-    end
-    rtGlobal.currentring.varstack[n][a.name] = rt_defaultconstructor_number()
+    return nothing
 end
 
 function rt_parameter_number(a::SName, b)
-    error("not implemented")
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_convert2number(b)))
 end
 
 #### poly
 function rt_defaultconstructor_poly()
-    rtGlobal.currentring.valid || rt_error("cannot construct a polynomial when no basering is active")
+    R = rt_basering()
+    @error_check(R.valid, rt_error("cannot construct a polynomial when no basering is active"))
     r1 = libSingular.p_null_helper()
-    return SPoly(r1, rtGlobal.currentring)
+    return SPoly(r1, R)
 end
 
 function rt_declare_poly(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, SPoly)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(false, a.name, SPoly)
+        push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_poly()))
+    else
+        rt_check_declaration_global(false, a.name, SPoly)
+        rtGlobal.callstack[n].basering.vars[a.name] = rt_defaultconstructor_poly()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, SPoly)
-    end
-    rtGlobal.currentring.varstack[n][a.name] = rt_defaultconstructor_poly()
+    return nothing
 end
 
 function rt_parameter_poly(a::SName, b)
-    error("not implemented")
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_convert2poly(b)))
 end
 
 #### ideal
 function rt_defaultconstructor_ideal()
-    rtGlobal.currentring.valid || rt_error("cannot construct an ideal when no basering is active")
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct an ideal when no basering is active")
     id = libSingular.idInit(1,1)
     libSingular.setindex_internal(id, libSingular.p_null_helper(), 0)
-    return SIdeal(SIdealData(id, rtGlobal.currentring))
+    return SIdeal(SIdealData(id, R))
 end
 
 function rt_declare_ideal(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, SIdeal)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(false, a.name, SIdeal)
+        push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_ideal()))
+    else
+        rt_check_declaration_global(false, a.name, SIdeal)
+        rtGlobal.callstack[n].basering.vars[a.name] = rt_defaultconstructor_ideal()
     end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, SIdeal)
-    end
-    rtGlobal.currentring.varstack[n][a.name] = rt_defaultconstructor_ideal()
+    return nothing
 end
 
 function rt_parameter_ideal(a::SName, b)
-    error("not implemented")
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_convert2ideal(b)))
 end
 
 
@@ -715,7 +995,7 @@ end
 
 #### def
 
-function rt_convert2def(a::_SingularType)
+function rt_convert2def(a)
     return rt_copy(a)
 end
 
@@ -965,23 +1245,23 @@ end
 
 # return a new libSingular.poly not owned by any instance of a SingularType
 function rt_convert2poly_ptr(a::Union{Int, BigInt}, b::SRing)
-    b.valid || rt_error("cannot convert to a polynomial when no basering is active")
+    @error_check(b.valid, "cannot convert to a polynomial when no basering is active")
     r1 = libSingular.n_Init(a, b.ring_ptr)
     return libSingular.p_NSet(r1, b.ring_ptr)
 end
 
 function rt_convert2poly_ptr(a::SNumber, b::SRing)
-    a.parent.ring_ptr.cpp_object == b.ring_ptr.cpp_object || rt_error("cannot convert to a polynomial from a different basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
     r1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
     return libSingular.p_NSet(r1, a.parrent.ring_ptr)
 end
 
 function rt_convert2poly_ptr(a::SPoly, b::SRing)
-    a.parent.ring_ptr.cpp_object == b.ring_ptr.cpp_object || rt_error("cannot convert to a polynomial from a different basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
     return libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
 end
 
-function rt_convert2poly_ptr(a, r::SRing)
+function rt_convert2poly_ptr(a, b::SRing)
     rt_error("cannot convert $a to a polynomial")
     return libSingular.p_null_helper()
 end
@@ -991,12 +1271,14 @@ function rt_convert2poly(a::SPoly)
 end
 
 function rt_convert2poly(a::Union{Int, BigInt})
-    r1 = rt_convert2poly_ptr(a)
-    return SPoly(r1, rtGlobal.currentring)
+    R = rt_basering()
+    r1 = rt_convert2poly_ptr(a, R)
+    return SPoly(r1, R)
 end
 
 function rt_convert2poly(a::SNumber)
-    r1 = rt_convert2poly_ptr(a)
+    @warn_check(a.apprent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a polynomial outside of basering")
+    r1 = rt_convert2poly_ptr(a, a.parent)
     return SPoly(r1, a.parent)
 end
 
@@ -1012,9 +1294,18 @@ function rt_convert2ideal(a::_Ideal)
     return rt_copy(a)
 end
 
-function rt_convert2ideal(a::Union{Int, BigInt, SNumber, SPoly})
-    rtGlobal.currentring.valid || rt_error("cannot convert to an ideal when no basering is active")
-    r1 = rt_convert2poly()
+function rt_convert2ideal(a::Union{Int, BigInt})
+    R = rt_basering()
+    @error_check(R.valid, "cannot convert to an ideal when no basering is active")
+    r1 = rt_convert2poly_ptr(a, R)
+    r2 = libSingular.idInit(1, 1)
+    libsingular.setindex_internal(r2, r1, 0) # r1 is consumed
+    return SIdeal(r2, rtGlobal.currentring)
+end
+
+function rt_convert2ideal(a::Union{SNumber, SPoly})
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a polynomial outside of basering")
+    r1 = rt_convert2poly_ptr(a, a.parent)
     r2 = libSingular.idInit(1, 1)
     libsingular.setindex_internal(r2, r1, 0) # r1 is consumed
     return SIdeal(r2, rtGlobal.currentring)
@@ -1025,7 +1316,7 @@ function rt_convert2ideal(a::Tuple{Vararg{Any}})
     # answer must be wrapped in SIdeal at all times because we might throw
     r::SIdeal = rt_defaultconstructor_ideal()
     for i in a
-        isa(i, Union{Int, BigInt, SNumber, SPoly, SIdeal}) || rt_error("cannot convert $i to an ideal")
+        @error_check(isa(i, Union{Int, BigInt, SNumber, SPoly, SIdeal}), "cannot convert $i to an ideal")
         r = rtplus(r, i)
     end
     return r
@@ -1047,18 +1338,7 @@ function rt_indenting_print(a::Nothing, indent::Int)
 end
 
 function rt_indenting_print(a::SName, indent::Int)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        return rt_indenting_print(rtGlobal.fxnstack[n][a.name], indent)
-    elseif length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        return rt_indenting_print(rtGlobal.currentring.varstack[n][a.name], indent)
-    elseif haskey(rtGlobal.fxnstack[1], a.name)
-        return rt_indenting_print(rtGlobal.fxnstack[1][a.name], indent)
-    elseif haskey(rtGlobal.currentring.varstack[1], a.name)
-        return rt_indenting_print(rtGlobal.currentring.varstack[1][a.name], indent)
-    else
-        return " "^indent * "UNKNOWN IDENTIFIER " * string(a.name)
-    end
+    return rt_indenting_print(rt_make(a), indent)
 end
 
 function rt_indenting_print(a::SProc, indent::Int)
@@ -1119,14 +1399,15 @@ function rt_indenting_print(a::SRing, indent::Int)
 end
 
 function rt_indenting_print(a::SNumber, indent::Int)
-   libSingular.StringSetS("")
-   libSingular.n_Write(a.number_ptr, a.parent.ring_ptr)
-   return " "^indent * libSingular.StringEndS()
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a number outside of basering")
+    libSingular.StringSetS("")
+    libSingular.n_Write(a.number_ptr, a.parent.ring_ptr)
+    return " "^indent * libSingular.StringEndS()
 end
 
 
 function rt_indenting_print(a::SPoly, indent::Int)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("printing a polynomial outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a polynomial outside of basering")
     s = libSingular.p_String(a.poly_ptr, a.parent.ring_ptr)
     return " "^indent * s
 end
@@ -1136,6 +1417,7 @@ function rt_indenting_print(a::SIdeal, indent::Int)
 end
 
 function rt_indenting_print(a::SIdealData, indent::Int)
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing an ideal outside of basering")
     s = ""
     n = Int(libSingular.ngens(a.ideal_ptr))
     for i in 1:n
@@ -1188,26 +1470,16 @@ end
 
 ########### mutatingish operations #############################################
 
-# hmm, there might be a better way
-rt_getindex(a::SName, i::SName, j::SName) = rt_getindex(rt_make(a), rt_make(i), rt_make(j))
-rt_getindex(a::SName, i::SName, j       ) = rt_getindex(rt_make(a), rt_make(i),         j )
-rt_getindex(a::SName, i,        j::SName) = rt_getindex(rt_make(a),         i , rt_make(j))
-rt_getindex(a::SName, i,        j       ) = rt_getindex(rt_make(a),         i ,         j )
-rt_getindex(a       , i::SName, j::SName) = rt_getindex(        a , rt_make(i), rt_make(j))
-rt_getindex(a       , i::SName, j       ) = rt_getindex(        a , rt_make(i),         j )
-rt_getindex(a       , i       , j::SName) = rt_getindex(        a ,         i , rt_make(j))
+# the transpiler is set up to not produce names for any arguments of getindex/setindex
 
-rt_getindex(a::SName, i::SName) = rt_getindex(rt_make(a), rt_make(i))
-rt_getindex(a::SName, i       ) = rt_getindex(rt_make(a),         i )
-rt_getindex(a,        i::SName) = rt_getindex(        a , rt_make(i))
-
-rt_setindex(a::SName, i::SName, b::SName) = rt_getindex(rt_make(a), rt_make(i), rt_make(b))
-rt_setindex(a::SName, i::SName, b       ) = rt_getindex(rt_make(a), rt_make(i),         b )
-rt_setindex(a::SName, i,        b::SName) = rt_getindex(rt_make(a),         i , rt_make(b))
-rt_setindex(a::SName, i,        b       ) = rt_getindex(rt_make(a),         i ,         b )
-rt_setindex(a       , i::SName, b::SName) = rt_getindex(        a , rt_make(i), rt_make(b))
-rt_setindex(a       , i::SName, b       ) = rt_getindex(        a , rt_make(i),         b )
-rt_setindex(a       , i       , b::SName) = rt_getindex(        a ,         i , rt_make(b))
+#rt_getindex(a::SName, i) = rt_getindex(rt_make(a), i)
+#rt_getindex(a::SName, i, j) = rt_getindex(rt_make(a), i, j)
+#rt_setindex(a::SName, i, b::SName) = rt_setindex(rt_make(a), i, rt_make(b))
+#rt_setindex(a::SName, i, b       ) = rt_setindex(rt_make(a), i,         b )
+#rt_setindex(a       , i, b::SName) = rt_setindex(        a , i, rt_make(b))
+#rt_setindex(a::SName, i, j, b::SName) = rt_setindex(rt_make(a), i, j, rt_make(b))
+#rt_setindex(a::SName, i, j, b       ) = rt_setindex(rt_make(a), i, j,         b )
+#rt_setindex(a       , i, j, b::SName) = rt_setindex(        a , i, j, rt_make(b))
 
 
 # in general the operation of the assignment a = b in Singular depends on the
@@ -1222,24 +1494,39 @@ rt_setindex(a       , i       , b::SName) = rt_getindex(        a ,         i , 
 # we don't know the type of the rhs - all of this type checking is done by rt_assign
 
 function rtassign(a::SName, b)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rtGlobal.fxnstack[n][a.name] = rt_assign(rtGlobal.fxnstack[n][a.name], b)
-    elseif length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rtGlobal.currentring.varstack[n][a.name] = rt_assign(rtGlobal.currentring.varstack[n][a.name], b)
-    elseif haskey(rtGlobal.fxnstack[1], a.name)
-        rtGlobal.fxnstack[1][a.name] = rt_assign(rtGlobal.fxnstack[1][a.name], b)
-    elseif haskey(rtGlobal.currentring.varstack[1], a.name)
-        rtGlobal.currentring.varstack[1][a.name] = rt_assign(rtGlobal.currentring.varstack[1][a.name], b)
-    else
-        rt_error(a.name * "is undefined")
+
+    ok, i = rt_search_callstack_rindep(a.name)
+    if ok
+        l = rtGlobal.local_rindep_vars
+        l[i].second = rt_assign(l[i].second, b)
+        return
     end
-    return nothing
+
+    ok, i = rt_search_callstack_rdep(a.name)
+    if ok
+        l = rtGlobal.local_rdep_vars
+        l[i].second = rt_assign(l[i].second, b)
+        return
+    end
+
+    if haskey(rtGlobal.vars, a.name)
+        l = rtGlobal.vars
+        l[a.name] = rt_assign(l[a.name], b)
+        return
+    end
+
+    if haskey(rtGlobal.callstack[end].basering.vars, a.name)
+        l = rtGlobal.callstack[end].basering.vars
+        l[a.name] = rt_assign(l[a.name], b)
+        return
+    end
+
+    rt_error("cannot assign to " * String(a.name))
 end
 
 
 #### assignment to nothing - used for the first set of a variable of type def
-function rt_assign(a::Nothing, b::_SingularType)
+function rt_assign(a::Nothing, b)
     return rt_copy(b)
 end
 
@@ -1444,23 +1731,38 @@ end
 #####################################################
 
 function rt_incrementby(a::SName, b::Int)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        rtGlobal.fxnstack[n][a.name] = rtplus(rtGlobal.fxnstack[n][a.name], b)
-    elseif length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-        rtGlobal.currentring.varstack[n][a.name] = rtplus(rtGlobal.currentring.varstack[n][a.name], b)
-    elseif haskey(rtGlobal.fxnstack[1], a.name)
-        rtGlobal.fxnstack[1][a.name] = rtplus(rtGlobal.fxnstack[1][a.name], b)
-    elseif haskey(rtGlobal.currentring.varstack[1], a.name)
-        rtGlobal.currentring.varstack[1][a.name] = rtplus(rtGlobal.currentring.varstack[1][a.name], b)
-    else
-        _serror(a.name * "is undefined")
+
+    ok, i = rt_search_callstack_rindep(a.name)
+    if ok
+        l = rtGlobal.local_rindep_vars
+        l[i].second = rt_assign(l[i].second, rtplus(l[i].second, b))
+        return
     end
-    return nothing
+
+    ok, i = rt_search_callstack_rdep(a.name)
+    if ok
+        l = rtGlobal.local_rdep_vars
+        l[i].second = rt_assign(l[i].second, rtplus(l[i].second, b))
+        return
+    end
+
+    if haskey(rtGlobal.vars, a.name)
+        l = rtGlobal.vars
+        l[a.name] = rt_assign(l[a.name], rtplus(l[a.name], b))
+        return
+    end
+
+    if haskey(rtGlobal.callstack[end].basering.vars, a.name)
+        l = rtGlobal.callstack[end].basering.vars
+        l[a.name] = rt_assign(l[a.name], rtplus(l[a.name], b))
+        return
+    end
+
+    rt_error("cannot increment/decrement " * String(a.name))
 end
 
 
-function rtrtimer()
+function rt_get_rtimer()
     t = time_ns()
     if t >= rtGlobal.rtimer_base
         return Int(div(t - rtGlobal.rtimer_base, rtGlobal.rtimer_scale))
@@ -1469,13 +1771,33 @@ function rtrtimer()
     end
 end
 
+
+rtsystem(a::SName, b::SName) = rtsystem(rt_make(a), rt_make(b))
+rtsystem(a::SName, b) = rtsystem(rt_make(a), b)
+rtsystem(a, b::SName) = rtsystem(a, rt_make(b))
+
+
 function rtsystem(a::SString, b)
     if a.string == "--ticks-per-sec"
+        # TODO adjust rtimer_base as well
         rtGlobal.rtimer_scale = div(UInt64(1000000000), UInt64(abs(rt_convert2int(b))))
     else
         rt_error("system($(a.name), ...) not implemented")
     end
     return nothing
+end
+
+function rt_get_voice()
+    return length(rtGlobal.callstack)
+end
+
+function rtbasering()
+    R = rt_basering()
+    if R.valid
+        return R
+    else
+        return rt_make(SName(:basering))
+    end
 end
 
 ################ tuples ########################################################
@@ -1496,21 +1818,31 @@ end
 
 ########### operations ##############################################
 
-rttypeof(a::SName)      = rttypeof(rt_make(a))
-rttypeof(::Nothing)     = SString("none")
-rttypeof(::SProc)       = SString("proc")
-rttypeof(::Int)         = SString("int")
-rttypeof(::BigInt)      = SString("bigint")
-rttypeof(::SString)     = SString("string")
-rttypeof(::_IntVec)     = SString("intvec")
-rttypeof(::_IntMat)     = SString("intmat")
-rttypeof(::_BigIntMat)  = SString("bigintmat")
-rttypeof(::_List)       = SString("list")
-rttypeof(::SRing)       = SString("ring")
-rttypeof(::SNumber)     = SString("number")
-rttypeof(::SPoly)       = SString("poly")
-rttypeof(::_Ideal)      = SString("ideal")
-rttypeof(a::Tuple{Vararg{Any}}) = Tuple(rttypeof(i) for i in a)
+rt_typedata(::Nothing)     = "none"
+rt_typedata(::SProc)       = "proc"
+rt_typedata(::Int)         = "int"
+rt_typedata(::BigInt)      = "bigint"
+rt_typedata(::SString)     = "string"
+rt_typedata(::_IntVec)     = "intvec"
+rt_typedata(::_IntMat)     = "intmat"
+rt_typedata(::_BigIntMat)  = "bigintmat"
+rt_typedata(::_List)       = "list"
+rt_typedata(::SRing)       = "ring"
+rt_typedata(::SNumber)     = "number"
+rt_typedata(::SPoly)       = "poly"
+rt_typedata(::_Ideal)      = "ideal"
+rt_typedata(a::Tuple{Vararg{Any}}) = String[rt_typeof(i) for i in a]
+
+rt_typedata_to_singular(a::String) = SString(a)
+rt_typedata_to_singular(a::Array{String}) = Tuple([SString(a) for i in a])
+
+rt_typedata_to_string(a::String) = a
+rt_typedata_to_string(a::Array{String}) = join(a, ", ")
+
+rttypeof(a::SName) = rttypeof(rt_make(a))
+rttypeof(a) = rt_typedata_to_singular(rt_typedata(a))
+
+rt_typestring(a) = rt_typedata_to_string(rt_typedata(a))
 
 rtsize(a::SName) = rtsize(rt_make(a))
 
@@ -1535,7 +1867,14 @@ function rtsize(a::_List)
     return Int(length(rtef(a).data))
 end
 
+function rtsize(a::SPoly)
+    return Int(libSingular.pLength(a.poly_ptr))
+end
 
+
+# TODO instead of having stupid stuff like the following 3 methods, compile a list
+# of commands (CMD) that never take a name as an argument and call rt_make in
+# the transpiler in those cases
 rtplus(a::SName, b::SName) = rtplus(rt_make(a), rt_make(b))
 rtplus(a::SName, b) = rtplus(rt_make(a), b)
 rtplus(a, b::SName) = rtplus(a, rt_make(b))
@@ -1568,28 +1907,28 @@ rttimes(a::BigInt, b::BigInt) = a * b
 # op(number, number)
 
 function rtplus(a::SNumber, b::SNumber)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot add from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     r1 = libSingular.n_Add(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
     return SNumber(r1, a.parent)
 end
 
 function rtminus(a::SNumber)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("negating outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object, "negating outside of basering")
     r1 = libSingular.n_Neg(a.number_ptr, a.parent.ring_ptr)
     return SNumber(r1, a.parent)
 end
 
 function rtminus(a::SNumber, b::SNumber)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot subtract from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
     r1 = libSingular.n_Sub(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
     return SNumber(r1, a.parent)
 end
 
 function rttimes(a::SNumber, b::SNumber)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot multiply from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     r1 = libSingular.n_Mult(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
     return SNumber(r1, a.parent)
 end
@@ -1597,8 +1936,8 @@ end
 # op(poly, poly)
 
 function rtplus(a::SPoly, b::SPoly)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot add from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.p_Copy(b.poly_ptr, b.parent.ring_ptr)
     r1 = libSingular.p_Add_q(a1, b1, a.parent.ring_ptr)
@@ -1606,15 +1945,15 @@ function rtplus(a::SPoly, b::SPoly)
 end
 
 function rtminus(a::SPoly)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("negating outside of basering")
+    rt_warn(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "negating outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     r1 = libSingular.p_Neg(a1, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
 end
 
 function rtminus(a::SPoly, b::SPoly)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot subtract from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.p_Copy(b.poly_ptr, b.parent.ring_ptr)
     r1 = libSingular.p_Sub_q(a1, b1, a.parent.ring_ptr)
@@ -1622,8 +1961,8 @@ function rtminus(a::SPoly, b::SPoly)
 end
 
 function rttimes(a::SPoly, b::SPoly)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot multiply from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     r1 = libSingular.pp_Mult_qq(a.poly_ptr, b.poly_ptr, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
 end
@@ -1633,8 +1972,8 @@ end
 function rtplus(a::_Ideal, b::_Ideal)
     A::SIdealData = rt_ref(a)
     B::SIdealData = rt_ref(b)
-    A.parent.ring_ptr.cpp_object == B.parent.ring_ptr.cpp_object || rt_error("cannot add from different basering")
-    A.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @error_check(A.parent.ring_ptr.cpp_object == B.parent.ring_ptr.cpp_object, "cannot add from different basering")
+    @warn_check(A.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     r1 = libSingular.id_Add(A.ideal_ptr, B.ideal_ptr, A.parent.ring_ptr)
     return SIdeal(SIdealData(r1, a.parent))
 end
@@ -1651,8 +1990,8 @@ end
 function rttimes(a::_Ideal, b::_Ideal)
     A::SIdealData = rt_ref(a)
     B::SIdealData = rt_ref(b)
-    A.parent.ring_ptr.cpp_object == B.parent.ring_ptr.cpp_object || rt_error("cannot multiply from different basering")
-    A.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @error_check(A.parent.ring_ptr.cpp_object == B.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
+    @warn_check(A.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     r1 = libSingular.id_Mult(A.ideal_ptr, B.ideal_ptr, A.parent.ring_ptr)
     return SIdeal(SIdealData(r1, A.parent))
 end
@@ -1664,7 +2003,7 @@ function rtplus(a::SIdeal, b::Union{BigInt, Int, SNumber, SPoly})
 end
 
 function rtplus(a::SIdealData, b::Union{BigInt, Int, SNumber, SPoly})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     b1 = rt_convert2poly_ptr(b, a.parent)
     b2 = libSingular.idInit(1,1)
     libSingular.setindex_internal(b2, b1, 0) # b1 is consumed
@@ -1678,7 +2017,7 @@ function rttimes(a::SIdeal, b::Union{BigInt, Int, SNumber, SPoly})
 end
 
 function rttimes(a::SIdealData, b::Union{BigInt, Int, SNumber, SPoly})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     b1 = rt_convert2poly_ptr(b, a.parent)
     b2 = libSingular.idInit(1,1)
     libSingular.setindex_internal(b2, b1, 0) # b1 is consumed
@@ -1691,7 +2030,7 @@ end
 # op(number, int)
 
 function rtplus(a::SNumber, b::Union{Int, BigInt})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     r1 = libSingular.n_Add(a.number_ptr, b1, a.parent.ring_ptr)
     libSingular.n_Delete(b1, a.parent.ring_ptr)
@@ -1699,7 +2038,7 @@ function rtplus(a::SNumber, b::Union{Int, BigInt})
 end
 
 function rtminus(a::SNumber, b::Union{Int, BigInt})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     r1 = libSingular.n_Sub(a.number_ptr, b1, a.parent.ring_ptr)
     libSingular.n_Delete(b1, a.parent.ring_ptr)
@@ -1707,7 +2046,7 @@ function rtminus(a::SNumber, b::Union{Int, BigInt})
 end
 
 function rttimes(a::SNumber, b::Union{Int, BigInt})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     r1 = libSingular.n_Mult(a.number_ptr, b1, a.parent.ring_ptr)
     libSingular.n_Delete(b1, a.parent.ring_ptr)
@@ -1717,7 +2056,7 @@ end
 # op(int, number)
 
 function rtplus(b::Union{Int, BigInt}, a::SNumber)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     r1 = libSingular.n_Add(b1, a.number_ptr, a.parent.ring_ptr)
     libSingular.n_Delete(b1, a.parent.ring_ptr)
@@ -1725,7 +2064,7 @@ function rtplus(b::Union{Int, BigInt}, a::SNumber)
 end
 
 function rtminus(b::Union{Int, BigInt}, a::SNumber)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     r1 = libSingular.n_Sub(b1, a.number_ptr, a.parent.ring_ptr)
     libSingular.n_Delete(b1, a.parent.ring_ptr)
@@ -1733,7 +2072,7 @@ function rtminus(b::Union{Int, BigInt}, a::SNumber)
 end
 
 function rttimes(b::Union{Int, BigInt}, a::SNumber)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     r1 = libSingular.n_Mult(b1, a.number_ptr, a.parent.ring_ptr)
     libSingular.n_Delete(b1, a.parent.ring_ptr)
@@ -1743,7 +2082,7 @@ end
 # op(poly, int)
 
 function rtplus(a::SPoly, b::Union{Int, BigInt})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
@@ -1752,7 +2091,7 @@ function rtplus(a::SPoly, b::Union{Int, BigInt})
 end
 
 function rtminus(a::SPoly, b::Union{Int, BigInt})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
@@ -1761,7 +2100,7 @@ function rtminus(a::SPoly, b::Union{Int, BigInt})
 end
 
 function rttimes(a::SPoly, b::Union{Int, BigInt})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
@@ -1772,8 +2111,8 @@ end
 # op(poly, number)
 
 function rtplus(a::SPoly, b::SNumber)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot add from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
@@ -1782,8 +2121,8 @@ function rtplus(a::SPoly, b::SNumber)
 end
 
 function rtminus(a::SPoly, b::SNumber)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot subtract from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting from outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting from outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
@@ -1792,8 +2131,8 @@ function rtminus(a::SPoly, b::SNumber)
 end
 
 function rttimes(a::SPoly, b::SNumber)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot multiply from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying from outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying from outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
@@ -1804,7 +2143,7 @@ end
 # op(int, poly)
 
 function rtplus(b::Union{Int, BigInt}, a::SPoly)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
@@ -1813,7 +2152,7 @@ function rtplus(b::Union{Int, BigInt}, a::SPoly)
 end
 
 function rtminus(b::Union{Int, BigInt}, a::SPoly)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
@@ -1822,7 +2161,7 @@ function rtminus(b::Union{Int, BigInt}, a::SPoly)
 end
 
 function rttimes(b::Union{Int, BigInt}, a::SPoly)
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
@@ -1833,8 +2172,8 @@ end
 # op(number, poly)
 
 function rtplus(b::SNumber, a::SPoly)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot add from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("adding outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
@@ -1843,8 +2182,8 @@ function rtplus(b::SNumber, a::SPoly)
 end
 
 function rtminus(b::SNumber, a::SPoly)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot subtract from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("subtracting from outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting from outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
@@ -1853,8 +2192,8 @@ function rtminus(b::SNumber, a::SPoly)
 end
 
 function rttimes(b::SNumber, a::SPoly)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot multiply from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("multiplying from outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying from outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
@@ -1865,11 +2204,11 @@ end
 
 
 
-function rtplus(a::Tuple{Vararg{Any}}, b::_SingularType)
+function rtplus(a::Tuple{Vararg{Any}}, b)
     return Tuple(i == 1 ? rtplus(a[i], b) : a[i] for i in 1:length(a));
 end
 
-function rtplus(a::_SingularType, b::Tuple{Vararg{Any}})
+function rtplus(a, b::Tuple{Vararg{Any}})
     return Tuple(i == 1 ? rtplus(a, b[i]) : b[i] for i in 1:length(b));
 end
 
@@ -1878,10 +2217,11 @@ function rtplus(a::Tuple{Vararg{Any}}, b::Tuple{Vararg{Any}})
 end
 
 function rtplus(a::_IntVec, b::_IntVec)
-    A = rtef(a)
-    B = rtef(b)
-    return SIntVec([Base.checked_add(i <= length(A) ? A[i] : 0, i <= length(B) ? B[i] : 0)
-            for i in 1:max(length(A), length(B))])
+    A = rt_ref(a)
+    B = rt_ref(b)
+    return SIntVec([Base.checked_add(i <= length(A) ? A[i] : 0,
+                                     i <= length(B) ? B[i] : 0)
+                                   for i in 1:max(length(A), length(B))])
 end
 
 function rtplus(a::_IntVec, b::Int)
@@ -1890,12 +2230,12 @@ function rtplus(a::_IntVec, b::Int)
 end
 
 function rtplus(a::Int, b::_IntVec)
-    B = rtef(b)
+    B = rt_ref(b)
     return SIntVec([rtplus(a, B[i]) for i in 1:length(B)])
 end
 
 function rtplus(a::_IntMat, b::Int)
-    A = _sedit(a)
+    A = rt_edit(a)
     nrows, ncols = size(A)
     for i in 1:min(nrows, ncols)
         A[i, i] = rtplus(A[i, i], b)
@@ -1904,7 +2244,7 @@ function rtplus(a::_IntMat, b::Int)
 end
 
 function rtplus(a::Int, b::_IntMat)
-    B = _sedit(b)
+    B = rt_edit(b)
     nrows, ncols = size(B)
     for i in 1:min(nrows, ncols)
         B[i, i] = rtplus(a, B[i, i])
@@ -1913,7 +2253,7 @@ function rtplus(a::Int, b::_IntMat)
 end
 
 function rtplus(a::_IntMat, b::_IntMat)
-    return SIntMat(rtef(a) + rtef(b))
+    return SIntMat(rt_ref(a) + rt_ref(b))
 end
 
 function rtplus(a::SString, b::SString)
@@ -1926,8 +2266,6 @@ rtminus(a::SName) = rtminus(rt_make(a))
 rtminus(a::SName, b::SName) = rtminus(rt_make(a), rt_make(b))
 rtminus(a::SName, b) = rtminus(rt_make(a), b)
 rtminus(a, b::SName) = rtminus(a, rt_make(b))
-
-
 
 
 rttimes(a::SName, b::SName) = rttimes(rt_make(a), rt_make(b))
@@ -1954,10 +2292,10 @@ rtpower(a::BigInt, b::BigInt) = a ^ b
 
 function rtpower(a::SNumber, b::Int)
     absb = abs(b)
-    absb <= typemax(Cint) || rt_error("number power is out of range")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("powering outside of basering")
+    @error_check(absb <= typemax(Cint), "number power is out of range")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "powering outside of basering")
     if b < 0
-        !libSingular.n_IsZero(a.number_ptr, a.parent.ring_ptr) || rt_error("cannot divide by zero")
+        @error_check(!libSingular.n_IsZero(a.number_ptr, a.parent.ring_ptr), "cannot divide by zero")
         ai = libSingular.n_Invers(a.number_ptr, a.parent.ring_ptr)
         r1 = libSingular.n_Power(ai, Cint(absb), a.parent.ring_ptr)
         libSingular.n_Delete(ai, a.parent.ring_ptr)
@@ -1968,8 +2306,8 @@ function rtpower(a::SNumber, b::Int)
 end
 
 function rtpower(a::SPoly, b::Int)
-    0 <= b <= typemax(Cint) || rt_error("polynomial power is out of range")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("powering outside of basering")
+    @error_check(0 <= b <= typemax(Cint), "polynomial power is out of range")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "powering outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = Cint(b)
     r1 = libSingular.p_Power(a1, b1, a.parent.ring_ptr)
@@ -1977,12 +2315,12 @@ function rtpower(a::SPoly, b::Int)
 end
 
 function rtpower(a::SIdeal, b::Int)
-    return rtpower(a::SIdealData, b)
+    return rtpower(a.ideal, b)
 end
 
 function rtpower(a::SIdealData, b::Int)
-    0 <= b <= typemax(Cint) || rt_error("ideal power is out of range")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("powering outside of basering")
+    @error_check(0 <= b <= typemax(Cint), "ideal power is out of range")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "powering outside of basering")
     r1 = libSingular.id_Power(a.ideal_ptr, Cint(b), a.parent.ring_ptr)
     return SIdeal(SIdealData(r1, a.parent))
 end
@@ -1998,24 +2336,25 @@ rtdivide(a::SName, b) = rtdivide(rt_make(a), b)
 rtdivide(a, b::SName) = rtdivide(a, rt_make(b))
 
 function rtdivide(a::Union{Int, BigInt}, b::Union{Int, BigInt})
-    rtGlobal.currentring.valid || rt_error("integer division using `/` without a basering; use `div` instead")
-    b1 = libSingular.n_Init(b, rtGlobal.currentring.ring_ptr)
-    if libSingular.n_IsZero(b1, rtGlobal.currentring.ring_ptr)
-        libSingular.n_Delete(b1, rtGlobal.currentring.ring_ptr)
+    R = rt_basering()
+    @error_check(R.valid, "integer division using `/` without a basering; use `div` instead")
+    b1 = libSingular.n_Init(b, R.ring_ptr)
+    if libSingular.n_IsZero(b1, R.ring_ptr)
+        libSingular.n_Delete(b1, R.ring_ptr)
         rt_error("cannot divide be zero")
         return rt_defaultconstructor_number()
     end        
-    a1 = libSingular.n_Init(a, rtGlobal.currentring.ring_ptr)
-    r1 = libSingular.n_Div(a1, b1, rtGlobal.currentring.ring_ptr)
-    libSingular.n_Delete(a1, rtGlobal.currentring.ring_ptr)
-    libSingular.n_Delete(b1, rtGlobal.currentring.ring_ptr)
-    return SNumber(r1, rtGlobal.currentring)
+    a1 = libSingular.n_Init(a, R.ring_ptr)
+    r1 = libSingular.n_Div(a1, b1, R.ring_ptr)
+    libSingular.n_Delete(a1, R.ring_ptr)
+    libSingular.n_Delete(b1, R.ring_ptr)
+    return SNumber(r1, R)
 end
 
 function rtdivide(a::Union{Int, BigInt}, b::SNumber)
-    b.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("dividing outside of basering")
+    @warn_check(b.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "dividing outside of basering")
     if libSingular.n_IsZero(b.number_ptr, b.parent.ring_ptr)
-        rt_error("cannot divide be zero")
+        rt_error("cannot divide by zero")
         return rt_defaultconstructor_number()
     end
     a1 = libSingular.n_Init(a, b.parent.ring_ptr)
@@ -2025,11 +2364,11 @@ function rtdivide(a::Union{Int, BigInt}, b::SNumber)
 end
 
 function rtdivide(a::SNumber, b::Union{Int, BigInt})
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("dividing outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "dividing outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    if libSingular.n_IsZero(b1, rtGlobal.currentring.ring_ptr)
-        libSingular.n_Delete(b1, rtGlobal.currentring.ring_ptr)
-        rt_error("cannot divide be zero")
+    if libSingular.n_IsZero(b1, rt_basering().ring_ptr)
+        libSingular.n_Delete(b1, rt_basering().ring_ptr)
+        rt_error("cannot divide by zero")
         return rt_defaultconstructor_number()
     end        
     r1 = libSingular.n_Div(a1, a.number_ptr, a.parent.ring_ptr)
@@ -2038,10 +2377,10 @@ function rtdivide(a::SNumber, b::Union{Int, BigInt})
 end
 
 function rtdivide(a::SNumber, b::SNumber)
-    a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object || rt_error("cannot divide from different basering")
-    a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object || rt_warn("dividing outside of basering")
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot divide from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "dividing outside of basering")
     if libSingular.n_IsZero(b.number_ptr, b.parent.ring_ptr)
-        rt_error("cannot divide be zero")
+        rt_error("cannot divide by zero")
         return rt_defaultconstructor_number()
     end
     r1 = libSingular.n_Div(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
@@ -2073,11 +2412,11 @@ rtequalequal(a::SName, b::SName) = rtequalequal(rt_make(a), rt_make(b))
 rtequalequal(a::SName, b) = rtequalequal(rt_make(a), b)
 rtequalequal(a, b::SName) = rtequalequal(a, rt_make(b))
 
-sequalequal(a::Int, b::Int) = Int(a == b)
-sequalequal(a::Int, b::BigInt) = Int(a == b)
-sequalequal(a::BigInt, b::Int) = Int(a == b)
-sequalequal(a::BigInt, b::BigInt) = Int(a == b)
-sequalequal(a::SString, b::SString) = Int(a == b)
+rtequalequal(a::Int, b::Int) = Int(a == b)
+rtequalequal(a::Int, b::BigInt) = Int(a == b)
+rtequalequal(a::BigInt, b::Int) = Int(a == b)
+rtequalequal(a::BigInt, b::BigInt) = Int(a == b)
+rtequalequal(a::SString, b::SString) = Int(a == b)
 
 
 rtless(a::SName, b::SName) = rtless(rt_make(a), rt_make(b))
@@ -2144,82 +2483,6 @@ end
 rtGlobal_Env = AstEnv(false, Dict{String, Any}())
 rtGlobal_Proc = Dict{Symbol, SProc}()
 rtGlobal_NewStructNames = String[]
-
-
-function rt_box_it_with_ring(n::libSingular.number, r::SRing)
-    return SNumber(n, r)
-end
-
-function rt_box_it_with_ring(p::libSingular.poly, r::SRing)
-    return SPoly(p, r)
-end
-
-
-function rt_make(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        return rt_ref(rtGlobal.fxnstack[n][a.name])
-    end
-    if length(rtGlobal.currentring.varstack) < n
-        # current ring has no variables on our level
-        if haskey(rtGlobal.fxnstack[1], a.name)
-            return rt_ref(rtGlobal.fxnstack[1][a.name])
-        end
-    else
-        # current ring has variables on our level
-        @assert(rtGlobal.currentring.valid)
-        if haskey(rtGlobal.currentring.varstack[n], a.name)
-            return rt_ref(rtGlobal.currentring.varstack[n][a.name])
-        elseif haskey(rtGlobal.currentring.varstack[1], a.name)
-            return rt_ref(rtGlobal.currentring.varstack[1][a.name])
-        end
-    end
-    if rtGlobal.currentring.valid
-        ok, p = libSingular.lookupIdentifierInRing(String(a.name) , rtGlobal.currentring.ring_ptr)
-        if ok
-            return rt_box_it_with_ring(p, rtGlobal.currentring)
-        end
-    end
-    rt_error(string(a.name) * " is undefined")
-end
-
-
-function rt_make_allow_unknown(a::SName)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], a.name)
-        return rt_ref(rtGlobal.fxnstack[n][a.name])
-    end
-    if length(rtGlobal.currentring.varstack) < n
-        # current ring has no variables on our level
-        if haskey(rtGlobal.fxnstack[1], a.name)
-            return rt_ref(rtGlobal.fxnstack[1][a.name])
-        end
-    else
-        # current ring has variables on our level
-        if haskey(rtGlobal.currentring.varstack[n], a.name)
-            return rt_ref(rtGlobal.currentring.varstack[n][a.name])
-        elseif haskey(rtGlobal.currentring.varstack[1], a.name)
-            return rt_ref(rtGlobal.currentring.varstack[1][a.name])
-        end
-    end
-    return a
-end
-
-
-function rt_enterfunction()
-    push!(rtGlobal.fxnstack, Dict{Symbol, Any}())
-end
-
-function rt_leavefunction()
-    n = length(rtGlobal.fxnstack)
-    @assert n > 1
-    for r in rtGlobal.allrings
-        while length(r.varstack) >= n
-            pop!(r.varstack)
-        end
-    end
-    pop!(rtGlobal.fxnstack)
-end
 
 
 Base.showerror(io::IO, er::TranspileError) = print(io, "transpilation error: ", er.name)
@@ -2651,7 +2914,7 @@ function astprint(a::AstNode, indent::Int)
     else
         print("unknown ")
     end
-    println(a.rule);
+    println(a.rule)
     for i in 1:length(a.child)
         astprint(a.child[i], indent + 4)
     end
@@ -2663,6 +2926,8 @@ function convert_extendedid(a::AstNode, env::AstEnv)
     if a.rule == @RULE_extendedid(1)
         if a.child[1]::String == "_"
             return Expr(:call, :rt_get_last_printed)
+        elseif a.child[1]::String == "basering"
+            return Expr(:call, :rtbasering)
         else
             return makeunknown(a.child[1]::String)
         end
@@ -2706,6 +2971,7 @@ function make_tuple_array_nocopy(a::Array{Any})
     return r
 end
 
+# will not generate names!
 function make_nocopy(a)
     if isa(a, SName)
         return Expr(:call, :rt_make, a)
@@ -2734,6 +3000,7 @@ function make_tuple_array_copy(a::Array{Any})
     return r
 end
 
+# will not generate names!
 function make_copy(a)
     if isa(a, SName)
         return Expr(:call, :rt_copy, Expr(:call, :rt_make, a))
@@ -2762,13 +3029,21 @@ function convert_typestring_tosymbol(s::String)
     elseif s == "string"
         return :SString
     elseif s == "intvec"
-        return :Intvec
+        return :SIntvec
     elseif s == "intmat"
         return :SIntMat
     elseif s == "bigintmat"
         return :SBigIntMat
     elseif s == "list"
         return :SList
+    elseif s == "ring"
+        return :SRing
+    elseif s == "number"
+        return :SNumber
+    elseif s == "poly"
+        return :SPoly
+    elseif s == "ideal"
+        return :SIdeal
     else
         return Symbol(newstructprefix * s)
     end
@@ -2891,22 +3166,25 @@ function convert_newstruct_decl(newtypename::String, args::String)
     # rt_declare_T   
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, :SName)),
         filter_lineno(quote
-            n = length(rtGlobal.fxnstack)
-            if haskey(rtGlobal.fxnstack[n], a.name)
-                rt_declarewarnerror(rtGlobal.fxnstack[n], a.name, $(newtype))
+            n = length(rtGlobal.callstack)
+            if n > 1
+                b, i = rt_search_callstack_rindep(a.name)
+                !b || rt_declare_warnerror(true, rtGlobal.local_rindep_vars[i].second, a.name, $(newtype))
+                b, i = rt_search_callstack_rdep(a.name)
+                !b || rt_declare_warnerror(false, rtGlobal.local_rindep_vars[i].second, a.name, $(newtype))
+                push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_int()))
+            else
+                !haskey(rtGlobal.vars, a.name) || rt_declare_warnerror(true, rtGlobal.vars[a.name], a.name, $(newtype))
+                !haskey(rtGlobal.callstack[n].basering.vars, a.name) || rt_declare_warnerror(false, rtGlobal.callstack[n].basering.vars[a.name], a.name, $(newtype))
+                rtGlobal.vars[a.name] = $(Symbol("rt_defaultconstructor_"*newtypename))()
             end
-            if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], a.name)
-                rt_declarewarnerror(rtGlobal.currentring.varstack[n], a.name, $(newtype))
-            end
-            rtGlobal.fxnstack[n][a.name] = $(Symbol("rt_defaultconstructor_"*newtypename))()
         end)
     ))
 
     # rt_parameter_T
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_parameter_"*newtypename), Expr(:(::), :a, :SName), :b),
         filter_lineno(quote
-            n = length(rtGlobal.fxnstack)
-            rtGlobal.fxnstack[n][a.name] = $(Symbol("rt_convert2"*newtypename))(b)
+            push!(rtGlobal.local_rindep_vars, Pair(a.name, $(Symbol("rt_convert2"*newtypename))(b)))
         end)
     ))
 
@@ -2939,22 +3217,190 @@ function convert_newstruct_decl(newtypename::String, args::String)
         Expr(:return, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(:data)), :indent))
     ))
 
-    # rttypeof
-    push!(r.args, Expr(:function, Expr(:call, :rttypeof,
+    # rt_typedata
+    push!(r.args, Expr(:function, Expr(:call, :rt_typedata,
                                         Expr(:(::), :f, Expr(:curly, :Union, newtype, newreftype))),
-        Expr(:return, Expr(:call, :SString, newtypename))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_typetostring,
-                                        Expr(:(::), Expr(:curly, :Type, newtype))),
-        Expr(:return, newtypename)        
+        Expr(:return, newtypename)
     ))
 
     push!(r.args, :nothing)
     return r
 end
 
-function convert_elemexpr(a::AstNode, env::AstEnv)
+const system_var_to_string = Dict{Int, String}(
+    Int(VMAXDEG)        => "degBound",
+    Int(VECHO)          => "echo",
+    Int(VMINPOLY)       => "minpoly",
+    Int(VMAXMULT)       => "multBound",
+    Int(VNOETHER)       => "noether",
+    Int(VCOLMAX)        => "pagewidth",
+    Int(VPRINTLEVEL)    => "printlevel",
+    Int(VSHORTOUT)      => "short",
+    Int(VTIMER)         => "timer",
+    Int(TRACE)          => "TRACE",
+    Int(VOICE)          => "voice"
+)
+
+const cmd_to_string = Dict{Int, String}(
+    Int(ALIGN_CMD)    => "align",
+    Int(ATTRIB_CMD)    => "attrib",
+    Int(BAREISS_CMD)    => "bareiss",
+    Int(BETTI_CMD)    => "betti",
+    Int(BRANCHTO_CMD)    => "branchTo",
+    Int(BREAKPOINT_CMD)    => "breakpoint",
+    Int(CHARACTERISTIC_CMD)    => "char",
+    Int(CHAR_SERIES_CMD)    => "char_series",
+    Int(CHARSTR_CMD)    => "charstr",
+    Int(CHINREM_CMD)    => "chinrem",
+    Int(CONTENT_CMD)    => "cleardenom",
+    Int(CLOSE_CMD)    => "close",
+    Int(COEF_CMD)    => "coef",
+    Int(COEFFS_CMD)    => "coeffs",
+    Int(CONTRACT_CMD)    => "contract",
+    Int(NEWTONPOLY_CMD)    => "convhull",
+    Int(DBPRINT_CMD)    => "dbprint",
+    Int(DEFINED_CMD)    => "defined",
+    Int(DEG_CMD)    => "deg",
+    Int(DEGREE_CMD)    => "degree",
+    Int(DELETE_CMD)    => "delete",
+    Int(DENOMINATOR_CMD)    => "denominator",
+    Int(DET_CMD)    => "det",
+    Int(DIFF_CMD)    => "diff",
+    Int(DIM_CMD)    => "dim",
+    Int(DIVISION_CMD)    => "division",
+    Int(DUMP_CMD)    => "dump",
+    Int(EXTGCD_CMD)    => "extgcd",
+    Int(ERROR_CMD)    => "ERROR",
+    Int(ELIMINATION_CMD)    => "eliminate",
+    Int(EXECUTE_CMD)    => "execute",
+    Int(EXPORTTO_CMD)    => "exportto",
+    Int(FACSTD_CMD)    => "facstd",
+    Int(FMD_CMD)    => "factmodd",
+    Int(FAC_CMD)    => "factorize",
+    Int(FAREY_CMD)    => "farey",
+    Int(FETCH_CMD)    => "fetch",
+    Int(FGLM_CMD)    => "fglm",
+    Int(FGLMQUOT_CMD)    => "fglmquot",
+    Int(FIND_CMD)    => "find",
+    Int(FINDUNI_CMD)    => "finduni",
+    Int(FREEMODULE_CMD)    => "freemodule",
+    Int(FRES_CMD)    => "fres",
+    Int(FWALK_CMD)    => "frwalk",
+    Int(E_CMD)    => "gen",
+    Int(GETDUMP_CMD)    => "getdump",
+    Int(GCD_CMD)    => "gcd",
+    Int(GCD_CMD)    => "GCD",
+    Int(HILBERT_CMD)    => "hilb",
+    Int(HIGHCORNER_CMD)    => "highcorner",
+    Int(HOMOG_CMD)    => "homog",
+    Int(HRES_CMD)    => "hres",
+    Int(IMAP_CMD)    => "imap",
+    Int(IMPART_CMD)    => "impart",
+    Int(IMPORTFROM_CMD)    => "importfrom",
+    Int(INDEPSET_CMD)    => "indepSet",
+    Int(INSERT_CMD)    => "insert",
+    Int(INTERPOLATE_CMD)    => "interpolation",
+    Int(INTERRED_CMD)    => "interred",
+    Int(INTERSECT_CMD)    => "intersect",
+    Int(JACOB_CMD)    => "jacob",
+    Int(JANET_CMD)    => "janet",
+    Int(JET_CMD)    => "jet",
+    Int(KBASE_CMD)    => "kbase",
+    Int(KERNEL_CMD)    => "kernel",
+    Int(KILLATTR_CMD)    => "killattrib",
+    Int(KOSZUL_CMD)    => "koszul",
+    Int(KRES_CMD)    => "kres",
+    Int(LAGSOLVE_CMD)    => "laguerre",
+    Int(LEAD_CMD)    => "lead",
+    Int(LEADCOEF_CMD)    => "leadcoef",
+    Int(LEADEXP_CMD)    => "leadexp",
+    Int(LEADMONOM_CMD)    => "leadmonom",
+    Int(LIFT_CMD)    => "lift",
+    Int(LIFTSTD_CMD)    => "liftstd",
+    Int(LOAD_CMD)    => "load",
+    Int(LRES_CMD)    => "lres",
+    Int(LU_CMD)    => "ludecomp",
+    Int(LUI_CMD)    => "luinverse",
+    Int(LUS_CMD)    => "lusolve",
+    Int(MAXID_CMD)    => "maxideal",
+    Int(MEMORY_CMD)    => "memory",
+    Int(MINBASE_CMD)    => "minbase",
+    Int(MINOR_CMD)    => "minor",
+    Int(MINRES_CMD)    => "minres",
+    Int(MODULO_CMD)    => "modulo",
+    Int(MONITOR_CMD)    => "monitor",
+    Int(MONOM_CMD)    => "monomial",
+    Int(MPRES_CMD)    => "mpresmat",
+    Int(MULTIPLICITY_CMD)    => "mult",
+    Int(MRES_CMD)    => "mres",
+    Int(MSTD_CMD)    => "mstd",
+    Int(NAMEOF_CMD)    => "nameof",
+    Int(NAMES_CMD)    => "names",
+    Int(COLS_CMD)    => "ncols",
+    Int(NPARS_CMD)    => "npars",
+    Int(RES_CMD)    => "nres",
+    Int(ROWS_CMD)    => "nrows",
+    Int(NUMERATOR_CMD)    => "numerator",
+    Int(NVARS_CMD)    => "nvars",
+    Int(OPEN_CMD)    => "open",
+    Int(OPTION_CMD)    => "option",
+    Int(ORD_CMD)    => "ord",
+    Int(ORDSTR_CMD)    => "ordstr",
+    Int(PAR_CMD)    => "par",
+    Int(PARDEG_CMD)    => "pardeg",
+    Int(PARSTR_CMD)    => "parstr",
+    Int(PREIMAGE_CMD)    => "preimage",
+    Int(PRIME_CMD)    => "prime",
+    Int(PFAC_CMD)    => "primefactors",
+    Int(PRINT_CMD)    => "print",
+    Int(PRUNE_CMD)    => "prune",
+    Int(QHWEIGHT_CMD)    => "qhweight",
+    Int(QRDS_CMD)    => "qrds",
+    Int(QUOTIENT_CMD)    => "quotient",
+    Int(RANDOM_CMD)    => "random",
+    Int(RANK_CMD)    => "rank",
+    Int(READ_CMD)    => "read",
+    Int(REDUCE_CMD)    => "reduce",
+    Int(REGULARITY_CMD)    => "regularity",
+    Int(REPART_CMD)    => "repart",
+    Int(RESERVEDNAME_CMD)    => "reservedName",
+#    Int(RESERVEDNAMELIST_CMD)    => "reservedNameList",
+    Int(RESULTANT_CMD)    => "resultant",
+    Int(RESTART_CMD)    => "restart",
+    Int(RINGLIST_CMD)    => "ringlist",
+    Int(RING_LIST_CMD)    => "ring_list",
+    Int(IS_RINGVAR)    => "rvar",
+    Int(SBA_CMD)    => "sba",
+    Int(SIMPLEX_CMD)    => "simplex",
+    Int(SIMPLIFY_CMD)    => "simplify",
+    Int(COUNT_CMD)    => "size",
+    Int(SLIM_GB_CMD)    => "slimgb",
+    Int(SORTVEC_CMD)    => "sortvec",
+    Int(SQR_FREE_CMD)    => "sqrfree",
+    Int(SRES_CMD)    => "sres",
+    Int(STATUS_CMD)    => "status",
+    Int(STD_CMD)    => "std",
+    Int(SUBST_CMD)    => "subst",
+    Int(SYSTEM_CMD)    => "system",
+    Int(SYZYGY_CMD)    => "syz",
+    Int(TENSOR_CMD)    => "tensor",
+    Int(TEST_CMD)    => "test",
+    Int(TRACE_CMD)    => "trace",
+    Int(TRANSPOSE_CMD)    => "transpose",
+    Int(TYPEOF_CMD)    => "typeof",
+    Int(UNIVARIATE_CMD)    => "univariate",
+    Int(URSOLVE_CMD)    => "uressolve",
+    Int(VANDER_CMD)    => "vandermonde",
+    Int(VAR_CMD)    => "var",
+    Int(VARIABLES_CMD)    => "variables",
+    Int(VARSTR_CMD)    => "varstr",
+    Int(VDIM_CMD)    => "vdim",
+    Int(WEDGE_CMD)    => "wedge",
+    Int(WEIGHT_CMD)    => "weight",
+    Int(WRITE_CMD)    => "write"
+)
+
+function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
     if a.rule == @RULE_elemexpr(2)
         return convert_extendedid(a.child[1], env)
@@ -2983,7 +3429,10 @@ function convert_elemexpr(a::AstNode, env::AstEnv)
             b = Any[]
         end
         c = a.child[1]
-        return Expr(:call, :rtcall, convert_elemexpr(c, env), make_tuple_array_nocopy(b)...)
+        # x(1)(2) => rtcall(false, rtcall(true, x, 1), 2)
+        return Expr(:call, :rtcall, nested,
+                                    convert_elemexpr(c, env, c.rule == @RULE_elemexpr(6)),
+                                    make_tuple_array_nocopy(b)...)
     elseif a.rule == @RULE_elemexpr(8)
         x = parse(BigInt, a.child[1])
         if typemin(Int) <= x <= typemax(Int)
@@ -2993,11 +3442,8 @@ function convert_elemexpr(a::AstNode, env::AstEnv)
         end
     elseif a.rule == @RULE_elemexpr(9)
         t = a.child[1]::Int
-        if t == Int(VRTIMER)
-            return Expr(:call, :rtrtimer)
-        else
-            throw(TranspileError("internal error in convert_elemexpr 9"))
-        end
+        haskey(system_var_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 9"))
+        return Expr(:call, Symbol("rt_get_" * system_var_to_string[t]))
     elseif a.rule == @RULE_elemexpr(10)
         return convert_stringexpr(a.child[1], env)
     elseif a.rule == @RULE_elemexpr(12)
@@ -3021,23 +3467,35 @@ function convert_elemexpr(a::AstNode, env::AstEnv)
         else
             throw(TranspileError("internal error in convert_elemexpr 13"))
         end
-    elseif a.rule == @RULE_elemexpr(18)
+    elseif a.rule == @RULE_elemexpr(16)
         t = a.child[1]::Int
-        if t == Int(TYPEOF_CMD)
-            return Expr(:call, :rttypeof, convert_expr(a.child[2], env))
-        elseif t == Int(COUNT_CMD)
-            return Expr(:call, :ssize, convert_expr(a.child[2], env))
+        if t == Int(IDEAL_CMD)
+            b = convert_exprlist(a.child[2], env)::Array{Any}
+            return Expr(:call, :rt_cast2ideal, make_tuple_array_nocopy(b)...)
         else
-            throw(TranspileError("internal error in convert_elemexpr 18"))
+            throw(TranspileError("internal error in convert_elemexpr 13"))
         end
-    elseif a.rule == @RULE_elemexpr(19)
+    elseif a.rule == @RULE_elemexpr(18) || a.rule == @RULE_elemexpr(19) ||
+                                           a.rule == @RULE_elemexpr(20) ||
+                                           a.rule == @RULE_elemexpr(21)
         t = a.child[1]::Int
-        if t == Int(PRINT_CMD)
-            return Expr(:call, :rtprint, convert_expr(a.child[2], env))
-        else
-            throw(TranspileError("internal error in convert_elemexpr 19"))
-        end
-        return convert_expr(a.child(2))
+        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env))
+    elseif a.rule == @RULE_elemexpr(22) || a.rule == @RULE_elemexpr(23) ||
+                                           a.rule == @RULE_elemexpr(24) ||
+                                           a.rule == @RULE_elemexpr(25)
+        t = a.child[1]::Int
+        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 22|23|24|25"))
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env),
+                                                            convert_expr(a.child[3], env))
+    elseif a.rule == @RULE_elemexpr(26) || a.rule == @RULE_elemexpr(27) ||
+                                           a.rule == @RULE_elemexpr(28) ||
+                                           a.rule == @RULE_elemexpr(29)
+        t = a.child[1]::Int
+        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 26|27|28|29"))
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env),
+                                                            convert_expr(a.child[3], env),
+                                                            convert_expr(a.child[4], env))
     elseif a.rule == @RULE_elemexpr(30) || a.rule == @RULE_elemexpr(31)
         if a.rule == @RULE_elemexpr(31)
             b = convert_exprlist(a.child[2], env)::Array{Any}
@@ -3045,11 +3503,8 @@ function convert_elemexpr(a::AstNode, env::AstEnv)
             b = Any[]
         end
         t = a.child[1]::Int
-        if t == Int(SYSTEM_CMD)
-            return Expr(:call, :rtsystem, make_tuple_array_nocopy(b)...)
-        else
-            throw(TranspileError("internal error in convert_elemexpr 30|31"))
-        end
+        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 30|31"))
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), make_tuple_array_nocopy(b)...)
     elseif a.rule == @RULE_elemexpr(99)
         return convert_newstruct_decl(a.child[1], a.child[2])
     elseif a.rule == @RULE_elemexpr(37)
@@ -3137,9 +3592,12 @@ function convert_expr(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_expr(2)
         return convert_elemexpr(a.child[1], env)
     elseif a.rule == @RULE_expr(3)
-        return Expr(:call, :rt_getindex, convert_expr(a.child[1], env), convert_expr(a.child[2], env), convert_expr(a.child[3], env))
+        return Expr(:call, :rt_getindex, make_nocopy(convert_expr(a.child[1], env)),
+                                         make_nocopy(convert_expr(a.child[2], env)),
+                                         make_nocopy(convert_expr(a.child[3], env)))
     elseif a.rule == @RULE_expr(4)
-        return Expr(:call, :rt_getindex, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rt_getindex, make_nocopy(convert_expr(a.child[1], env)),
+                                         make_nocopy(convert_expr(a.child[2], env)))
     else
         throw(TranspileError("internal error in convert_expr"))
     end
@@ -3176,38 +3634,25 @@ function convert_returncmd(a::AstNode, env::AstEnv)
     end
 end
 
-coerce_for_assign(::Nothing, a::Nothing)                = a
-coerce_for_assign(::Nothing, a)                         = Expr(:call, :rt_convert2def, a)
-coerce_for_assign(::Type{SProc}, a::SProc)              = a
-coerce_for_assign(::Type{SProc}, a)                     = Expr(:call, :rt_convert2proc, a)
-coerce_for_assign(::Type{Int}, a::Int)                  = a
-coerce_for_assign(::Type{Int}, a)                       = Expr(:call, :rt_convert2int, a)
-coerce_for_assign(::Type{BigInt}, a::BigInt)            = a
-coerce_for_assign(::Type{BigInt}, a::Int)               = BigInt(a)
-coerce_for_assign(::Type{BigInt}, a)                    = Expr(:call, :rt_convert2bigint, a)
-coerce_for_assign(::Type{SString}, a::SString)          = a
-coerce_for_assign(::Type{SString}, a)                   = Expr(:call, :rt_convert2string, a)
-coerce_for_assign(::Type{SIntVec}, a::SIntVec)          = a
-coerce_for_assign(::Type{SIntVec}, a)                   = Expr(:call, :rt_convert2intvec, a)
-coerce_for_assign(::Type{SIntMat}, a::SIntMat)          = a
-coerce_for_assign(::Type{SIntMat}, a)                   = Expr(:call, :rt_convert2intmat, a)
-coerce_for_assign(::Type{SBigIntMat}, a::SBigIntMat)    = a
-coerce_for_assign(::Type{SBigIntMat}, a)                = Expr(:call, :rt_convert2bigintmat, a)
-coerce_for_assign(::Type{SList}, a::SList)              = a
-coerce_for_assign(::Type{SList}, a)                     = Expr(:call, :rt_convert2list, a)
-
-
-stype_string(s::Symbol)          = String(s)
-stype_string(::Nothing)          = "def"
-stype_string(::Type{SName})      = "?unknown type?"
-stype_string(::Type{SProc})      = "proc"
-stype_string(::Type{Int})        = "int"
-stype_string(::Type{BigInt})     = "bigint"
-stype_string(::Type{SString})    = "string"
-stype_string(::Type{SIntVec})    = "intvec"
-stype_string(::Type{SIntMat})    = "intmat"
-stype_string(::Type{SBigIntMat}) = "bigintmat"
-stype_string(::Type{SList})      = "list"
+#coerce_for_assign(::Nothing, a::Nothing)                = a
+#coerce_for_assign(::Nothing, a)                         = Expr(:call, :rt_convert2def, a)
+#coerce_for_assign(::Type{SProc}, a::SProc)              = a
+#coerce_for_assign(::Type{SProc}, a)                     = Expr(:call, :rt_convert2proc, a)
+#coerce_for_assign(::Type{Int}, a::Int)                  = a
+#coerce_for_assign(::Type{Int}, a)                       = Expr(:call, :rt_convert2int, a)
+#coerce_for_assign(::Type{BigInt}, a::BigInt)            = a
+#coerce_for_assign(::Type{BigInt}, a::Int)               = BigInt(a)
+#coerce_for_assign(::Type{BigInt}, a)                    = Expr(:call, :rt_convert2bigint, a)
+#coerce_for_assign(::Type{SString}, a::SString)          = a
+#coerce_for_assign(::Type{SString}, a)                   = Expr(:call, :rt_convert2string, a)
+#coerce_for_assign(::Type{SIntVec}, a::SIntVec)          = a
+#coerce_for_assign(::Type{SIntVec}, a)                   = Expr(:call, :rt_convert2intvec, a)
+#coerce_for_assign(::Type{SIntMat}, a::SIntMat)          = a
+#coerce_for_assign(::Type{SIntMat}, a)                   = Expr(:call, :rt_convert2intmat, a)
+#coerce_for_assign(::Type{SBigIntMat}, a::SBigIntMat)    = a
+#coerce_for_assign(::Type{SBigIntMat}, a)                = Expr(:call, :rt_convert2bigintmat, a)
+#coerce_for_assign(::Type{SList}, a::SList)              = a
+#coerce_for_assign(::Type{SList}, a)                     = Expr(:call, :rt_convert2list, a)
 
 
 function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
@@ -3237,24 +3682,19 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
             throw(TranspileError("cannot increment lhs"))
         end
     elseif left.rule == @RULE_expr(3)
-        b1 = convert_expr(left.child[1], env)
-        b2 = convert_expr(left.child[2], env)
-        b3 = convert_expr(left.child[3], env)
         t1 = gensym()
         t2 = gensym()
         t3 = gensym()
-        push!(out.args, Expr(:(=), t1, isa(b1, SName) ? Expr(:call, :rt_make, b1) : b1))
-        push!(out.args, Expr(:(=), t2, isa(b2, SName) ? Expr(:call, :rt_make, b2) : b2))
-        push!(out.args, Expr(:(=), t3, isa(b3, SName) ? Expr(:call, :rt_make, b3) : b3))
+        push!(out.args, Expr(:(=), t1, make_nocopy(convert_expr(left.child[1], env))))
+        push!(out.args, Expr(:(=), t2, make_nocopy(convert_expr(left.child[2], env))))
+        push!(out.args, Expr(:(=), t3, make_nocopy(convert_expr(left.child[3], env))))
         push!(out.args, Expr(:call, :rt_setindex, t1, t2, t3,
                             Expr(:call, :rtplus, Expr(:call, :rt_getindex, t1, t2, t3), right)))
     elseif left.rule == @RULE_expr(4)
-        b1 = convert_expr(left.child[1], env)
-        b2 = convert_expr(left.child[2], env)
         t1 = gensym()
         t2 = gensym()
-        push!(out.args, Expr(:(=), t1, isa(b1, SName) ? Expr(:call, :rt_make, b1) : b1))
-        push!(out.args, Expr(:(=), t2, isa(b2, SName) ? Expr(:call, :rt_make, b2) : b2))
+        push!(out.args, Expr(:(=), t1, make_nocopy(convert_expr(left.child[1], env))))
+        push!(out.args, Expr(:(=), t2, make_nocopy(convert_expr(left.child[2], env))))
         push!(out.args, Expr(:call, :rt_setindex, t1, t2,
                             Expr(:call, :rtplus, Expr(:call, :rt_getindex, t1, t2), right)))
     else
@@ -3285,18 +3725,22 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
             b = Expr(:call, isa(b, SName) ? :rt_make : :rt_ref, b)
             b = Expr(:(.), b, QuoteNode(Symbol(s)))
             push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign, b, right)))
+        elseif a.rule == @RULE_elemexpr(9)
+            t = a.child[1]::Int
+            haskey(system_var_to_string, t) || throw(TranspileError("internal error push_assignment - elemexpr 9"))
+            push!(out.args, Expr(:call, Symbol("rt_set_" * system_var_to_string[t]), right))
         else
             throw(TranspileError("cannot assign to lhs"))
         end
     elseif left.rule == @RULE_expr(3)
-        push!(out.args, Expr(:call, :rt_setindex, convert_expr(left.child[1], env),
-                                                  convert_expr(left.child[2], env), # no rt_copy needed, runtime error if not int
-                                                  convert_expr(left.child[3], env), # no rt_copy needed, runtime error if not int
-                                                  right))
+        push!(out.args, Expr(:call, :rt_setindex, make_nocopy(convert_expr(left.child[1], env)),
+                                                  make_nocopy(convert_expr(left.child[2], env)),
+                                                  make_nocopy(convert_expr(left.child[3], env)),
+                                                  make_nocopy(right)))
     elseif left.rule == @RULE_expr(4)
-        push!(out.args, Expr(:call, :rt_setindex, convert_expr(left.child[1], env),
-                                                  convert_expr(left.child[2], env), # no rt_copy needed, runtime error if not int
-                                                  right))
+        push!(out.args, Expr(:call, :rt_setindex, make_nocopy(convert_expr(left.child[1], env)),
+                                                  make_nocopy(convert_expr(left.child[2], env)),
+                                                  make_nocopy(right)))
     else
         throw(TranspileError("cannot assign to lhs"))
     end
@@ -3456,7 +3900,7 @@ function rt_parse_coeff(coeff)
     push!(r, a)
     for a in coeff[2:end]
         if isa(a, SName)
-            a = rt_make_allow_unknown(a)
+            a = rt_make(a, true)
             if isa(a, SName)
                 a = String(a.name)
             else
@@ -3558,24 +4002,29 @@ function rt_parse_ord(ord)
     return libSingular.OrderingEntry(order, blocksize, weights)
 end
 
-function rt_declare_assign_ring(x::SName, coeff, var, ord)
-    n = length(rtGlobal.fxnstack)
-    if haskey(rtGlobal.fxnstack[n], x.name)
-        rt_declarewarnerror(rtGlobal.fxnstack[n], x.name, SRing)
-    end
-    if length(rtGlobal.currentring.varstack) >= n && haskey(rtGlobal.currentring.varstack[n], x.name)
-        rt_declarewarnerror(rtGlobal.currentring.varstack[n], x.name, SRing)
+
+function rt_declare_assign_ring(a::SName, coeff, var, ord)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SRing)
+    else
+        rt_check_declaration_global(true, a.name, SRing)
     end
     coeff = rt_parse_coeff(coeff)
     var = rt_parse_var(var)
     length(ord) > 0 || rt_error("bad variable specification")
     ord = [rt_parse_ord(a) for a in ord]
     r = libSingular.createRing(coeff, var, ord)
-    r = SRing(true, r)
-    rtGlobal.currentring = r
-    rtGlobal.fxnstack[n][x.name] = r
+    r = SRing(true, r, length(rtGlobal.callstack))
+    if n > 1
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, r))
+    else
+        rtGlobal.vars[a.name] = r
+    end
+    rtGlobal.callstack[n].basering = r
     return nothing
 end
+
 
 function convert_ringcmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_ringcmd(0) < 100
@@ -3595,10 +4044,40 @@ function convert_ringcmd(a::AstNode, env::AstEnv)
 end
 
 
+
+function prepend_killelem!(r::Expr, a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_elemexpr(0) < 100
+    if a.rule == @RULE_elemexpr(2) && a.child[1].rule == @RULE_extendedid(1)
+        push!(r.args, Expr(:call, :rtkill, makeunknown(a.child[1].child[1]::String)))
+    else
+        throw(TranspileError("bad argument to kill"))
+    end
+end
+
+function convert_killcmd(a::AstNode, env::AstEnv)
+    r = Expr(:block)
+    while true
+        @assert 0 < a.rule - @RULE_killcmd(0) < 100
+        if a.rule == @RULE_killcmd(1)
+            prepend_killelem!(r, a.child[1], env)
+            break
+        elseif a.rule == @RULE_killcmd(2)
+            prepend_killelem!(r, a.child[2], env)
+            a = a.child[1]
+        else
+            throw(TranspileError("internal error in convert_killcmd"))
+        end
+    end
+    return r
+end
+
+
 function convert_command(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_command(0) < 100
     if a.rule == @RULE_command(1)
         return convert_assign(a.child[1], env)
+    elseif a.rule == @RULE_command(3)
+        return convert_killcmd(a.child[1], env)
     elseif a.rule == @RULE_command(6)
         return convert_ringcmd(a.child[1], env)
     elseif a.rule == @RULE_command(9)
@@ -3802,7 +4281,7 @@ function convert_forcmd(a::AstNode, env::AstEnv)
 end
 
 
-#return false, 0 or true, ifexpr
+#return (false, 0) or (true, ifexpr)
 function find_if_else(a::AstNode, i::Int, env::AstEnv)
 
     if i >= length(a.child)
@@ -4032,14 +4511,17 @@ function convert_toplines(a::AstNode, env::AstEnv)
     return r
 end
 
+import Libdl
 
 function execute(s::String; debuglevel::Int = 0)
 
-    ast = ccall((:singular_parse, "libsingularparse"), Any,
-                    (Cstring, Ptr{Ptr{UInt8}}, UInt),
-                    s, rtGlobal_NewStructNames, length(rtGlobal_NewStructNames))
+    libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
 
-    if ast isa String
+    ast = @eval ccall((:singular_parse, $libpath), Any,
+                    (Cstring, Ptr{Ptr{UInt8}}, UInt),
+                    $s, $rtGlobal_NewStructNames, $(length(rtGlobal_NewStructNames)))
+
+    if isa(ast, String)
         throw(TranspileError(ast))
     else
 #        println("new strings: ", ast.child[2].child)
@@ -4061,6 +4543,12 @@ function execute(s::String; debuglevel::Int = 0)
             println()
         end
 
+        # these need to be corrected in the case that a previous eval threw
+        empty!(rtGlobal.local_rindep_vars)
+        empty!(rtGlobal.local_rdep_vars)
+        @assert length(rtGlobal.callstack) >= 1
+        resize!(rtGlobal.callstack, 1)
         eval(expr)
+        return nothing
     end
 end
