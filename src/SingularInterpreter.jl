@@ -9,6 +9,8 @@ import Base: abs, checkbounds, deepcopy, deepcopy_internal,
 
 export execute
 
+using ReplMaker
+
 const pkgdir = realpath(joinpath(dirname(@__FILE__), ".."))
 const libsingular = joinpath(pkgdir, "local", "lib", "libSingular")
 
@@ -19,6 +21,13 @@ function __init__()
    binSingular = joinpath(prefix, "bin", "Singular")
    ENV["SINGULAR_EXECUTABLE"] = binSingular
    libSingular.siInit(binSingular)
+
+   initrepl(SingularInterpreter.execute,
+            prompt_text  = "Sing> ",
+            prompt_color = :blue,
+            start_key    = '}',
+            mode_name    = :singular_mode,
+            startup_text = false)
 end
 
 include("LibSingular.jl")
