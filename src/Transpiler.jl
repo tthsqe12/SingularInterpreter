@@ -138,7 +138,6 @@ function rt_ring_finalizer(a::SRing)
     a.refcount -= 1
     if a.refcount <= 0
         @assert a.refcount == 0
-        ccall(:jl_, Nothing, (Any,), "*** finalizer deleting ring " * string(a.ring_ptr.cpp_object))
         libSingular.rDelete(a.ring_ptr)
     end
 end
@@ -162,7 +161,6 @@ mutable struct SNumber
 end
 
 function rt_number_finalizer(a::SNumber)
-    ccall(:jl_, Nothing, (Any,), "*** finalizer deleting number " * string(a.number_ptr.cpp_object))
     libSingular.n_Delete(a.number_ptr, a.parent.ring_ptr)
     rt_ring_finalizer(a.parent)
 end
@@ -183,7 +181,6 @@ mutable struct SPoly
 end
 
 function rt_poly_finalizer(a::SPoly)
-    ccall(:jl_, Nothing, (Any,), "*** finalizer deleting poly " * string(a.poly_ptr.cpp_object))
     libSingular.p_Delete(a.poly_ptr, a.parent.ring_ptr)
     rt_ring_finalizer(a.parent)
 end
@@ -204,7 +201,6 @@ mutable struct SIdealData
 end
 
 function rt_ideal_finalizer(a::SIdealData)
-    ccall(:jl_, Nothing, (Any,), "*** finalizer deleting ideal " * string(a.ideal_ptr.cpp_object))
     libSingular.id_Delete(a.ideal_ptr, a.parent.ring_ptr)
     rt_ring_finalizer(a.parent)
 end
@@ -246,7 +242,7 @@ function rt_ringof(a::SingularRingType)
 end
 
 function rt_ringof(a)
-    rt_error("type " * rt_typestring(a) * " does not have a basering")    
+    rt_error("type " * rt_typestring(a) * " does not have a basering")
     return rtInvalidRing
 end
 
@@ -2343,7 +2339,7 @@ function rtdivide(a::Union{Int, BigInt}, b::Union{Int, BigInt})
         libSingular.n_Delete(b1, R.ring_ptr)
         rt_error("cannot divide be zero")
         return rt_defaultconstructor_number()
-    end        
+    end
     a1 = libSingular.n_Init(a, R.ring_ptr)
     r1 = libSingular.n_Div(a1, b1, R.ring_ptr)
     libSingular.n_Delete(a1, R.ring_ptr)
@@ -2370,7 +2366,7 @@ function rtdivide(a::SNumber, b::Union{Int, BigInt})
         libSingular.n_Delete(b1, rt_basering().ring_ptr)
         rt_error("cannot divide by zero")
         return rt_defaultconstructor_number()
-    end        
+    end
     r1 = libSingular.n_Div(a1, a.number_ptr, a.parent.ring_ptr)
     libSingular.n_Delete(b1, a.parent.ring_ptr)
     return SNumber(r1, a.parent)
@@ -3161,9 +3157,9 @@ function convert_newstruct_decl(newtypename::String, args::String)
     end
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_defaultconstructor_"*newtypename)),
         Expr(:return, Expr(:call, newtype, d))
-    ))    
+    ))
 
-    # rt_declare_T   
+    # rt_declare_T
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, :SName)),
         filter_lineno(quote
             n = length(rtGlobal.callstack)
@@ -3516,7 +3512,7 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         end
     else
         throw(TranspileError("internal error in convert_elemexpr"*string(a.rule)))
-    end  
+    end
 end
 
 
@@ -3838,7 +3834,7 @@ function make_rlist(a::AstNode, env::AstEnv)
         push_rlist_expr!(r, a.child[1], env::AstEnv)
         for b in a.child[2].child
             push_rlist_expr!(r, b, env::AstEnv)
-        end        
+        end
     else
         throw(TranspileError("internal error in make_rlist"))
     end
@@ -4129,7 +4125,7 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
                 end
             else
                 throw(TranspileError("internal error in convert_declare_ip_variable 1"))
-            end   
+            end
             return r
         elseif a.rule == @RULE_declare_ip_variable(3)
             tcode = a.child[1]::Int
@@ -4149,7 +4145,7 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
                 end
             else
                 throw(TranspileError("internal error in convert_declare_ip_variable 3"))
-            end   
+            end
             return r
         elseif a.rule == @RULE_declare_ip_variable(4)
             tcode = a.child[1]::Int
@@ -4161,7 +4157,7 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
                 end
             else
                 throw(TranspileError("internal error in convert_declare_ip_variable 4"))
-            end   
+            end
             return r
         elseif a.rule == @RULE_declare_ip_variable(99)
             typ = a.child[1]::String
@@ -4169,7 +4165,7 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
             r = Expr(:block)
             for m in vars
                 push!(r.args, Expr(:call, Symbol("rt_declare_" * typ), makeunknown(m.child[1].child[1]::String)))
-            end 
+            end
             return r
         elseif a.rule == @RULE_declare_ip_variable(5) || a.rule == @RULE_declare_ip_variable(6)
             if a.rule == @RULE_declare_ip_variable(5)
