@@ -17,12 +17,12 @@ const libsingular = joinpath(pkgdir, "local", "lib", "libSingular")
 prefix = realpath(joinpath(@__DIR__, "..", "local"))
 
 function __init__()
-   # Initialise Singular
-   binSingular = joinpath(prefix, "bin", "Singular")
-   ENV["SINGULAR_EXECUTABLE"] = binSingular
-   libSingular.siInit(binSingular)
+    # Initialise Singular
+    binSingular = joinpath(prefix, "bin", "Singular")
+    ENV["SINGULAR_EXECUTABLE"] = binSingular
+    libSingular.siInit(binSingular)
 
-   initrepl(SingularInterpreter.execute,
+    initrepl(SingularInterpreter.execute,
             prompt_text  = "Sing> ",
             prompt_color = :blue,
             start_key    = '}',
