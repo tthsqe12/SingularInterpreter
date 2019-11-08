@@ -56,6 +56,7 @@ void exitrule_str(const char * s, const char * name);
 %token <i> BIGINTMAT_CMD
 %token <i> INTMAT_CMD
 %token <i> PROC_CMD
+%token <i> STATIC_PROC_CMD
 %token <i> RING_CMD
 
 /* valid when ring defined ! */
@@ -105,8 +106,6 @@ void exitrule_str(const char * s, const char * name);
 %token <i> CMD_23
 %token <i> CMD_123
 %token <i> CMD_M
-%token <i> NEWSTRUCT_CMD
-%token <name> ROOT_DECL_NEWSTRUCT
 %token <i> ROOT_DECL
 %token <i> ROOT_DECL_LIST
 %token <i> RING_DECL
@@ -671,15 +670,6 @@ elemexpr:
                 exitrule("elemexpr -> CMD_12 '(' expr ',' expr ')'");
             }
 
-        | NEWSTRUCT_CMD '(' STRINGTOK ',' STRINGTOK ')'
-            {
-                enterrule("elemexpr -> NEWSTRUCT_CMD '(' STRINGTOK ',' STRINGTOK ')'");
-                if (!stringlist_has(&prev_newstruct_names, $3))
-                    stringlist_insert(&new_newstruct_names, $3);
-                $$ = astnode_make2(RULE_elemexpr(99), aststring_make($3), aststring_make($5));
-                exitrule("elemexpr -> NEWSTRUCT_CMD '(' STRINGTOK ',' STRINGTOK ')'");
-            }
-
         | CMD_23 '(' expr ',' expr ')'
             {
                 enterrule("elemexpr -> CMD_23 '(' expr ',' expr ')'");
@@ -1096,63 +1086,63 @@ extendedid:
 
 declare_ip_variable:
 
-        ROOT_DECL elemexpr
+        ROOT_DECL extendedid
             {
                 enterrule("declare_ip_variable -> ROOT_DECL elemexpr");
                 $$ = astnode_make2(RULE_declare_ip_variable(1), astint_make($1), $2);
                 exitrule_ex("declare_ip_variable -> ROOT_DECL elemexpr",$$);
             }
 
-        | ROOT_DECL_NEWSTRUCT elemexpr
+        | UNKNOWN_IDENT extendedid
             {
-                enterrule("declare_ip_variable -> ROOT_DECL elemexpr");
+                enterrule("declare_ip_variable -> UNKNOWN_IDENT elemexpr");
                 $$ = astnode_make2(RULE_declare_ip_variable(99), aststring_make($1), $2);
-                exitrule_ex("declare_ip_variable -> ROOT_DECL elemexpr",$$);
+                exitrule_ex("declare_ip_variable -> UNKNOWN_IDENT elemexpr",$$);
             }
 
-        | ROOT_DECL_LIST elemexpr
+        | ROOT_DECL_LIST extendedid
             {
                 enterrule("declare_ip_variable -> ROOT_DECL_LIST elemexpr");
                 $$ = astnode_make2(RULE_declare_ip_variable(2), astint_make($1), $2);
                 exitrule("declare_ip_variable -> ROOT_DECL_LIST elemexpr");
             }
 
-        | RING_DECL elemexpr
+        | RING_DECL extendedid
             {
                 enterrule("declare_ip_variable -> RING_DECL elemexpr");
                 $$ = astnode_make2(RULE_declare_ip_variable(3), astint_make($1), $2);
                 exitrule("declare_ip_variable -> RING_DECL elemexpr");
             }
 
-        | RING_DECL_LIST elemexpr
+        | RING_DECL_LIST extendedid
             {
                 enterrule("declare_ip_variable -> RING_DECL_LIST elemexpr");
                 $$ = astnode_make2(RULE_declare_ip_variable(4), astint_make($1), $2);
                 exitrule("declare_ip_variable -> RING_DECL_LIST elemexpr");
             }
 
-        | mat_cmd elemexpr '[' expr ']' '[' expr ']'
+        | mat_cmd extendedid '[' expr ']' '[' expr ']'
             {
                 enterrule("declare_ip_variable -> mat_cmd elemexpr '[' expr ']' '[' expr ']'");
                 $$ = astnode_make4(RULE_declare_ip_variable(5), $1, $2, $4, $7);
                 exitrule("declare_ip_variable -> mat_cmd elemexpr '[' expr ']' '[' expr ']'");
             }
 
-        | mat_cmd elemexpr
+        | mat_cmd extendedid
             {
                 enterrule("declare_ip_variable -> mat_cmd elemexpr");
                 $$ = astnode_make2(RULE_declare_ip_variable(6), $1, $2);
                 exitrule("declare_ip_variable -> mat_cmd elemexpr");
             }
 
-        | declare_ip_variable ',' elemexpr
+        | declare_ip_variable ',' extendedid
             {
                 enterrule("declare_ip_variable -> declare_ip_variable ',' elemexpr");
                 $$ = astnode_make2(RULE_declare_ip_variable(7), $1, $3);
                 exitrule("declare_ip_variable -> declare_ip_variable ',' elemexpr");
             }
 
-        | PROC_CMD elemexpr
+        | PROC_CMD extendedid
             {
                 enterrule("declare_ip_variable -> PROC_CMD elemexpr");
                 $$ = astnode_make1(RULE_declare_ip_variable(8), $2);
@@ -1627,6 +1617,34 @@ proccmd:
                 $$ = astnode_make4(RULE_proccmd(4), aststring_make($2), aststring_make($3), $5, $8);
                 exitrule_ex("proccmd -> PROC_CMD extendedid STRINGTOK '(' procarglist ')' '{' lines '}'",$$);
             }
+
+        | STATIC_PROC_CMD UNKNOWN_IDENT '{' lines '}'
+            {
+                enterrule("proccmd -> STATIC_PROC_CMD extendedid '{' lines '}'");
+                $$ = astnode_make2(RULE_proccmd(11), aststring_make($2), $4);
+                exitrule("proccmd -> STATIC_PROC_CMD extendedid '{' lines '}'");
+            }
+
+        | STATIC_PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'
+            {
+                enterrule("proccmd -> STATIC_PROC_CMD extendedid '(' ')' '{' lines '}'");
+                $$ = astnode_make2(RULE_proccmd(12), aststring_make($2), $6);
+                exitrule_ex("proccmd -> STATIC_PROC_CMD extendedid '(' ')' '{' lines '}'",$$);
+            }
+
+        | STATIC_PROC_CMD UNKNOWN_IDENT '(' procarglist ')' '{' lines '}'
+            {
+                enterrule("proccmd -> STATIC_PROC_CMD extendedid '(' procarglist ')' '{' lines '}'");
+                $$ = astnode_make3(RULE_proccmd(13), aststring_make($2), $4, $7);
+                exitrule_ex("proccmd -> STATIC_PROC_CMD extendedid '(' procarglist ')' '{' lines '}'",$$);
+            }
+
+        | STATIC_PROC_CMD UNKNOWN_IDENT STRINGTOK '(' procarglist ')' '{' lines '}'
+            {
+                enterrule("proccmd -> STATIC_PROC_CMD extendedid STRINGTOK '(' procarglist ')' '{' lines '}'");
+                $$ = astnode_make4(RULE_proccmd(14), aststring_make($2), aststring_make($3), $5, $8);
+                exitrule_ex("proccmd -> STATIC_PROC_CMD extendedid STRINGTOK '(' procarglist ')' '{' lines '}'",$$);
+            }
         ;
 
 parametercmd:
@@ -1678,31 +1696,51 @@ procarglist:
         ;
 
 procarg:
-        ROOT_DECL extendedid
+        UNKNOWN_IDENT extendedid
+            {
+                enterrule("procarg -> UNKNOWN_IDENT extendedid");
+                $$ = astnode_make2(RULE_procarg(1), aststring_make($1), $2);
+                exitrule_ex("procarg -> UNKNOWN_IDENT extendedid",$$);
+            }
+        | ROOT_DECL extendedid
             {
                 enterrule("procarg -> ROOT_DECL extendedid");
-                $$ = astnode_make2(RULE_procarg(1), astint_make($1), $2);
+                $$ = astnode_make2(RULE_procarg(2), astint_make($1), $2);
                 exitrule_ex("procarg -> ROOT_DECL extendedid",$$);
             }
 
         | ROOT_DECL_LIST extendedid
             {
                 enterrule("procarg -> ROOT_DECL_LIST extendedid");
-                $$ = astnode_make2(RULE_procarg(2), astint_make($1), $2);
+                $$ = astnode_make2(RULE_procarg(3), astint_make($1), $2);
+                exitrule_ex("procarg -> ROOT_DECL_LIST extendedid",$$);
+            }
+
+        | RING_DECL extendedid
+            {
+                enterrule("procarg -> ROOT_DECL_LIST extendedid");
+                $$ = astnode_make2(RULE_procarg(4), astint_make($1), $2);
+                exitrule_ex("procarg -> ROOT_DECL_LIST extendedid",$$);
+            }
+
+        | RING_DECL_LIST extendedid
+            {
+                enterrule("procarg -> ROOT_DECL_LIST extendedid");
+                $$ = astnode_make2(RULE_procarg(5), astint_make($1), $2);
                 exitrule_ex("procarg -> ROOT_DECL_LIST extendedid",$$);
             }
 
         | PROC_CMD extendedid
             {
                 enterrule("procarg -> PROC_CMD extendedid");
-                $$ = astnode_make1(RULE_procarg(3), $2);
+                $$ = astnode_make2(RULE_procarg(6), astint_make(PROC_CMD), $2);
                 exitrule_ex("procarg -> PROC_CMD extendedid",$$);
             }
 
         | extendedid
             {
                 enterrule("procarg -> extendedid");
-                $$ = astnode_make1(RULE_procarg(4), $1);
+                $$ = astnode_make2(RULE_procarg(7), astint_make(DEF_CMD), $1);
                 exitrule_ex("procarg -> extendedid",$$);
             }
         ;

@@ -145,6 +145,7 @@ static struct token_lookup_entry token_lookup[] = {
 {"killattrib",      KILLATTR_CMD ,      CMD_12},
 {"koszul",          KOSZUL_CMD ,        CMD_23},
 {"kres",            KRES_CMD ,          CMD_2},
+{"LIB",             LIB_CMD ,           SYSVAR},
 {"laguerre",        LAGSOLVE_CMD,       CMD_3},
 {"lead",            LEAD_CMD ,          CMD_1},
 {"leadcoef",        LEADCOEF_CMD ,      CMD_1},
@@ -181,7 +182,7 @@ static struct token_lookup_entry token_lookup[] = {
 {"noether",         VNOETHER,           SYSVAR},
 {"nameof",          NAMEOF_CMD ,        CMD_1},
 {"names",           NAMES_CMD ,         CMD_M},
-{"newstruct",       NEWSTRUCT_CMD,      NEWSTRUCT_CMD},
+{"newstruct",       NEWSTRUCT_CMD ,     CMD_23},
 {"ncols",           COLS_CMD ,          CMD_1},
 {"not",             NOT ,               NOT},
 {"npars",           NPARS_CMD ,         CMD_1},
@@ -318,7 +319,12 @@ parname        #
                                 }
                             }
                          }
-
+static[ \t\n]+proc      {
+                            return STATIC_PROC_CMD;
+                        }
+proc                    {
+                            return PROC_CMD;
+                        }
 if                      {
                             return IF_CMD;
                         }
@@ -477,7 +483,6 @@ newline                  {
 ({parname}|{name})      {
                            /* {name} */
 
-
                             int rc = 0;
                             for (int i = 0; i < sizeof(token_lookup)/sizeof(struct token_lookup_entry); i++)
                             {
@@ -495,17 +500,7 @@ newline                  {
                             }
 
                             lvalp->name = duplicate_string(yytext);
-                            if (   stringlist_has(&prev_newstruct_names, lvalp->name)
-                                || stringlist_has(&new_newstruct_names, lvalp->name))
-                            {
-//printf("SCANNER: %s RETURN (ROOT_DECL_NEWSTRUCT)\n", yytext);
-                                return ROOT_DECL_NEWSTRUCT;
-                            }
-                            else
-                            {
-//printf("SCANNER: %s RETURN (UNKNOWN_IDENT)\n", yytext);
-                                return UNKNOWN_IDENT;
-                            }
+                            return UNKNOWN_IDENT;
                         }
 
 .                       {

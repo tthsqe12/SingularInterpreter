@@ -41,7 +41,7 @@ Therefore, the error must occur when trying to assign nothing to b, and not when
 =#
 
 
-###### these macros do not work!!!!
+###### these macros do not work without esc !!!!
 
 macro warn_check(ex, msgs...)
     msg_body = isempty(msgs) ? ex : msgs[1]
@@ -70,6 +70,7 @@ makeunknown(s::String) = SName(Symbol(s))
 struct SProc
     func::Function
     name::String
+    package::Symbol
 end
 procname_to_func(name::String) = Symbol("##"*name)
 procname_to_func(f::Symbol) = procname_to_func(f.name)
@@ -119,7 +120,7 @@ struct SList
 end
 
 
-#### singular type "ring"       immutable in the singular language, but also hold identifiers of ring-dependent types
+#### singular type "ring"       immutable in the singular language, but also holds identifiers of ring-dependent types
 mutable struct SRing
     ring_ptr::libSingular.ring
     refcount::Int
@@ -225,6 +226,7 @@ const _BigIntMat = Union{SBigIntMat, Array{BigInt, 2}}
 const _List      = Union{SList, SListData}
 const _Ideal     = Union{SIdeal, SIdealData}
 
+# it is almost useless to have a list of singular types because of newstruct
 #const SingularType = Union{Nothing, SProc, Int, BigInt, SString,
 #                           SIntVec, SIntMat, SBigIntMat, SList,
 #                           SRing, SNumber, SPoly, SIdeal}
@@ -246,18 +248,21 @@ function rt_ringof(a)
     return rtInvalidRing
 end
 
-
+# The CallStackEntry holds the "context" required by every function.
+# This could be passed around as a first argument to _every_ rt function, but
+# we take the simpler approach for now and manually manage a call stack in rtGlobal.callstack.
 mutable struct rtCallStackEntry
     start_rindep_vars::Int      # index into rtGlobal.local_rindep_vars
     start_rdep_vars::Int        # index into rtGlobal.local_rdep_vars
-    basering::SRing
+    current_ring::SRing
+    current_package::Symbol
 end
 
 mutable struct rtGlobalState
     last_printed::Any
     rtimer_base::UInt64
     rtimer_scale::UInt64
-    vars::Dict{Symbol, Any}     # global ring indep vars
+    vars::Dict{Symbol, Dict{Symbol, Any}}     # global ring indep vars
     callstack::Array{rtCallStackEntry}
     local_rindep_vars::Array{Pair{Symbol, Any}}
     local_rdep_vars::Array{Pair{Symbol, SingularRingType}}
@@ -265,16 +270,17 @@ end
 
 
 const rtInvalidRing = SRing(false, libSingular.rDefault_null_helper(), 1)
+
 const rtGlobal = rtGlobalState(nothing,
                                time_ns(),
                                1000000000,
-                               Dict{Symbol, Any}(),
-                               rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing)],
+                               Dict(:Top => Dict{Symbol, Any}()),
+                               rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
                                Pair{Symbol, SingularRingType}[])
 
 function rt_basering()
-    return rtGlobal.callstack[end].basering
+    return rtGlobal.callstack[end].current_ring
 end
 
 
@@ -290,9 +296,10 @@ end
 
 function rt_search_callstack_rdep(a::Symbol)
     n = length(rtGlobal.callstack)
+    R = rtGlobal.callstack[n].current_ring
     for i in rtGlobal.callstack[n].start_rdep_vars:length(rtGlobal.local_rdep_vars)
         if rtGlobal.local_rdep_vars[i].first == a &&
-           rtGlobal.local_rdep_vars[i].second.parent === rtGlobal.callstack[n].basering
+           rtGlobal.local_rdep_vars[i].second.parent === R
             return true, i
         end
     end
@@ -384,26 +391,40 @@ function rt_box_it_with_ring(p::libSingular.poly, r::SRing)
 end
 
 
+# make takes a name and looks it up according to singular's resolution rules
+# this function is named make in the c singular interpreter code
 function rt_make(a::SName, allow_unknown::Bool = false)
+
+    # local ring independent
     b, i = rt_search_callstack_rindep(a.name)
     if b
         return rt_ref(rtGlobal.local_rindep_vars[i].second)
     end
 
+    # local ring dependent
     b, i = rt_search_callstack_rdep(a.name)
     if b
         return rt_ref(rtGlobal.local_rdep_vars[i].second)
     end
 
-    if haskey(rtGlobal.vars, a.name)
-        return rt_ref(rtGlobal.vars[a.name])
+    # global ring independent
+    for p in (rtGlobal.callstack[end].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                return rt_ref(d[a.name])
+            end        
+        end
     end
 
-    if haskey(rtGlobal.callstack[end].basering.vars, a.name)
-        return rt_ref(rtGlobal.callstack[end].basering.vars[a.name])
+    # global ring dependent
+    R = rtGlobal.callstack[end].current_ring
+    if haskey(R.vars, a.name)
+        return rt_ref(R.vars[a.name])
     end
 
-    ok, p = libSingular.lookupIdentifierInRing(String(a.name), rtGlobal.callstack[end].basering.ring_ptr)
+    # monomials
+    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.ring_ptr)
     if ok
         return rt_box_it_with_ring(p, rt_basering())
     end
@@ -414,6 +435,8 @@ function rt_make(a::SName, allow_unknown::Bool = false)
 end
 
 function rtkill(a::SName)
+
+    # local ring independent
     b, i = rt_search_callstack_rindep(a.name)
     if b
         rtGlobal.local_rindep_vars[i] = rtGlobal.local_rindep_vars[end]
@@ -421,6 +444,7 @@ function rtkill(a::SName)
         return
     end
 
+    # local ring dependent
     b, i = rt_search_callstack_rdep(a.name)
     if b
         rtGlobal.local_rdep_vars[i] = rtGlobal.local_rdep_vars[end]
@@ -428,11 +452,18 @@ function rtkill(a::SName)
         return
     end
 
-    if haskey(rtGlobal.vars, a.name)
-        delete!(rtGlobal.vars, a.name)
-        return
+    # global ring independent
+    for p in (rtGlobal.callstack[end].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                delete!(d, a.name)
+                return
+            end        
+        end
     end
 
+    # global ring dependent
     R = rt_basering()
     if haskey(R.vars, a.name)
         delete!(R.vars, a.name)
@@ -444,11 +475,20 @@ function rtkill(a::SName)
 end
 
 
-function rt_enterfunction()
+function rt_backtick(a::SString)
+    return makeunknown(a.string)
+end
+
+function rt_backtick(a)
+    rt_error("string expected between backticks")
+end
+
+
+function rt_enterfunction(package::Symbol)
     i1 = length(rtGlobal.local_rindep_vars) + 1
     i2 = length(rtGlobal.local_rdep_vars) + 1
     n = length(rtGlobal.callstack)
-    push!(rtGlobal.callstack, rtCallStackEntry(i1, i2, rtGlobal.callstack[n].basering))
+    push!(rtGlobal.callstack, rtCallStackEntry(i1, i2, rtGlobal.callstack[n].current_ring, package))
 end
 
 function rt_leavefunction()
@@ -470,24 +510,39 @@ end
 
 function rtcall(allow_name_ret::Bool, a::SName, v...)
 
+    # local ring independent - unlikely proc
     b, i = rt_search_callstack_rindep(a.name)
     if b
         return rtcall(false, rtGlobal.local_rindep_vars[i].second, v...)
     end
 
+    # local ring dependent - probably map
     b, i = rt_search_callstack_rdep(a.name)
     if b
         return rtcall(false, rtGlobal.local_rdep_vars[i].second, v...)
     end
 
-    if haskey(rtGlobal.vars, a.name)
-        return rtcall(false, rtGlobal.vars[a.name], v...)
+    # global ring independent - proc
+    for p in (rtGlobal.callstack[end].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                return rtcall(false, d[a.name], v...)
+            end        
+        end
     end
 
+    # global ring dependent - probably map
     if haskey(rt_basering().vars, a.name)
         return rtcall(false, rt_basering().vars[a.name], v...)
     end
 
+    # newstruct constructors
+    if haskey(rtGlobal_NewStructCasts, String(a.name))
+        return rtGlobal_NewStructCasts[String(a.name)](v...)
+    end
+
+    # indexed variable constructor
     return rtcall(allow_name_ret, [String(a.name)], v...)
 end
 
@@ -545,7 +600,7 @@ end
 # copiers returning SingularType, usually so that we can assign it somewhere
 # we have to copy stuff, and usually the stuff to copy is allowed to be a tuple
 # rt_copy_allow_tuple will be called on stuff inside (), i.e. if the object (a,f(b),c)
-# needs to be construted, it might be constructed in julia as
+# needs to be constructed, it might be constructed in julia as
 # tuple(a, rt_copy_allow_tuple(f(b))..., c)
 
 # if f(b) returns a tuple t, then rt_copy_allow_tuple(t) will simply return t
@@ -675,6 +730,18 @@ function rt_error(s::String)
 end
 
 
+rtERROR(s::SName, leaving::String) = rtERROR(rt_make(s), leaving)
+
+function rtERROR(s::SString, leaving::String)
+    @error s.string * "\nleaving " * leaving
+    error("runtime error")
+end
+
+function rtERROR(v...)
+    rt_error("ERROR should be called with a string")
+end
+
+
 ########### declarers and default constructors ################################
 # each type T has a
 #   rt_parameter_T:          used for putting the arguments of a proc into the new scope
@@ -708,19 +775,65 @@ function rt_check_declaration_local(rindep::Bool, a::Symbol, typ)
     !found || rt_declare_warnerror(!rindep, rtGlobal.local_rdep_vars[i].second, a, typ)
 end
 
+# supposed to return a Dict{Symbol, Any} where we can store the variable
 function rt_check_declaration_global(rindep::Bool, a::Symbol, typ)
     n = length(rtGlobal.callstack)
-    R = rtGlobal.callstack[n].basering
-    !haskey(rtGlobal.vars, a) || rt_declare_warnerror(rindep, rtGlobal.vars[a], a, typ)
-    !haskey(R.vars, a) || rt_declare_warnerror(!rindep, R.vars[a], a, typ)
+    p = rtGlobal.callstack[n].current_package
+    if rindep
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a)
+                rt_declare_warnerror(rindep, d[a], a, typ)
+            end
+            return d
+        else
+            # uncommon (impossible?) case where the current package does not have an entry in rtGlobal.vars
+            d = Dict{Symbol, Any}()
+            rtGlobal.vars[p] = d
+            return d
+        end
+    else
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a)
+                rt_declare_warnerror(rindep, d[a], a, typ)
+            end
+        end
+        d = rtGlobal.callstack[n].current_ring.vars
+        if haskey(d, a)
+            rt_declare_warnerror(!rindep, d, a, typ)
+        end
+        return d
+    end
 end
 
 function rt_local_identifier_does_not_exist(a::Symbol)
     return length(rtGlobal.callstack) > 1 &&
-            !(rt_search_callstack_rindep(a.name)[1]) &&
-            !(rt_search_callstack_rdep(a.name)[1])
+            !(rt_search_callstack_rindep(a)[1]) &&
+            !(rt_search_callstack_rdep(a)[1])
 end
 
+#### def
+
+function rt_defaultconstructor_def()
+    return nothing
+end
+
+function rt_declare_def(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, Any)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_def()))
+    else
+        d = rt_check_declaration_global(true, a.name, Any)
+        d[a.name] = rt_defaultconstructor_def()
+    end
+end
+
+function rt_parameter_def(a::SName, b)
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2def(b)))
+end
 
 #### proc
 function rt_empty_proc(v...) # only used by rt_defaultconstructor_proc
@@ -728,7 +841,7 @@ function rt_empty_proc(v...) # only used by rt_defaultconstructor_proc
 end
 
 function rt_defaultconstructor_proc()
-    return SProc(rt_empty_proc, "empty proc")
+    return SProc(rt_empty_proc, "empty proc", :Top)
 end
 
 function rt_declare_proc(a::SName)
@@ -737,14 +850,14 @@ function rt_declare_proc(a::SName)
         rt_check_declaration_local(true, a.name, SProc)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_proc()))
     else
-        rt_check_declaration_global(true, a.name, SProc)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_proc()
+        d = rt_check_declaration_global(true, a.name, SProc)
+        d[a.name] = rt_defaultconstructor_proc()
     end
 end
 
 function rt_parameter_proc(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    rtGlobal.fxnstack[n][a.name] = rt_convert2proc(b)
+    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2proc(b)))
 end
 
 #### int
@@ -758,8 +871,8 @@ function rt_declare_int(a::SName)
         rt_check_declaration_local(true, a.name, Int)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_int()))
     else
-        rt_check_declaration_global(true, a.name, Int)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_int()
+        d = rt_check_declaration_global(true, a.name, Int)
+        d[a.name] = rt_defaultconstructor_int()
     end
 end
 
@@ -779,8 +892,8 @@ function rt_declare_bigint(a::SName)
         rt_check_declaration_local(true, a.name, BigInt)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigint()))
     else
-        rt_check_declaration_global(true, a.name, BigInt)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_bigint()
+        d = rt_check_declaration_global(true, a.name, BigInt)
+        d[a.name] = rt_defaultconstructor_bigint()
     end
 end
 
@@ -800,8 +913,8 @@ function rt_declare_string(a::SName)
         rt_check_declaration_local(true, a.name, SString)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_string()))
     else
-        rt_check_declaration_global(true, a.name, SString)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_string()
+        d = rt_check_declaration_global(true, a.name, SString)
+        d[a.name] = rt_defaultconstructor_string()
     end
 end
 
@@ -821,8 +934,8 @@ function rt_declare_intvec(a::SName)
         rt_check_declaration_local(true, a.name, SIntVec)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intvec()))
     else
-        rt_check_declaration_global(true, a.name, SIntVec)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_intvec()
+        d = rt_check_declaration_global(true, a.name, SIntVec)
+        d[a.name] = rt_defaultconstructor_intvec()
     end
 end
 
@@ -842,8 +955,8 @@ function rt_declare_intmat(a::SName)
         rt_check_declaration_local(true, a.name, SIntMat)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intmat()))
     else
-        rt_check_declaration_global(true, a.name, SIntMat)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_intmat()
+        d = rt_check_declaration_global(true, a.name, SIntMat)
+        d[a.name] = rt_defaultconstructor_intmat()
     end
 end
 
@@ -863,8 +976,8 @@ function rt_declare_bigintmat(a::SName)
         rt_check_declaration_local(true, a.name, SBigIntMat)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigintmat()))
     else
-        rt_check_declaration_global(true, a.name, SBigIntMat)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_bigintmat()
+        d = rt_check_declaration_global(true, a.name, SBigIntMat)
+        d[a.name] = rt_defaultconstructor_bigintmat()
     end
     return nothing
 end
@@ -885,8 +998,8 @@ function rt_declare_list(a::SName)
         rt_check_declaration_local(true, a.name, SList)
         push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_list()))
     else
-        rt_check_declaration_global(true, a.name, SList)
-        rtGlobal.vars[a.name] = rt_defaultconstructor_list()
+        d = rt_check_declaration_global(true, a.name, SList)
+        d[a.name] = rt_defaultconstructor_list()
     end
     return nothing
 end
@@ -899,7 +1012,7 @@ end
 #### number
 function rt_defaultconstructor_number()
     R = rt_basering()
-    @error_check(R.valid, rt_error("cannot construct a number when no basering is active"))
+    @error_check(R.valid, "cannot construct a number when no basering is active")
     r1 = libSingular.n_Init(0, R.ring_ptr)
     return SNumber(r1, R)
 end
@@ -910,8 +1023,8 @@ function rt_declare_number(a::SName)
         rt_check_declaration_local(false, a.name, SNumber)
         push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_number()))
     else
-        rt_check_declaration_global(false, a.name, SNumber)
-        rtGlobal.callstack[n].basering.vars[a.name] = rt_defaultconstructor_number()
+        d = rt_check_declaration_global(false, a.name, SNumber)
+        d[a.name] = rt_defaultconstructor_number()
     end
     return nothing
 end
@@ -924,7 +1037,7 @@ end
 #### poly
 function rt_defaultconstructor_poly()
     R = rt_basering()
-    @error_check(R.valid, rt_error("cannot construct a polynomial when no basering is active"))
+    @error_check(R.valid, "cannot construct a polynomial when no basering is active")
     r1 = libSingular.p_null_helper()
     return SPoly(r1, R)
 end
@@ -935,8 +1048,8 @@ function rt_declare_poly(a::SName)
         rt_check_declaration_local(false, a.name, SPoly)
         push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_poly()))
     else
-        rt_check_declaration_global(false, a.name, SPoly)
-        rtGlobal.callstack[n].basering.vars[a.name] = rt_defaultconstructor_poly()
+        d = rt_check_declaration_global(false, a.name, SPoly)
+        d[a.name] = rt_defaultconstructor_poly()
     end
     return nothing
 end
@@ -961,8 +1074,8 @@ function rt_declare_ideal(a::SName)
         rt_check_declaration_local(false, a.name, SIdeal)
         push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_ideal()))
     else
-        rt_check_declaration_global(false, a.name, SIdeal)
-        rtGlobal.callstack[n].basering.vars[a.name] = rt_defaultconstructor_ideal()
+        d = rt_check_declaration_global(false, a.name, SIdeal)
+        d[a.name] = rt_defaultconstructor_ideal()
     end
     return nothing
 end
@@ -1491,6 +1604,7 @@ end
 
 function rtassign(a::SName, b)
 
+    # local ring independent
     ok, i = rt_search_callstack_rindep(a.name)
     if ok
         l = rtGlobal.local_rindep_vars
@@ -1498,6 +1612,7 @@ function rtassign(a::SName, b)
         return
     end
 
+    # local ring dependent
     ok, i = rt_search_callstack_rdep(a.name)
     if ok
         l = rtGlobal.local_rdep_vars
@@ -1505,20 +1620,66 @@ function rtassign(a::SName, b)
         return
     end
 
-    if haskey(rtGlobal.vars, a.name)
-        l = rtGlobal.vars
-        l[a.name] = rt_assign(l[a.name], b)
-        return
+    # global ring independent
+    for p in (rtGlobal.callstack[end].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                d[a.name] = rt_assign(d[a.name], b)
+                return
+            end        
+        end
     end
 
-    if haskey(rtGlobal.callstack[end].basering.vars, a.name)
-        l = rtGlobal.callstack[end].basering.vars
-        l[a.name] = rt_assign(l[a.name], b)
+    # global ring dependent
+    d = rtGlobal.callstack[end].current_ring.vars
+    if haskey(d, a.name)
+        d[a.name] = rt_assign(d[a.name], b)
         return
     end
 
     rt_error("cannot assign to " * String(a.name))
 end
+
+function rt_incrementby(a::SName, b::Int)
+
+    # local ring independent
+    ok, i = rt_search_callstack_rindep(a.name)
+    if ok
+        l = rtGlobal.local_rindep_vars
+        l[i].second = rt_assign(l[i].second, rtplus(l[i].second, b))
+        return
+    end
+
+    # local ring dependent
+    ok, i = rt_search_callstack_rdep(a.name)
+    if ok
+        l = rtGlobal.local_rdep_vars
+        l[i].second = rt_assign(l[i].second, rtplus(l[i].second, b))
+        return
+    end
+
+    # global ring independent
+    for p in (rtGlobal.callstack[end].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                d[a.name] = rt_assign(d[a.name], rtplus(d[a.name], b))
+                return
+            end        
+        end
+    end
+
+    # global ring dependent
+    d = rtGlobal.callstack[end].current_ring.vars
+    if haskey(d, a.name)
+        d[a.name] = rt_assign(d[a.name], rtplus(d[a.name], b))
+        return
+    end
+
+    rt_error("cannot increment/decrement " * String(a.name))
+end
+
 
 
 #### assignment to nothing - used for the first set of a variable of type def
@@ -1539,6 +1700,11 @@ end
 #### assignment to bigint
 function rt_assign(a::BigInt, b)
     return rt_convert2bigint(b)
+end
+
+#### assignment to string
+function rt_assign(a::SString, b)
+    return rt_convert2string(b)
 end
 
 #### assignment to intmat
@@ -1565,7 +1731,7 @@ function rt_assign(a::_IntMat, b::Tuple{Vararg{Any}})
 end
 
 function rt_assign(a::_IntMat, b)
-    error("cannot assign $a to intmat")
+    rt_error("cannot assign $b to intmat")
 end
 
 #### assignment to bigintmat
@@ -1592,7 +1758,7 @@ function rt_assign(a::_BigIntMat, b::Tuple{Vararg{Any}})
 end
 
 function rt_assign(a::_BigIntMat, b)
-    error("cannot assign $b to bigintmat")
+    rt_error("cannot assign $b to bigintmat")
 end
 
 #### assignment to list
@@ -1726,36 +1892,7 @@ end
 
 #####################################################
 
-function rt_incrementby(a::SName, b::Int)
 
-    ok, i = rt_search_callstack_rindep(a.name)
-    if ok
-        l = rtGlobal.local_rindep_vars
-        l[i].second = rt_assign(l[i].second, rtplus(l[i].second, b))
-        return
-    end
-
-    ok, i = rt_search_callstack_rdep(a.name)
-    if ok
-        l = rtGlobal.local_rdep_vars
-        l[i].second = rt_assign(l[i].second, rtplus(l[i].second, b))
-        return
-    end
-
-    if haskey(rtGlobal.vars, a.name)
-        l = rtGlobal.vars
-        l[a.name] = rt_assign(l[a.name], rtplus(l[a.name], b))
-        return
-    end
-
-    if haskey(rtGlobal.callstack[end].basering.vars, a.name)
-        l = rtGlobal.callstack[end].basering.vars
-        l[a.name] = rt_assign(l[a.name], rtplus(l[a.name], b))
-        return
-    end
-
-    rt_error("cannot increment/decrement " * String(a.name))
-end
 
 
 function rt_get_rtimer()
@@ -2456,6 +2593,203 @@ rtgreaterequal(a::BigInt, b::BigInt) = Int(a >= b)
 
 
 
+
+
+
+
+
+
+
+rtnewstruct(a::SName, b) = rtnewstruct(rt_make(a), b)
+rtnewstruct(a, b::SName) = rtnewstruct(a, rt_make(b))
+
+function rtnewstruct(a::SString, b::SString)
+    @error_check(!haskey(rtGlobal_NewStructCasts, a.string), "redefinition of newstruct " * a.string)
+    code = convert_newstruct_decl(a.string, b.string)
+    eval(code)
+    return
+end
+
+
+
+function filter_lineno(ex::Expr)
+   filter!(ex.args) do e
+       isa(e, LineNumberNode) && return false
+       if isa(e, Expr)
+           (e::Expr).head === :line && return false
+           filter_lineno(e::Expr)
+       end
+       return true
+   end
+   return ex
+end
+
+
+function convert_newstruct_decl(newtypename::String, args::String)
+    sp = split(args, ",")
+    sp = [filter!(x->x != "", split(i," ")) for i in sp]
+    newreftype  = Symbol(newstructrefprefix * newtypename)
+    newtype     = Symbol(newstructprefix * newtypename)
+
+    r = Expr(:block)
+
+    # struct definition
+    b = Expr(:block)
+    for i in sp
+        @error_check(length(i) == 2, "invalid newstruct")
+        push!(b.args, Expr(:(::), Symbol(i[2]), convert_typestring_tosymbol(String(i[1]))))
+    end
+    push!(r.args, Expr(:struct, true, newreftype, b))
+
+    b = Expr(:block, Expr(:(::), :data, newreftype))
+    push!(r.args, Expr(:struct, false, newtype, b))
+
+    # deepcopy
+    dpcpi = Expr(:(.), :Base, QuoteNode(:deepcopy_internal))
+    idict = Expr(:(::), :dict, :IdDict)
+    c = Expr(:call, newreftype)
+    for i in sp
+        push!(c.args, Expr(:call, :deepcopy, Expr(:(.), :f, QuoteNode(Symbol(i[2])))))
+    end
+    push!(r.args, Expr(:function, Expr(:call, dpcpi, Expr(:(::), :f, newreftype), idict),
+        Expr(:return, c)
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, dpcpi, Expr(:(::), :f, newtype), idict),
+        Expr(:return,
+            Expr(:call, newtype,
+                Expr(:call, :deepcopy,
+                    Expr(:(.), :f, QuoteNode(:data))
+                )
+            )
+        )
+    ))
+
+    # rt_copy
+    push!(r.args, Expr(:function, Expr(:call, :rt_copy, Expr(:(::), :f, newreftype)),
+        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, :rt_copy, Expr(:(::), :f, newtype)),
+        Expr(:return, :f)
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, :rt_copy_allow_tuple, Expr(:(::), :f, newreftype)),
+        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, :rt_copy_allow_tuple, Expr(:(::), :f, newtype)),
+        Expr(:return, :f)
+    ))
+
+    # rt_ref
+    push!(r.args, Expr(:function, Expr(:call, :rt_ref, Expr(:(::), :f, newreftype)),
+        Expr(:return, :f)
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, :rt_ref, Expr(:(::), :f, newtype)),
+        Expr(:return, Expr(:(.), :f, QuoteNode(:data)))
+    ))
+
+    # rt_convert2T
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :f, newreftype)),
+        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :f, newtype)),
+        Expr(:return, :f)
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), :f),
+        Expr(:call, :error, "cannot convert to a " * newtypename * " from ", :f)
+    ))
+
+    # rt_cast2T
+    c = Expr(:call, Symbol("rt_cast2"*newtypename))
+    d = Expr(:call, newreftype)
+    for i in sp
+        push!(c.args, Symbol(i[2]))
+        push!(d.args, Expr(:call, Symbol("rt_convert2"*i[1]), Symbol(i[2])))
+    end
+    push!(r.args, Expr(:function, c, Expr(:return, Expr(:call, newtype, d))))
+
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_cast2"*newtypename), Expr(:(...), :f)),
+        Expr(:call, :error, "cannot construct a " * newtypename * " from ", :f)
+    ))
+
+    push!(r.args, Expr(:call, :setindex!, :rtGlobal_NewStructCasts, Symbol("rt_cast2"*newtypename), newtypename))
+
+    # rt_defaultconstructor_T
+    d = Expr(:call, newreftype)
+    for i in sp
+        push!(d.args, Expr(:call, Symbol("rt_defaultconstructor_"*i[1])))
+    end
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_defaultconstructor_"*newtypename)),
+        Expr(:return, Expr(:call, newtype, d))
+    ))
+
+    # rt_declare_T
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, :SName)),
+        filter_lineno(quote
+            n = length(rtGlobal.callstack)
+            if n > 1
+                rt_check_declaration_local(true, a.name, $(newtype))
+                push!(rtGlobal.local_rindep_vars, Pair(a.name, $(Symbol("rt_defaultconstructor_"*newtypename))()))
+            else
+                d = rt_check_declaration_global(true, a.name, $(newtype))
+                d[a.name] = $(Symbol("rt_defaultconstructor_"*newtypename))()
+            end
+        end)
+    ))
+
+    # rt_parameter_T
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_parameter_"*newtypename), Expr(:(::), :a, :SName), :b),
+        filter_lineno(quote
+            push!(rtGlobal.local_rindep_vars, Pair(a.name, $(Symbol("rt_convert2"*newtypename))(b)))
+        end)
+    ))
+
+    # rt_assign  - all errors should be handled by rt_convert2something
+    push!(r.args, Expr(:function, Expr(:call, :rt_assign,
+                                        Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
+                                        :b),
+        Expr(:return, Expr(:call, Symbol("rt_convert2"*newtypename), :b))
+    ))
+
+    # print
+    b = Expr(:block, Expr(:(=), :s, ""))
+    for i in 1:length(sp)
+        push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), Expr(:call, :(^), " ", :indent), "." * sp[i][2] * ":\n")))
+        push!(b.args, Expr(:(*=), :s, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2]))), Expr(:call, :(+), :indent, 3))))
+        if i < length(sp)
+            push!(b.args, Expr(:(*=), :s, "\n"))
+        end
+    end
+    push!(b.args, Expr(:return, :s))
+    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
+                                                Expr(:(::), :f, newreftype),
+                                                Expr(:(::), :indent, :Int)),
+        b
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
+                                                Expr(:(::), :f, newtype),
+                                                Expr(:(::), :indent, :Int)),
+        Expr(:return, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(:data)), :indent))
+    ))
+
+    # rt_typedata
+    push!(r.args, Expr(:function, Expr(:call, :rt_typedata,
+                                        Expr(:(::), :f, Expr(:curly, :Union, newtype, newreftype))),
+        Expr(:return, newtypename)
+    ))
+
+    push!(r.args, :nothing)
+    return r
+end
+
+
+
 ###############################################################################
 
 struct AstNode
@@ -2474,11 +2808,21 @@ end
 mutable struct AstEnv
     in_proc::Bool
     locals::Dict{String, Any}
+    package::Symbol
+    fxn_name::String
 end
 
-rtGlobal_Env = AstEnv(false, Dict{String, Any}())
+mutable struct AstLoadEnv
+    export_names::Bool
+    package::Symbol
+end
+
+
+rtGlobal_Env = AstEnv(false, Dict{String, Any}(), :Top, "")
 rtGlobal_Proc = Dict{Symbol, SProc}()
 rtGlobal_NewStructNames = String[]
+
+rtGlobal_NewStructCasts = Dict{String, Function}()
 
 
 Base.showerror(io::IO, er::TranspileError) = print(io, "transpilation error: ", er.name)
@@ -2531,6 +2875,7 @@ macro RULE_procarglist(i)         ;return(4500 + i); end
 macro RULE_procarg(i)             ;return(4600 + i); end
 
 @enum CMDS begin
+# must match deps/ast_generator/grammar.tab.h
   DOTDOT = 258
   EQUAL_EQUAL
   GE
@@ -2545,6 +2890,7 @@ macro RULE_procarg(i)             ;return(4600 + i); end
   BIGINTMAT_CMD
   INTMAT_CMD
   PROC_CMD
+  STATIC_PROC_CMD
   RING_CMD
   BEGIN_RING
   BUCKET_CMD
@@ -2616,7 +2962,7 @@ macro RULE_procarg(i)             ;return(4600 + i); end
   QUIT_CMD
   SYSVAR
   UMINUS
-
+#must match deps/ast_generator/tok.h
   ALIAS_CMD = 1000
   ALIGN_CMD
   ATTRIB_CMD
@@ -2719,6 +3065,7 @@ macro RULE_procarg(i)             ;return(4600 + i); end
   MULTIPLICITY_CMD
   NAMEOF_CMD
   NAMES_CMD
+  NEWSTRUCT_CMD
   NCALGEBRA_CMD
   NC_ALGEBRA_CMD
   NEWTONPOLY_CMD
@@ -2804,13 +3151,13 @@ end
 
 
 function astprint(a::Int, indent::Int)
-    print(" "^indent);
-    println(a);
+    print(" "^indent)
+    println(a)
 end
 
 function astprint(a::String, indent::Int)
-    print(" "^indent);
-    println(a);
+    print(" "^indent)
+    println(a)
 end
 
 function astprint(a::AstNode, indent::Int)
@@ -2927,6 +3274,9 @@ function convert_extendedid(a::AstNode, env::AstEnv)
         else
             return makeunknown(a.child[1]::String)
         end
+    elseif a.rule == @RULE_extendedid(2)
+        s = make_nocopy(convert_expr(a.child[1], env))
+        return Expr(:call, :rt_backtick, s)
     else
         throw(TranspileError("internal error in convert_extendedid"))
     end
@@ -2946,6 +3296,15 @@ function we_know_splat_is_trivial(a)
 end
 
 
+# is the expression a SName at runtime?
+function is_a_name(a)
+    if isa(a, SName)
+        return true
+    end
+    return (isa(a, Expr) && a.head == :call && !isempty(a.args) && a.args[1] == :rt_backtick)
+end
+
+
 
 # return array of generating non necessarily SingularTypes
 #   useful probably only for passing to procs, where the values will be copied to new locations
@@ -2956,7 +3315,7 @@ function make_tuple_array_nocopy(a::Array{Any})
     for i in 1:length(a)
         if isa(a[i], Expr) && a[i].head == :tuple
             append!(r, a[i].args)   # each of a[i].args should already be copied and splatted
-        elseif isa(a[i], SName)
+        elseif is_a_name(a[i])
             push!(r, Expr(:call, :rt_make, a[i]))
         elseif we_know_splat_is_trivial(a[i])
             push!(r, a[i])
@@ -2969,7 +3328,7 @@ end
 
 # will not generate names!
 function make_nocopy(a)
-    if isa(a, SName)
+    if is_a_name(a)
         return Expr(:call, :rt_make, a)
     else
         return a
@@ -2985,7 +3344,7 @@ function make_tuple_array_copy(a::Array{Any})
     for i in 1:length(a)
         if isa(a[i], Expr) && a[i].head == :tuple
             append!(r, a[i].args)   # each of a[i].args should already be copied and splatted
-        elseif isa(a[i], SName)
+        elseif is_a_name(a[i])
             push!(r, Expr(:call, :rt_copy, Expr(:call, :rt_make, a[i])))
         elseif we_know_splat_is_trivial(a[i])
             push!(r, Expr(:call, :rt_copy, a[i]))
@@ -2998,7 +3357,7 @@ end
 
 # will not generate names!
 function make_copy(a)
-    if isa(a, SName)
+    if is_a_name(a)
         return Expr(:call, :rt_copy, Expr(:call, :rt_make, a))
     else
         return Expr(:call, :rt_copy_allow_tuple, a)
@@ -3043,184 +3402,6 @@ function convert_typestring_tosymbol(s::String)
     else
         return Symbol(newstructprefix * s)
     end
-end
-
-function filter_lineno(ex::Expr)
-   filter!(ex.args) do e
-       isa(e, LineNumberNode) && return false
-       if isa(e, Expr)
-           (e::Expr).head === :line && return false
-           filter_lineno(e::Expr)
-       end
-       return true
-   end
-   return ex
-end
-
-
-function convert_newstruct_decl(newtypename::String, args::String)
-    sp = split(args, ",")
-    sp = [filter!(x->x != "", split(i," ")) for i in sp]
-    newreftype  = Symbol(newstructrefprefix * newtypename)
-    newtype     = Symbol(newstructprefix * newtypename)
-
-    r = Expr(:block)
-
-    # struct definition
-    b = Expr(:block)
-    for i in sp
-        length(i) == 2 || throw(TranspileError("invalid newstruct"))
-        push!(b.args, Expr(:(::), Symbol(i[2]), convert_typestring_tosymbol(String(i[1]))))
-    end
-    push!(r.args, Expr(:struct, true, newreftype, b))
-
-    b = Expr(:block, Expr(:(::), :data, newreftype))
-    push!(r.args, Expr(:struct, false, newtype, b))
-
-    # deepcopy
-    dpcpi = Expr(:(.), :Base, QuoteNode(:deepcopy_internal))
-    idict = Expr(:(::), :dict, :IdDict)
-    c = Expr(:call, newreftype)
-    for i in sp
-        push!(c.args, Expr(:call, :deepcopy, Expr(:(.), :f, QuoteNode(Symbol(i[2])))))
-    end
-    push!(r.args, Expr(:function, Expr(:call, dpcpi, Expr(:(::), :f, newreftype), idict),
-        Expr(:return, c)
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, dpcpi, Expr(:(::), :f, newtype), idict),
-        Expr(:return,
-            Expr(:call, newtype,
-                Expr(:call, :deepcopy,
-                    Expr(:(.), :f, QuoteNode(:data))
-                )
-            )
-        )
-    ))
-
-    # rt_copy
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy, Expr(:(::), :f, newreftype)),
-        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy, Expr(:(::), :f, newtype)),
-        Expr(:return, :f)
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy_allow_tuple, Expr(:(::), :f, newreftype)),
-        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy_allow_tuple, Expr(:(::), :f, newtype)),
-        Expr(:return, :f)
-    ))
-
-    # rt_ref
-    push!(r.args, Expr(:function, Expr(:call, :rt_ref, Expr(:(::), :f, newreftype)),
-        Expr(:return, :f)
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_ref, Expr(:(::), :f, newtype)),
-        Expr(:return, Expr(:(.), :f, QuoteNode(:data)))
-    ))
-
-    # rt_convert2T
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :f, newreftype)),
-        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :f, newtype)),
-        Expr(:return, :f)
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), :f),
-        Expr(:call, :error, "cannot convert to a " * newtypename * " from ", :f)
-    ))
-
-    # rt_cast2T
-    c = Expr(:call, Symbol("rt_cast2"*newtypename))
-    d = Expr(:call, newreftype)
-    for i in sp
-        push!(c.args, Symbol(i[2]))
-        push!(d.args, Expr(:call, Symbol("rt_convert2"*i[1]), Symbol(i[2])))
-    end
-    push!(r.args, Expr(:function, c, Expr(:return, Expr(:call, newtype, d))))
-
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_cast2"*newtypename), Expr(:(...), :f)),
-        Expr(:call, :error, "cannot construct a " * newtypename * " from ", :f)
-    ))
-
-    # rt_defaultconstructor_T
-    d = Expr(:call, newreftype)
-    for i in sp
-        push!(d.args, Expr(:call, Symbol("rt_defaultconstructor_"*i[1])))
-    end
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_defaultconstructor_"*newtypename)),
-        Expr(:return, Expr(:call, newtype, d))
-    ))
-
-    # rt_declare_T
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, :SName)),
-        filter_lineno(quote
-            n = length(rtGlobal.callstack)
-            if n > 1
-                b, i = rt_search_callstack_rindep(a.name)
-                !b || rt_declare_warnerror(true, rtGlobal.local_rindep_vars[i].second, a.name, $(newtype))
-                b, i = rt_search_callstack_rdep(a.name)
-                !b || rt_declare_warnerror(false, rtGlobal.local_rindep_vars[i].second, a.name, $(newtype))
-                push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_int()))
-            else
-                !haskey(rtGlobal.vars, a.name) || rt_declare_warnerror(true, rtGlobal.vars[a.name], a.name, $(newtype))
-                !haskey(rtGlobal.callstack[n].basering.vars, a.name) || rt_declare_warnerror(false, rtGlobal.callstack[n].basering.vars[a.name], a.name, $(newtype))
-                rtGlobal.vars[a.name] = $(Symbol("rt_defaultconstructor_"*newtypename))()
-            end
-        end)
-    ))
-
-    # rt_parameter_T
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_parameter_"*newtypename), Expr(:(::), :a, :SName), :b),
-        filter_lineno(quote
-            push!(rtGlobal.local_rindep_vars, Pair(a.name, $(Symbol("rt_convert2"*newtypename))(b)))
-        end)
-    ))
-
-    # rt_assign  - all errors should be handled by rt_convert2something
-    push!(r.args, Expr(:function, Expr(:call, :rt_assign,
-                                        Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
-                                        :b),
-        Expr(:return, Expr(:call, Symbol("rt_convert2"*newtypename), :b))
-    ))
-
-    # print
-    b = Expr(:block, Expr(:(=), :s, ""))
-    for i in 1:length(sp)
-        push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), Expr(:call, :(^), " ", :indent), "." * sp[i][2] * ":\n")))
-        push!(b.args, Expr(:(*=), :s, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2]))), Expr(:call, :(+), :indent, 3))))
-        if i < length(sp)
-            push!(b.args, Expr(:(*=), :s, "\n"))
-        end
-    end
-    push!(b.args, Expr(:return, :s))
-    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
-                                                Expr(:(::), :f, newreftype),
-                                                Expr(:(::), :indent, :Int)),
-        b
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
-                                                Expr(:(::), :f, newtype),
-                                                Expr(:(::), :indent, :Int)),
-        Expr(:return, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(:data)), :indent))
-    ))
-
-    # rt_typedata
-    push!(r.args, Expr(:function, Expr(:call, :rt_typedata,
-                                        Expr(:(::), :f, Expr(:curly, :Union, newtype, newreftype))),
-        Expr(:return, newtypename)
-    ))
-
-    push!(r.args, :nothing)
-    return r
 end
 
 const system_var_to_string = Dict{Int, String}(
@@ -3332,6 +3513,7 @@ const cmd_to_string = Dict{Int, String}(
     Int(MSTD_CMD)    => "mstd",
     Int(NAMEOF_CMD)    => "nameof",
     Int(NAMES_CMD)    => "names",
+    Int(NEWSTRUCT_CMD)    => "newstruct",
     Int(COLS_CMD)    => "ncols",
     Int(NPARS_CMD)    => "npars",
     Int(RES_CMD)    => "nres",
@@ -3475,8 +3657,12 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
                                            a.rule == @RULE_elemexpr(20) ||
                                            a.rule == @RULE_elemexpr(21)
         t = a.child[1]::Int
-        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
-        return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env))
+        if (t == Int(ERROR_CMD))
+            return Expr(:call, :rtERROR, convert_expr(a.child[2], env), String(env.package) * "::" * env.fxn_name)
+        else
+            haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
+            return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env))
+        end
     elseif a.rule == @RULE_elemexpr(22) || a.rule == @RULE_elemexpr(23) ||
                                            a.rule == @RULE_elemexpr(24) ||
                                            a.rule == @RULE_elemexpr(25)
@@ -3707,7 +3893,10 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
             @assert 0 < b.rule - @RULE_extendedid(0) < 100
             if b.rule == @RULE_extendedid(1)
                 var = b.child[1]::String
-                push!(out.args, Expr(:call, :rtassign, SName(Symbol(var)), right))
+                push!(out.args, Expr(:call, :rtassign, makeunknown(var), right))
+            elseif b.rule == @RULE_extendedid(2)
+                s = make_nocopy(convert_expr(b.child[1], env))
+                push!(out.args, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right))
             else
                 throw(TranspileError("cannot assign to lhs"))
             end
@@ -3728,6 +3917,12 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
         else
             throw(TranspileError("cannot assign to lhs"))
         end
+    elseif left.rule == @RULE_extendedid(1)
+        var = left.child[1]::String
+        push!(out.args, Expr(:call, :rtassign, makeunknown(var), right))
+    elseif left.rule == @RULE_extendedid(2)
+        s = make_nocopy(convert_expr(left.child[1], env))
+        push!(out.args, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right))
     elseif left.rule == @RULE_expr(3)
         push!(out.args, Expr(:call, :rt_setindex, make_nocopy(convert_expr(left.child[1], env)),
                                                   make_nocopy(convert_expr(left.child[2], env)),
@@ -4000,25 +4195,21 @@ end
 
 
 function rt_declare_assign_ring(a::SName, coeff, var, ord)
+    coeff = rt_parse_coeff(coeff)
+    var = rt_parse_var(var)
+    @error_check(length(ord) > 0, "bad variable specification")
+    ord = [rt_parse_ord(a) for a in ord]
+    r = SRing(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
     n = length(rtGlobal.callstack)
     if n > 1
         rt_check_declaration_local(true, a.name, SRing)
-    else
-        rt_check_declaration_global(true, a.name, SRing)
-    end
-    coeff = rt_parse_coeff(coeff)
-    var = rt_parse_var(var)
-    length(ord) > 0 || rt_error("bad variable specification")
-    ord = [rt_parse_ord(a) for a in ord]
-    r = libSingular.createRing(coeff, var, ord)
-    r = SRing(true, r, length(rtGlobal.callstack))
-    if n > 1
         push!(rtGlobal.local_rindep_vars, Pair(a.name, r))
     else
-        rtGlobal.vars[a.name] = r
+        d = rt_check_declaration_global(true, a.name, SRing)
+        d[a.name] = r
     end
-    rtGlobal.callstack[n].basering = r
-    return nothing
+    rtGlobal.callstack[n].current_ring = r
+    return
 end
 
 
@@ -4068,6 +4259,20 @@ function convert_killcmd(a::AstNode, env::AstEnv)
 end
 
 
+function convert_scriptcmd(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_scriptcmd(0) < 100
+    if a.rule == @RULE_scriptcmd(1)
+        t = a.child[1]::Int
+        if t == Int(LIB_CMD)
+            return Expr(:call, :rt_load, true, a.child[2].child[1]::String)
+        else
+            throw(TranspileError("invalid script command"))
+        end
+    else
+        throw(TranspileError("internal error in convert_scriptcmd"))
+    end
+end
+
 function convert_command(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_command(0) < 100
     if a.rule == @RULE_command(1)
@@ -4076,6 +4281,8 @@ function convert_command(a::AstNode, env::AstEnv)
         return convert_killcmd(a.child[1], env)
     elseif a.rule == @RULE_command(6)
         return convert_ringcmd(a.child[1], env)
+    elseif a.rule == @RULE_command(7)
+        return convert_scriptcmd(a.child[1], env)
     elseif a.rule == @RULE_command(9)
         return convert_typecmd(a.child[1], env)
     else
@@ -4085,8 +4292,18 @@ end
 
 
 function prepend_declared_var!(vars::Array{AstNode}, m::AstNode)
-    (m.rule == @RULE_elemexpr(2) && m.child[1].rule == @RULE_extendedid(1)) || throw(TranspileError("declaration expects identifer name"))
+    m.rule == @RULE_extendedid(1) || throw(TranspileError("declaration expects identifer name"))
     pushfirst!(vars, m)
+end
+
+
+function convert_declared_var(v::AstNode, env::AstEnv)
+    if v.rule == @RULE_extendedid(1)
+        return makeunknown(v.child[1]::String)
+    else v.rule == @RULE_extendedid(2)
+        s = make_nocopy(convert_expr(v.child[1], env))
+        return Expr(:call, :rt_backtick, s)
+    end
 end
 
 
@@ -4097,51 +4314,51 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
         @assert 0 < a.rule - @RULE_declare_ip_variable(0) < 100
         if a.rule == @RULE_declare_ip_variable(1) || a.rule == @RULE_declare_ip_variable(2)
             tcode = a.child[1]::Int
-            prepend_declared_var!(vars, a.child[2])
+            pushfirst!(vars, a.child[2])
             r = Expr(:block)
             if tcode == Int(DEF_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_def, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_def, convert_declared_var(v, env)))
                 end
             elseif tcode == Int(INT_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_int, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_int, convert_declared_var(v, env)))
                 end
             elseif tcode == Int(BIGINT_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_bigint, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_bigint, convert_declared_var(v, env)))
                 end
             elseif tcode == Int(STRING_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_string, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_string, convert_declared_var(v, env)))
                 end
             elseif tcode == Int(INTVEC_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_intvec, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_intvec, convert_declared_var(v, env)))
                 end
             elseif tcode == Int(LIST_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_list, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_list, convert_declared_var(v, env)))
                 end
             else
-                throw(TranspileError("internal error in convert_declare_ip_variable 1"))
+                throw(TranspileError("internal error in convert_declare_ip_variable 1|2"))
             end
             return r
         elseif a.rule == @RULE_declare_ip_variable(3)
             tcode = a.child[1]::Int
-            prepend_declared_var!(vars, a.child[2])
+            pushfirst!(vars, a.child[2])
             r = Expr(:block)
             if tcode == Int(NUMBER_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_number, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_number, convert_declared_var(v, env)))
                 end
             elseif tcode == Int(POLY_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_poly, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_poly, convert_declared_var(v, env)))
                 end
             elseif tcode == Int(IDEAL_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_ideal, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_ideal, convert_declared_var(v, env)))
                 end
             else
                 throw(TranspileError("internal error in convert_declare_ip_variable 3"))
@@ -4149,11 +4366,11 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
             return r
         elseif a.rule == @RULE_declare_ip_variable(4)
             tcode = a.child[1]::Int
-            prepend_declared_var!(vars, a.child[2])
+            pushfirst!(vars, a.child[2])
             r = Expr(:block)
             if tcode == Int(IDEAL_CMD)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_ideal, makeunknown(m.child[1].child[1]::String)))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_ideal, convert_declared_var(v, env)))
                 end
             else
                 throw(TranspileError("internal error in convert_declare_ip_variable 4"))
@@ -4161,10 +4378,10 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
             return r
         elseif a.rule == @RULE_declare_ip_variable(99)
             typ = a.child[1]::String
-            prepend_declared_var!(vars, a.child[2])
+            pushfirst!(vars, a.child[2])
             r = Expr(:block)
-            for m in vars
-                push!(r.args, Expr(:call, Symbol("rt_declare_" * typ), makeunknown(m.child[1].child[1]::String)))
+            for v in vars
+                push!(r.args, Expr(:call, Symbol("rt_declare_" * typ), convert_declared_var(v, env)))
             end
             return r
         elseif a.rule == @RULE_declare_ip_variable(5) || a.rule == @RULE_declare_ip_variable(6)
@@ -4174,17 +4391,17 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
             else
                 numrows = numcols = 1 # default matrix size is 1x1
             end
-            prepend_declared_var!(vars, a.child[2])
+            pushfirst!(vars, a.child[2])
             t::AstNode = a.child[1]
             r = Expr(:block)
             if t.rule == @RULE_mat_cmd(2)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_intmat, makeunknown(m.child[1].child[1]::String), numrows, numcols))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_intmat, convert_declared_var(v, env), numrows, numcols))
                     numrows = numcols = 1 # the rest of the matrices are 1x1
                 end
             elseif t.rule == @RULE_mat_cmd(3)
-                for m in vars
-                    push!(r.args, Expr(:call, :rt_declare_bigintmat, makeunknown(m.child[1].child[1]::String), numrows, numcols))
+                for v in vars
+                    push!(r.args, Expr(:call, :rt_declare_bigintmat, convert_declared_var(v, env), numrows, numcols))
                     numrows = numcols = 1 # the rest of the matrices are 1x1
                 end
             else
@@ -4192,13 +4409,13 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
             end
             return r
         elseif a.rule == @RULE_declare_ip_variable(7)
-            prepend_declared_var!(vars, a.child[2])
+            pushfirst!(vars, a.child[2])
             a = a.child[1]
         elseif a.rule == @RULE_declare_ip_variable(8)
-            prepend_declared_var!(vars, a.child[1])
+            pushfirst!(vars, a.child[1])
             r = Expr(:block)
-            for m in vars
-                push!(r.args, Expr(:call, :rt_declare_proc, makeunknown(m.child[1].child[1]::String)))
+            for v in vars
+                push!(r.args, Expr(:call, :rt_declare_proc, convert_declared_var(v, env)))
             end
             return r
         else
@@ -4330,56 +4547,69 @@ end
 function convert_procarg!(arglist::Vector{Symbol}, body::Expr, a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_procarg(0) < 100
     if a.rule == @RULE_procarg(1)
+        # newstructs
         b = a.child[2]
-        if b.rule == @RULE_extendedid(1)
-            s = b.child[1]::String
-            !haskey(env.locals, s) || throw(TranspileError("duplicate argument name"))
-            if a.child[1] == Int(INT_CMD)
-                push!(body.args, Expr(:call, :rt_parameter_int, makeunknown(s), Symbol("#"*s)))
-            elseif a.child[1] == Int(BIGINT_CMD)
-                push!(body.args, Expr(:call, :rt_parameter_bigint, makeunknown(s), Symbol("#"*s)))
-            else
-                throw(TranspileError("unknown argument type"))
-            end
-        else
-            throw(TranspileError("internal error in convert_procarg 1"))
-        end
-    elseif a.rule == @RULE_procarg(2)
+        b.rule == @RULE_extendedid(1) || throw(TranspileError("proc argument must be a name"))
+        t = a.child[1]::String
+        s = b.child[1]::String
+        !haskey(env.locals, s) || throw(TranspileError("duplicate argument name"))
+        env.locals[s] = t
+        push!(body.args, Expr(:call, Symbol("rt_parameter_"*t), makeunknown(s), Symbol("#"*s)))
+        push!(arglist, Symbol("#"*s))
+    elseif @RULE_procarg(2) <= a.rule <= @RULE_procarg(7)
+        # builtin types
         b = a.child[2]
-        if b.rule == @RULE_extendedid(1)
-            s = b.child[1]::String
-            !haskey(env.locals, s) || throw(TranspileError("duplicate argument name"))
-            if a.child[1] == Int(LIST_CMD)
-                push!(body.args, Expr(:call, :rt_parameter_list, makeunknown(s), Symbol("#"*s)))
-            else
-                throw(TranspileError("unknown argument type"))
-            end
+        b.rule == @RULE_extendedid(1) || throw(TranspileError("proc argument must be a name"))
+        ti = a.child[1]::Int
+        s = b.child[1]::String
+        !haskey(env.locals, s) || throw(TranspileError("duplicate argument name"))
+        t = ""
+        if ti == Int(DEF_CMD)
+            t = "def"
+        elseif ti == Int(PROC_CMD)
+            t = "proc"
+        elseif ti == Int(INT_CMD)
+            t = "int"
+        elseif ti == Int(BIGINT_CMD)
+            t = "bigint"
+        elseif ti == Int(STRING_CMD)
+            t = "string"
+        elseif ti == Int(INTVEC_CMD)
+            t = "int"
+        elseif ti == Int(INTMAT_CMD)
+            t = "bigint"
+        elseif ti == Int(BIGINTMAT_CMD)
+            t = "bigintmat"
+        elseif ti == Int(LIST_CMD)
+            t = "list"
+        elseif ti == Int(RING_CMD)
+            t = "ring"
+        elseif ti == Int(NUMBER_CMD)
+            t = "number"
+        elseif ti == Int(POLY_CMD)
+            t = "poly"
+        elseif ti == Int(IDEAL_CMD)
+            t = "ideal"
         else
-            throw(TranspileError("internal error in convert_procarg 2"))
+            throw(TranspileError("internal error in convert_procarg 2-7"))
         end
-    elseif a.rule == @RULE_procarg(3)
-        b = a.child[1]
-        if b.rule == @RULE_extendedid(1)
-            s = b.child[1]::String
-            !haskey(env.locals, s) || throw(TranspileError("duplicate argument name"))
-            push!(body.args, Expr(:call, :rt_parameter_proc, makeunknown(s), Symbol("#"*s)))
-        else
-            throw(TranspileError("internal error in convert_procarg 3"))
-        end
+        env.locals[s] = t
+        push!(body.args, Expr(:call, Symbol("rt_parameter_"*t), makeunknown(s), Symbol("#"*s)))
+        push!(arglist, Symbol("#"*s))
     else
         throw(TranspileError("internal error in convert_procarg"))
     end
-    push!(arglist, Symbol("#"*s))
 end
 
 function convert_proccmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_proccmd(0) < 100
-    if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(2)
+    if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(2) ||
+       a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12)
         s = a.child[1]::String
         internalfunc = procname_to_func(s)
         args = Symbol[]
-        body = Expr(:block, Expr(:call, :rt_enterfunction))
-        newenv = AstEnv(true, Dict{String, Any}())
+        body = Expr(:block, Expr(:call, :rt_enterfunction, QuoteNode(env.package)))
+        newenv = AstEnv(true, Dict{String, Any}(), env.package, s)
         if a.rule == @RULE_proccmd(3)
             convert_procarglist!(args, body, a.child[2], newenv)
             join_blocks!(body, convert_lines(a.child[3], newenv))
@@ -4391,9 +4621,9 @@ function convert_proccmd(a::AstNode, env::AstEnv)
         push!(body.args, Expr(:call, :rt_leavefunction))
         push!(body.args, Expr(:return, :nothing))
         r = Expr(:block)
-        push!(r.args, Expr(:call, :rt_declare_proc, SName(Symbol(s))))
+        push!(r.args, Expr(:call, :rt_declare_proc, makeunknown(s)))
         push!(r.args, Expr(:function, Expr(:call, internalfunc, args...), body))
-        push!(r.args, Expr(:call, :rtassign, SName(Symbol(s)), Expr(:call, :SProc, internalfunc, s)))
+        push!(r.args, Expr(:call, :rtassign, makeunknown(s), Expr(:call, :SProc, internalfunc, s, QuoteNode(env.package))))
         return r
     else
         throw(TranspileError("internal error in convert_proccmd"))
@@ -4521,7 +4751,7 @@ function execute(s::String; debuglevel::Int = 0)
         throw(TranspileError(ast))
     else
 #        println("new strings: ", ast.child[2].child)
-        append!(rtGlobal_NewStructNames, ast.child[2].child)
+#        append!(rtGlobal_NewStructNames, ast.child[2].child)
 #        println("rtGlobal_NewStructNames: ", rtGlobal_NewStructNames)
 
 #        println("singular ast:")
@@ -4547,4 +4777,203 @@ function execute(s::String; debuglevel::Int = 0)
         eval(expr)
         return nothing
     end
+end
+
+
+
+
+##########################################################
+
+
+function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
+    @assert 0 < a.rule - @RULE_proccmd(0) < 100
+    if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(2) ||
+       a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12)
+        static = (a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12))
+        s = a.child[1]::String
+        internalfunc = procname_to_func(s)
+        args = Symbol[]
+        body = Expr(:block, Expr(:call, :rt_enterfunction, QuoteNode(env.package)))
+        newenv = AstEnv(true, Dict{String, Any}(), env.package, s)
+        if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(13)
+            convert_procarglist!(args, body, a.child[2], newenv)
+            join_blocks!(body, convert_lines(a.child[3], newenv))
+        else
+            # empty args
+            join_blocks!(body, convert_lines(a.child[2], newenv))
+        end
+        #procedures return nothing by default
+        push!(body.args, Expr(:call, :rt_leavefunction))
+        push!(body.args, Expr(:return, :nothing))
+
+        jfunction = eval(Expr(:function, Expr(:call, internalfunc, args...), body))
+
+        our_proc_object = SProc(jfunction, s, env.package)
+
+        export_packages = [env.package]
+        if !static && env.export_names
+            push!(export_packages, :Top)
+        end
+        for p in export_packages
+            if haskey(rtGlobal.vars, p)
+                d = rtGlobal.vars[p]
+                if haskey(d, a)
+                    rt_declare_warnerror(false, d[a], a, typ)
+                end
+            else
+                d = Dict{Symbol, Any}()
+                rtGlobal.vars[p] = d
+            end
+            d[Symbol(s)] = our_proc_object
+        end
+    else
+        throw(TranspileError("internal error in convert_proccmd"))
+    end
+end
+
+
+function loadconvert_example_dummy(a::AstNode, env::AstLoadEnv)
+    return
+end
+
+function loadconvert_examplecmd(a::AstNode, env::AstLoadEnv)
+    return
+end
+
+
+function loadconvert_flowctrl(a::AstNode, env::AstLoadEnv)
+    @assert 0 < a.rule - @RULE_flowctrl(0) < 100
+    if a.rule == @RULE_flowctrl(3)
+        loadconvert_example_dummy(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(5)
+        loadconvert_proccmd(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(8)
+        loadconvert_examplecmd(a.child[1], env)
+    else
+        rt_error("error in loadconvert_flowctrl")
+    end
+end
+
+
+function loadconvert_assign(a::AstNode, env::AstLoadEnv)
+    @assert 0 < a.rule - @RULE_assign(0) < 100
+    if a.rule == @RULE_assign(1)
+        # find lhs UNKNOWN_IDEN
+        b = a.child[1]
+        @error_check(b.rule == @RULE_left_value(2), "???")
+        b = b.child[1]
+        @error_check(b.rule == @RULE_exprlist(1), "???")
+        b = b.child[1]
+        @error_check(b.rule == @RULE_expr(2), "???")
+        b = b.child[1]
+        @error_check(b.rule == @RULE_elemexpr(2), "???")
+        b = b.child[1]
+        @error_check(b.rule == @RULE_extendedid(1), "???")
+        b = b.child[1]::String
+        # find rhs stringexpr
+        c = a.child[2]
+        @error_check(c.rule == @RULE_exprlist(1), "???")
+        c = c.child[1]
+        @error_check(c.rule == @RULE_expr(2), "???")
+        c = c.child[1]
+        @error_check(c.rule == @RULE_elemexpr(10), "???")
+        c = c.child[1]
+        @error_check(c.rule == @RULE_stringexpr(1), "???")
+        c = c.child[1]::String
+        println(b, " -> ", c)
+    else
+        rt_error("internal error in loadconvert_assign")
+    end
+end
+
+function loadconvert_scriptcmd(a::AstNode, env::AstLoadEnv)
+    @assert 0 < a.rule - @RULE_scriptcmd(0) < 100
+    if a.rule == @RULE_scriptcmd(1)
+        t = a.child[1]::Int
+        if t == Int(LIB_CMD)
+            rt_load(true, a.child[2].child[1]::String)
+        else
+            rt_error("invalid script command")
+        end
+    else
+        rt_error("internal error in loadconvert_scriptcmd")
+    end
+end
+
+function loadconvert_command(a::AstNode, env::AstLoadEnv)
+    @assert 0 < a.rule - @RULE_command(0) < 100
+    if a.rule == @RULE_command(1)
+        loadconvert_assign(a.child[1], env)
+    elseif a.rule == @RULE_command(7)
+        loadconvert_scriptcmd(a.child[1], env)
+    else
+        rt_error("error in loadconvert_command")
+    end
+end
+
+
+
+function loadconvert_top_pprompt(a::AstNode, env::AstLoadEnv)
+    @assert 0 < a.rule - @RULE_top_pprompt(0) < 100
+    if a.rule == @RULE_top_pprompt(1)
+        loadconvert_flowctrl(a.child[1], env)
+    elseif a.rule == @RULE_top_pprompt(2)
+        loadconvert_command(a.child[1], env)
+    elseif a.rule == @RULE_top_pprompt(5)
+    else
+        rt_error("error in loadconvert_top_pprompt")
+    end
+end
+
+
+function loadconvert_toplines(a::AstNode, env::AstLoadEnv)
+    for i in a.child
+        loadconvert_top_pprompt(i, env)
+    end
+    return
+end
+
+
+function rt_load(export_names::Bool, path::String)
+    libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
+
+    libname = Base.Filesystem.basename(path)
+    libname = Base.Filesystem.splitext(libname)[1]
+    libname = uppercase(libname[1])*lowercase(libname[2:end])
+
+    package = Symbol(libname)
+
+    # return if the library is already loaded, TODO more robust "already loaded" check
+    if haskey(rtGlobal.vars, package) && !isempty(rtGlobal.vars[package])
+        return
+    end
+    # if not, add package
+    rtGlobal.vars[package] = Dict{Symbol, Any}()
+
+    s = read(path, String)
+
+    ast = @eval ccall((:singular_parse, $libpath), Any,
+                    (Cstring, Ptr{Ptr{UInt8}}, UInt),
+                    $s, $rtGlobal_NewStructNames, $(length(rtGlobal_NewStructNames)))
+
+    if isa(ast, String)
+        rt_error("syntax error in load")
+    else
+#        println("library ast:")
+#        astprint(ast.child[1], 0)
+
+        t0 = time()
+        loadenv = AstLoadEnv(export_names, package)
+        loadconvert_toplines(ast.child[1], loadenv)
+        t1 = time()
+
+#        println()
+#        println("------- library loaded in ", trunc(1000*(t1 - t0)), " ms -------")
+#        println()
+    end
+end
+
+rtload(a::SName) = rtload(rt_make(a))
+function rtload(a::SString)
+    rt_load(false, a.string)
 end
