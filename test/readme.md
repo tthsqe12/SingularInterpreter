@@ -24,7 +24,7 @@ recursive calls and int arithmetic
 | fib1(21)        |      305  |      104  |       69  |
 | fib1(24)        |     1243  |      362  |      241  |
 | fib1(27)        |     5284  |     1444  |      945  |
-for loops with bigint arithmetic
+for loops with bigint arithmetic: note: the handling of bigints in julia might need fixing
 | fib2(  1000)    |       30  |      607  |      164  |
 | fib2( 10000)    |       81  |       64  |       24  |
 | fib2( 40000)    |      329  |      330  |      201  |
@@ -35,7 +35,7 @@ for loops with int arithmetic
 | fib2m( 40000)   |      311  |      142  |       47  |
 | fib2m(160000)   |     1219  |      519  |      142  |
 | fib2m(640000)   |     4824  |     2031  |      472  |
-99.99% bigint mul: Julia might use a subpar gmp
+99.99% bigint mul: note: the handling of bigints in julia might need fixing
 | fib3(10^3)      |       16  |      223  |       85  |
 | fib3(10^4)      |        1  |        2  |        2  |
 | fib3(10^5)      |        2  |        1  |        1  |
