@@ -5231,13 +5231,13 @@ function execute(s::String; debuglevel::Int = 0)
         expr = convert_toplines(ast.child[1], env)
         t1 = time()
 
-#        if debuglevel > 0
+        if debuglevel > 0
             println()
             println("---------- transpiled code ----------")
             for i in expr.args; println(i); end;
             println("------- transpiled in ", trunc(1000*(t1 - t0)), " ms -------")
             println()
-#        end
+        end
 
         # these need to be corrected in the case that a previous eval threw
         empty!(rtGlobal.local_rindep_vars)

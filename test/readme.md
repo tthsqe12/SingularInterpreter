@@ -52,6 +52,22 @@ recursively list all permutations of 1, ..., n
 
 More tasks involving lists will be added soon.
 
+To run `julia`:
+
+```
+julia> using SingularInterpreter
+julia> execute(read("/home/schultz/git/SingularInterpreter/test/benchmark.sing", String), debuglevel=1)
+```
+
+
+The locals optimization is not the default yet. To run `julia'`:
+
+```
+julia> using SingularInterpreter
+julia> SingularInterpreter.rtGlobal.optimize_locals = true
+julia> execute(read("/home/schultz/git/SingularInterpreter/test/benchmark.sing", String), debuglevel=1)
+```
+
 ------------------------------------
 `singular` code:
 
