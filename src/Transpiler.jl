@@ -1217,6 +1217,10 @@ function rt_convert2intvec(a)
     return SIntVec(Int[])
 end
 
+function rt_cast2intvec(a...)
+    return rt_convert2intvec(a)
+end
+
 #### intmat
 
 function rt_convert2intmat(a::SIntMat)
@@ -1488,6 +1492,14 @@ function rt_indenting_print(a::Union{_IntMat, _BigIntMat}, indent::Int)
     return s;
 end
 
+function rt_indenting_print(a::SIntVec, indent::Int)
+    return rt_indenting_print(a.vector, indent)
+end
+
+function rt_indenting_print(a::Vector{Int}, indent::Int)
+    return " "^indent * join(map((x) -> string(x), a), ", ")
+end
+
 function rt_indenting_print(a::SList, indent::Int)
     return rt_indenting_print(rt_ref(a), indent)
 end
@@ -1712,6 +1724,11 @@ end
 #### assignment to string
 function rt_assign(a::SString, b)
     return rt_convert2string(b)
+end
+
+#### assignment to intvec
+function rt_assign(a::SIntVec, b)
+    return rt_convert2intvec(b)
 end
 
 #### assignment to intmat
@@ -3638,7 +3655,7 @@ const cmd_to_builtin_type_string = Dict{Int, String}(
     Int(INT_CMD) => "int",
     Int(BIGINT_CMD) => "bigint",
     Int(STRING_CMD) => "string",
-    Int(INTVEC_CMD) => "int",
+    Int(INTVEC_CMD) => "intvec",
     Int(INTMAT_CMD) => "bigint",
     Int(BIGINTMAT_CMD) => "bigintmat",
     Int(LIST_CMD) => "list",
@@ -3749,40 +3766,24 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         return Expr(:call, Symbol("rt_get_" * system_var_to_string[t]))
     elseif a.rule == @RULE_elemexpr(10)
         return convert_stringexpr(a.child[1], env)
-    elseif a.rule == @RULE_elemexpr(12)
-        b = convert_expr(a.child[2], env)
-        t = a.child[1]::Int
-        if t == Int(INT_CMD)
-            return Expr(:call, :rt_cast2int, make_nocopy(b))
-        elseif t == Int(BIGINT_CMD)
-            return Expr(:call, :rt_cast2bigint, make_nocopy(b))
-        else
-            throw(TranspileError("internal error in convert_elemexpr 12"))
-        end
-    elseif a.rule == @RULE_elemexpr(13)
-        t = a.child[1]::Int
-        if t == Int(LIST_CMD)
+    elseif @RULE_elemexpr(11) <= a.rule && a.rule <= @RULE_elemexpr(17)
+        # construction of a builtin type T via T(...)
+        haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in convert_elemexpr 11-17"))
+        t = cmd_to_builtin_type_string[a.child[1]::Int]
+        if a.rule == @RULE_elemexpr(14) || a.rule == @RULE_elemexpr(17)
+            return Expr(:call, Symbol("rt_cast2"*t))
+        elseif a.rule == @RULE_elemexpr(13) || a.rule == @RULE_elemexpr(16)
             b = convert_exprlist(a.child[2], env)::Array{Any}
-            return Expr(:call, :rt_cast2list, make_tuple_array_nocopy(b)...)
-        elseif t == Int(STRING_CMD)
-            b = convert_exprlist(a.child[2], env)::Array{Any}
-            return Expr(:call, :rt_cast2string, make_tuple_array_nocopy(b)...)
+            return Expr(:call, Symbol("rt_cast2"*t), make_tuple_array_nocopy(b)...)
         else
-            throw(TranspileError("internal error in convert_elemexpr 13"))
-        end
-    elseif a.rule == @RULE_elemexpr(16)
-        t = a.child[1]::Int
-        if t == Int(IDEAL_CMD)
-            b = convert_exprlist(a.child[2], env)::Array{Any}
-            return Expr(:call, :rt_cast2ideal, make_tuple_array_nocopy(b)...)
-        else
-            throw(TranspileError("internal error in convert_elemexpr 13"))
+            b = convert_expr(a.child[2], env)
+            return Expr(:call, Symbol("rt_cast2"*t), make_nocopy(b))
         end
     elseif a.rule == @RULE_elemexpr(18) || a.rule == @RULE_elemexpr(19) ||
                                            a.rule == @RULE_elemexpr(20) ||
                                            a.rule == @RULE_elemexpr(21)
         t = a.child[1]::Int
-        if (t == Int(ERROR_CMD))
+        if t == Int(ERROR_CMD)
             return Expr(:call, :rtERROR, convert_expr(a.child[2], env), String(env.package) * "::" * env.fxn_name)
         else
             haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
