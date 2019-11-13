@@ -317,6 +317,8 @@ end
 
 # all of the singular types have trivial iterators - will be used because all arguments to functions are automatically splatted
 
+Base.iterate(a::SName) = iterate(a, 0)
+Base.iterate(a::SName, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Nothing) = iterate(a, 0)
 Base.iterate(a::Nothing, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::SProc) = iterate(a, 0)
@@ -2004,10 +2006,10 @@ rt_typedata(::SRing)       = "ring"
 rt_typedata(::SNumber)     = "number"
 rt_typedata(::SPoly)       = "poly"
 rt_typedata(::_Ideal)      = "ideal"
-rt_typedata(a::Tuple{Vararg{Any}}) = String[rt_typeof(i) for i in a]
+rt_typedata(a::Tuple{Vararg{Any}}) = String[rt_typedata(i) for i in a]
 
 rt_typedata_to_singular(a::String) = SString(a)
-rt_typedata_to_singular(a::Array{String}) = Tuple([SString(a) for i in a])
+rt_typedata_to_singular(a::Array{String}) = Tuple([SString(i) for i in a])
 
 rt_typedata_to_string(a::String) = a
 rt_typedata_to_string(a::Array{String}) = join(a, ", ")
@@ -3935,9 +3937,27 @@ function scan_expr(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_expr(4)
         scan_expr(a.child[1], env)
         scan_expr(a.child[2], env)
+    elseif a.rule == @RULE_expr(13)
+        scan_expr(a.child[1], env)
+        scan_expr(a.child[2], env)
     else
         throw(TranspileError("internal error in scan_expr"))
     end
+end
+
+function rt_assume_level_ok(a::Int)
+    # TODO
+    return true
+end
+
+function rt_assume(a::Int, message::String)
+    if a == 0
+        rt_error(message)
+    end
+end
+
+function rt_assume(a, message::String)
+    rt_error("expected int for boolean expression in ASSUME")
 end
 
 function convert_expr(a::AstNode, env::AstEnv)
@@ -3953,6 +3973,9 @@ function convert_expr(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_expr(4)
         return Expr(:call, :rt_getindex, make_nocopy(convert_expr(a.child[1], env)),
                                          make_nocopy(convert_expr(a.child[2], env)))
+    elseif a.rule == @RULE_expr(13)
+        return Expr(:if, Expr(:call, :rt_assume_level_ok, make_nocopy(convert_expr(a.child[1], env))),
+                         Expr(:call, :rt_assume, make_nocopy(convert_expr(a.child[2], env)), "string message for ASSUME failure"))
     else
         throw(TranspileError("internal error in convert_expr"))
     end
@@ -4038,7 +4061,7 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
                     push!(out.args, Expr(:call, :rt_incrementby, makeunknown(var), right))
                 end
             elseif b.rule == @RULE_extendedid(2)
-                @assert is_empty(env.declared_identifiers)
+                @assert isempty(env.declared_identifiers)
                 s = make_nocopy(convert_expr(b.child[1], env))
                 push!(out.args, Expr(:call, :rt_incrementby, Expr(:call, :rt_backtick, s), right))
             else
@@ -4070,7 +4093,7 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
             push!(out.args, Expr(:call, :rt_incrementby, makeunknown(var), right))
         end
     elseif left.rule == @RULE_extendedid(2)
-        @assert is_empty(env.declared_identifiers)
+        @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_expr(left.child[1], env))
         push!(out.args, Expr(:call, :rt_incrementby, Expr(:call, :rt_backtick, s), right))
     elseif left.rule == @RULE_expr(3)
@@ -4143,7 +4166,7 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
                     push!(out.args, Expr(:call, :rtassign, makeunknown(var), right))
                 end
             elseif b.rule == @RULE_extendedid(2)
-                @assert is_empty(env.declared_identifiers)
+                @assert isempty(env.declared_identifiers)
                 s = make_nocopy(convert_expr(b.child[1], env))
                 push!(out.args, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right))
             else
@@ -4179,7 +4202,7 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
             push!(out.args, Expr(:call, :rtassign, makeunknown(var), right))
         end
     elseif left.rule == @RULE_extendedid(2)
-        @assert is_empty(env.declared_identifiers)
+        @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_expr(left.child[1], env))
         push!(out.args, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right))
     elseif left.rule == @RULE_expr(3)
@@ -4296,18 +4319,124 @@ function convert_typecmd(a::AstNode, env::AstEnv)
     return t
 end
 
+######################### ring constructor syntax ############################
+#=
+one syntax for constructing a ring is
+    ring elemexpr = rlist, rlist, ordering
+
+the code output for the two rlists will generated at runtime a ragged array of
+SName objects which will be passed to rt_parse_coeff/rt_parse_var, which are
+then passed to the low level ring constructor.
+
+if the rlist looks like
+
+    (x, y(i), (z(j), `s`(k)(l)))
+
+i, j, k, l must evaluate to Int|SIntVec and s must evaluate to a SString
+
+first the nested expr lists are flattened
+
+[
+ x,
+ y(i),
+ z(j),
+ `s`(k)(l)
+]
+
+Then each of the four elements is either converted to an expression or code
+that will generate a 1D array of SName opbjects.
+
+[
+    SName(:x),
+    rt_name_cross([SName(:x)], i),
+    rt_name_cross([SName(:z)], j),
+    rt_name_cross(rt_name_cross(rt_backtick(s), k), l)
+]
+
+None of this has to be particularly fast because if you are constructing a ring
+like this, your code is probably already screwed anyways.
+
+=#
+
+
+function rt_name_cross(a::Vector{SName}, i::Int)
+    r = SName[]
+    for b in a
+        push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
+    end
+    return r
+end
+
+function rt_name_cross(a::Vector{SName}, v::Vector{Int})
+    r = SName[]
+    for b in a  # i loop is on the inside
+        for i in v
+            push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
+        end
+    end
+    return r
+end
+
+function rt_name_cross(a::Vector{SName}, v::SIntVec)
+    return rt_name_cross(a, v.vector)
+end
+
+function convert_rlist_expr_head(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_elemexpr(0) < 100
+    if a.rule == @RULE_elemexpr(2)
+        b = a.child[1]
+        if b.rule == @RULE_extendedid(1)
+            return Expr(:vect, makeunknown(b.child[1]::String))
+        elseif b.rule == @RULE_extendedid(2)
+            @assert isempty(env.declared_identifiers)
+            s = make_nocopy(convert_expr(b.child[1], env))
+            return Expr(:vect, Expr(:call, :rt_backtick, s))
+        else
+            throw(TranspileError("bad ring list construction"))
+        end
+    elseif a.rule == @RULE_elemexpr(6)
+        head = a.child[1]::AstNode
+        arg = a.child[2]::AstNode
+        length(arg.child) == 1 || throw(TranspileError("bad ring list construction"))
+        arg = arg.child[1]
+        return Expr(:call, :rt_name_cross, convert_rlist_expr_head(head, env),
+                                           make_nocopy(convert_expr(arg, env)))
+    else
+        throw(TranspileError("bad ring list construction"))
+    end
+end
 
 function push_rlist_expr!(r::Expr, a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_expr(0) < 100
-    if a.rule == @RULE_expr(2) && a.child[1].rule == @RULE_elemexpr(2) &&
-                        a.child[1].child[1].rule == @RULE_extendedid(1)
-        push!(r.args, makeunknown(a.child[1].child[1].child[1]::String))
-    elseif a.rule == @RULE_expr(2) && a.child[1].rule == @RULE_elemexpr(37)
-        for b in a.child[1].child
-            push_rlist_expr!(r, b, env)
+    if a.rule == @RULE_expr(2)
+        b = a.child[1]
+        if b.rule == @RULE_elemexpr(37)
+            for c in b.child[1].child
+                push_rlist_expr!(r, c, env)
+            end
+            return
+        elseif b.rule == @RULE_elemexpr(2)
+            b = b.child[1]
+            if b.rule == @RULE_extendedid(1)
+                push!(r.args, makeunknown(b.child[1]::String))
+                return
+            elseif b.rule == @RULE_extendedid(2)
+                @assert isempty(env.declared_identifiers)
+                s = make_nocopy(convert_expr(b.child[1], env))
+                push!(r.args, Expr(:call, :rt_backtick, s))
+                return
+            else
+                throw(TranspileError("bad ring list construction"))
+            end
+        elseif b.rule == @RULE_elemexpr(6)
+            push!(r.args, convert_rlist_expr_head(b, env))
+            return
+        else
+            push!(r.args, make_copy(convert_elemexpr(b, env)))
+            return
         end
     else
-        push!(r.args, convert_expr(a, env))
+        throw(TranspileError("bad ring list construction"))
     end
 end
 
@@ -4365,9 +4494,12 @@ function make_ordering(a::AstNode, env::AstEnv)
 end
 
 
+# make an array of String|Int to pass to libSingular.createRing
+# this is just as messy as the singular coefficient specification :(
 function rt_parse_coeff(coeff)
+    coeff = collect(Iterators.flatten(coeff))
+    @error_check(!isempty(coeff), "empty coefficient specification")
     r = Any[]
-    length(coeff) > 0 || rt_error("bad coefficient specification")
     a = coeff[1]
     if isa(a, SName)
         if a.name == :real || a.name == :complex
@@ -4396,9 +4528,11 @@ function rt_parse_coeff(coeff)
     return r
 end
 
+# make an array of String to pass to libSingular.createRing
 function rt_parse_var(var)
+    var = collect(Iterators.flatten(var))
+    @error_check(!isempty(var), "empty variable specification")
     r = String[]
-    length(var) > 0 || rt_error("bad variable specification")
     for a in var
         if isa(a, SName)
             push!(r, String(a.name))
@@ -4642,7 +4776,7 @@ function convert_declared_var(v::AstNode, typ::String, env::AstEnv, extra_args..
             return Expr(:call, Symbol("rt_declare_"*typ), makeunknown(s), extra_args...)
         end
     else v.rule == @RULE_extendedid(2)
-        @assert is_empty(env.declared_identifiers)
+        @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_expr(v.child[1], env))
         return Expr(:call, Symbol("rt_declare_"*typ), Expr(:call, :rt_backtick, s), extra_args...)
     end
@@ -4791,14 +4925,14 @@ end
 function convert_ifcmd(a::AstNode, env::AstEnv) #perfect
     @assert 0 < a.rule - @RULE_ifcmd(0) < 100
     if a.rule == @RULE_ifcmd(1)
-        test = convert_expr(a.child[1], env)
+        test = make_nocopy(convert_expr(a.child[1], env))
         body = convert_lines(a.child[2], env)
         return Expr(:if, Expr(:call, :rt_asbool, test), body)
     elseif a.rule == @RULE_ifcmd(2)
-        # if the "else" were correctly paired with an "if", if should have been handled by find_if_else
+        # if the "else" were correctly paired with an "if", it should have been handled by find_if_else
         throw(TranspileError("else without if"))
     elseif a.rule == @RULE_ifcmd(3)
-        test = convert_expr(a.child[1], env)
+        test = make_nocopy(convert_expr(a.child[1], env))
         return Expr(:if, Expr(:call, :rt_asbool, test), Expr(:break))
     elseif a.rule == @RULE_ifcmd(4)
         return Expr(:break)
@@ -4823,7 +4957,7 @@ end
 function convert_whilecmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_whilecmd(0) < 100
     if a.rule == @RULE_whilecmd(1)
-        test = convert_expr(a.child[1], env)
+        test = make_nocopy(convert_expr(a.child[1], env))
         return Expr(:while, Expr(:call, :rt_asbool, test), convert_lines(a.child[2], env))
     else
         throw(TranspileError("internal error in convert_whilecmd"))
@@ -4849,7 +4983,7 @@ function convert_forcmd(a::AstNode, env::AstEnv)
         r = Expr(:block)
         body = Expr(:block)
         init = convert_npprompt(a.child[1], env)
-        test = convert_expr(a.child[2], env)
+        test = make_nocopy(convert_expr(a.child[2], env))
         block_append!(r, init)
         block_append!(body, convert_lines(a.child[4], env))
         block_append!(body, convert_npprompt(a.child[3], env))
@@ -4894,7 +5028,7 @@ function find_if_else(a::AstNode, i::Int, env::AstEnv)
         return false, 0
     end
 
-    return true, Expr(:if, Expr(:call, :rt_asbool, convert_expr(b.child[1], env)),
+    return true, Expr(:if, Expr(:call, :rt_asbool, make_nocopy(convert_expr(b.child[1], env))),
                            convert_lines(b.child[2], env),
                            convert_lines(c.child[1], env))
 end

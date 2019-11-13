@@ -53,6 +53,7 @@ struct token_lookup_entry {
 };
 
 static struct token_lookup_entry token_lookup[] = {
+{"ASSUME",          ASSUME_CMD,         ASSUME_CMD},
 {"alias",           ALIAS_CMD,          PARAMETER},
 {"align",           ALIGN_CMD,          CMD_2},
 {"and",             '&' ,               LOGIC_OP},

@@ -1,0 +1,5 @@
+ring r = 0, (x(intvec(1,3,5))(intvec(2,4,6)), y, z), dp; r;
+list l = list(typeof(x(intvec(1))(intvec(2,4))));
+ASSUME(0, size(l) == 2);
+ASSUME(0, l[1] == "poly");
+ASSUME(0, l[2] == "poly");
