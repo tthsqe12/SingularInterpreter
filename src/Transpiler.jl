@@ -277,7 +277,7 @@ end
 
 const rtInvalidRing = SRing(false, libSingular.rDefault_null_helper(), 1)
 
-const rtGlobal = rtGlobalState(true,
+const rtGlobal = rtGlobalState(false,
                                nothing,
                                time_ns(),
                                1000000000,
@@ -1720,7 +1720,7 @@ function rt_assign(a::_IntMat, b::_IntMat)
 end
 
 function rt_assign(a::_IntMat, b::Tuple{Vararg{Any}})
-    A = _sedit(a)
+    A = rt_edit(a)
     nrows, ncols = size(A)
     row_idx = col_idx = 1
     for i in b
@@ -1747,7 +1747,7 @@ function rt_assign(a::_BigIntMat, b::_BigIntMat)
 end
 
 function rt_assign(a::_BigIntMat, b::Tuple{Vararg{Any}})
-    A = _sedit(a)
+    A = rt_edit(a)
     nrows, ncols = size(A)
     row_idx = col_idx = 1
     for i in b
@@ -1873,24 +1873,40 @@ function rt_setindex(a::SList, i::Int, b)
 end
 
 
+rtintert(a::SName, b::SName) = rtsystem(rt_make(a), rt_make(b))
+rtinsert(a::SName, b) = rtsystem(rt_make(a), b)
+rtinsert(a, b::SName) = rtsystem(a, rt_make(b))
+
 function rtinsert(a::_List, b, i::Int)
     bcopy = rt_copy(b)
-    r = _sedit(a);
+    r = rt_edit(a);
     if i > length(r.data)
         resize!(r.data, i + 1)
         r.data[i + 1] = bcopy
     else
         insert!(r.data, i + 1, bcopy)
     end
-    # TODO: remove nothings on the end?
+    # remove nothings on the end
+    while !isempty(r.data) && r.data[end] == nothing
+        pop!(r.data)
+    end
     return SList(r)
 end
 
 
+
+rtdelete(a::SName, b::SName) = rtdelete(rt_make(a), rt_make(b))
+rtdelete(a::SName, b) = rtdelete(rt_make(a), b)
+rtdelete(a, b::SName) = rtdelete(a, rt_make(b))
+
+
 function rtdelete(a::_List, i::Int)
-    r = _sedit(a);
+    r = rt_edit(a)
     deleteat!(r.data, i)
-    # TODO: remove nothings on the end?
+    # remove nothings on the end
+    while !isempty(r.data) && r.data[end] == nothing
+        pop!(r.data)
+    end
     return SList(r)
 end
 
@@ -1995,16 +2011,16 @@ function rtsize(a::BigInt)
 end
 
 function rtsize(a::_IntVec)
-    return Int(length(rtef(a)))
+    return Int(length(rt_ref(a)))
 end
 
 function rtsize(a::Union{_IntMat, _BigIntMat})
-    nrows, ncols = size(rtef(a))
+    nrows, ncols = size(rt_ref(a))
     return Int(nrows * ncols)
 end
 
 function rtsize(a::_List)
-    return Int(length(rtef(a).data))
+    return Int(length(rt_ref(a).data))
 end
 
 function rtsize(a::SPoly)
@@ -2020,7 +2036,7 @@ rtplus(a::SName, b) = rtplus(rt_make(a), b)
 rtplus(a, b::SName) = rtplus(a, rt_make(b))
 
 function rtplus(a::_List, b::_List)
-    return SList(SListData(vcat(_sedit(a).data, _sedit(b).data)))
+    return SList(SListData(vcat(rt_edit(a).data, rt_edit(b).data)))
 end
 
 
@@ -2818,7 +2834,7 @@ mutable struct AstEnv
     package::Symbol
     fxn_name::String
     at_top::Bool
-    everthing_is_screwed::Bool                  # no local variables may go into local storage
+    everything_is_screwed::Bool                  # no local variables may go into local storage
     rings_are_screwed::Bool                     # no local ring dependent variables may go into local storage
     appeared_identifiers::Dict{String, Int}     # name => some data
     declared_identifiers::Dict{String, String}  # name => type
@@ -3283,7 +3299,7 @@ function scan_extendedid(a::AstNode, env::AstEnv)
             env.appeared_identifiers[a.child[1]::String] = 1
         end        
     elseif a.rule == @RULE_extendedid(2)
-        env.everthing_is_screwed = true
+        env.everything_is_screwed = true
     else
         throw(TranspileError("internal error in scan_extendedid"))
     end
@@ -5137,7 +5153,7 @@ function scan_lines(a::AstNode, env::AstEnv, at_top::Bool)
         scan_pprompt(i, env)
     end
     if at_top
-        if env.everthing_is_screwed
+        if env.everything_is_screwed
             empty!(env.declared_identifiers)
         elseif env.rings_are_screwed
             env.declared_identifiers = filter(x->(!type_is_ring_dependent(last(x))), env.declared_identifiers)
@@ -5206,8 +5222,8 @@ function execute(s::String; debuglevel::Int = 0)
 #        append!(rtGlobal_NewStructNames, ast.child[2].child)
 #        println("rtGlobal_NewStructNames: ", rtGlobal_NewStructNames)
 
-        println("singular ast:")
-        astprint(ast.child[1], 0)
+#        println("singular ast:")
+#        astprint(ast.child[1], 0)
 
         t0 = time()
 

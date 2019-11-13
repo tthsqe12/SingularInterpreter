@@ -1,3 +1,31 @@
+// <"/home/schultz/git/SingularInterpreter/test/benchmark.sing";
+
+proc permute(list N)
+{
+    int i, j, k;
+    list L, L1;
+
+    if (size(N) == 1)
+    {
+        return(list(N));
+    }
+    else
+    {
+        k = 1;
+        for (i = 1; i <= size(N); i++)
+        {
+            L = permute(delete(N,i));
+            for (j = 1; j <= size(L); j++)
+            {
+                L1[k] = L[j] + list(N[i]);
+                k = k + 1;
+            }
+        }
+    }
+    return(L1);
+};
+
+
 proc fib1(int n)
 {
     if (n <= 1)
@@ -51,6 +79,7 @@ proc fib3(int n)
 
 int time;
 bigint a, b;
+list l;
 system("--ticks-per-sec", 1000);
 time = rtimer; a    = fib1(12);         "fib1(12): " + string(rtimer - time);
 time = rtimer; a    = fib1(15);         "fib1(15): " + string(rtimer - time);
@@ -72,3 +101,10 @@ time = rtimer; a, b = fib3(10^4);       "fib3(10^4): " + string(rtimer - time);
 time = rtimer; a, b = fib3(10^5);       "fib3(10^5): " + string(rtimer - time);
 time = rtimer; a, b = fib3(10^6);       "fib3(10^6): " + string(rtimer - time);
 time = rtimer; a, b = fib3(10^7);       "fib3(10^7): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3));             "permute(3): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4));           "permute(4): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5));         "permute(5): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6));       "permute(6): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6,7));     "permute(7): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6,7,8));   "permute(8): " + string(rtimer - time);
+

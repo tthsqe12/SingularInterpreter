@@ -1,45 +1,50 @@
-#benchmarks
+# benchmarks
 
-```
-singular: interpreter written in c
-julia:    interpreter written in julia that stores every variable in a lookup table
-julia':   interpreter written in julia with local variables optimized where possible
-```
+`singular`: interpreter written in c
+`julia`:  interpreter written in julia that stores every variable in a lookup table
+`julia'`: interpreter written in julia with local variables optimized where possible
 
 The difference between `julia` and `julia'` can be seen in the output code below.
+Peephole optimizations could be applied to `julia'` to make an even better `julia''`,
+but for now the benefit of having local variables as real local variables is clear.
+The code emitted by `julia` is what you get when the transpiler is not able to prove
+the correctness of moving singular local variables to julia local variables,
+which will probably be the case for most variables in most code.
+
 
 ```
-| task            | singular  | julia     | julia'    |
-| --------------- | --------- | --------- | --------- |
+| task            | singular  |    julia  |   julia'  |
+recursive calls and int arithmetic                  |
 | fib1(12)        |        9  |      506  |      374  |
 | fib1(15)        |       18  |        5  |        3  |
 | fib1(18)        |       77  |       20  |       13  |
 | fib1(21)        |      305  |      104  |       69  |
 | fib1(24)        |     1243  |      362  |      241  |
 | fib1(27)        |     5284  |     1444  |      945  |
+for loops with bigint arithmetic                    |
 | fib2(  1000)    |       30  |      607  |      164  |
 | fib2( 10000)    |       81  |       64  |       24  |
 | fib2( 40000)    |      329  |      330  |      201  |
 | fib2(160000)    |     1528  |     1360  |      882  |
+for loops with int arithmetic
 | fib2m(  1000)   |        8  |      197  |       87  |
 | fib2m( 10000)   |       80  |       39  |        8  |
 | fib2m( 40000)   |      311  |      142  |       47  |
 | fib2m(160000)   |     1219  |      519  |      142  |
 | fib2m(640000)   |     4824  |     2031  |      472  |
+99.99% bigint mul. julia probably uses a subpar gmp
 | fib3(10^3)      |       16  |      223  |       85  |
 | fib3(10^4)      |        1  |        2  |        2  |
 | fib3(10^5)      |        2  |        1  |        1  |
 | fib3(10^6)      |       15  |       15  |       13  |
 | fib3(10^7)      |      147  |      204  |      203  |
-```
-
-The tasks are
-
-```
-fib1: recursive calls and int arithmetic
-fib2: for loops with bigint arithmetic
-fib2m: for loops with int arithmetic
-fib3: not much is tested since everything is in the bigint arithmetic
+recursively list all permutations of 1, ..., n
+| permute(3)      |        1  |      697  |      542  |
+| permute(4)      |        2  |       39  |       40  |
+| permute(5)      |       14  |       44  |       44  |
+| permute(6)      |       92  |       84  |       67  |
+| permute(7)      |      674  |      328  |      181  |
+| permute(8)      |     5916  |     2870  |     1386  |
 ```
 
 More tasks involving lists will be added soon.
@@ -48,6 +53,31 @@ More tasks involving lists will be added soon.
 `singular` code:
 
 ```
+proc permute(list N)
+{
+    int i, j, k;
+    list L, L1;
+
+    if (size(N) == 1)
+    {
+        return(list(N));
+    }
+    else
+    {
+        k = 1;
+        for (i = 1; i <= size(N); i++)
+        {
+            L = permute(delete(N,i));
+            for (j = 1; j <= size(L); j++)
+            {
+                L1[k] = L[j] + list(N[i]);
+                k = k + 1;
+            }
+        }
+    }
+    return(L1);
+};
+
 proc fib1(int n)
 {
     if (n <= 1)
@@ -128,19 +158,52 @@ time = rtimer; a, b = fib3(10^7);       "fib3(10^7): " + string(rtimer - time);
 -----------------------------
 `julia` code
 ```
----------- transpiled code ----------
+rt_declare_proc(SingularInterpreter.SName(:permute))
+function ##permute(#N)
+    rt_enterfunction(:Top)
+    rt_parameter_list(SingularInterpreter.SName(:N), #N)
+    rt_declare_int(SingularInterpreter.SName(:i))
+    rt_declare_int(SingularInterpreter.SName(:j))
+    rt_declare_int(SingularInterpreter.SName(:k))
+    rt_declare_list(SingularInterpreter.SName(:L))
+    rt_declare_list(SingularInterpreter.SName(:L1))
+    if rt_asbool(rtequalequal(rtsize(SingularInterpreter.SName(:N)), 1))
+        ##358 = rt_copy_allow_tuple(rt_cast2list(rt_make(SingularInterpreter.SName(:N))))
+        rt_leavefunction()
+        return ##358
+    else
+        rtassign(SingularInterpreter.SName(:k), rt_copy_allow_tuple(1))
+        rtassign(SingularInterpreter.SName(:i), rt_copy_allow_tuple(1))
+        while rt_asbool(rtlessequal(SingularInterpreter.SName(:i), rtsize(SingularInterpreter.SName(:N))))
+            rtassign(SingularInterpreter.SName(:L), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:permute), rt_copy_allow_tuple(rtdelete(SingularInterpreter.SName(:N), SingularInterpreter.SName(:i)))...)))
+            rtassign(SingularInterpreter.SName(:j), rt_copy_allow_tuple(1))
+            while rt_asbool(rtlessequal(SingularInterpreter.SName(:j), rtsize(SingularInterpreter.SName(:L))))
+                rt_setindex(rt_make(SingularInterpreter.SName(:L1)), rt_make(SingularInterpreter.SName(:k)), rt_copy_allow_tuple(rtplus(rt_getindex(rt_make(SingularInterpreter.SName(:L)), rt_make(SingularInterpreter.SName(:j))), rt_cast2list(rt_copy_allow_tuple(rt_getindex(rt_make(SingularInterpreter.SName(:N)), rt_make(SingularInterpreter.SName(:i))))...))))
+                rtassign(SingularInterpreter.SName(:k), rt_copy_allow_tuple(rtplus(SingularInterpreter.SName(:k), 1)))
+                rt_incrementby(SingularInterpreter.SName(:j), 1)
+            end
+            rt_incrementby(SingularInterpreter.SName(:i), 1)
+        end
+    end
+    ##359 = rt_copy(rt_make(SingularInterpreter.SName(:L1)))
+    rt_leavefunction()
+    return ##359
+    rt_leavefunction()
+    return nothing
+end
+rtassign(SingularInterpreter.SName(:permute), SProc(##permute, "permute", :Top))
 rt_declare_proc(SingularInterpreter.SName(:fib1))
 function ##fib1(#n)
     rt_enterfunction(:Top)
     rt_parameter_int(SingularInterpreter.SName(:n), #n)
     if rt_asbool(rtlessequal(SingularInterpreter.SName(:n), 1))
-        ##358 = rt_copy(rt_make(SingularInterpreter.SName(:n)))
+        ##360 = rt_copy(rt_make(SingularInterpreter.SName(:n)))
         rt_leavefunction()
-        return ##358
+        return ##360
     else
-        ##359 = rt_copy_allow_tuple(rtplus(rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(SingularInterpreter.SName(:n), 1))...), rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(SingularInterpreter.SName(:n), 2))...)))
+        ##361 = rt_copy_allow_tuple(rtplus(rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(SingularInterpreter.SName(:n), 1))...), rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(SingularInterpreter.SName(:n), 2))...)))
         rt_leavefunction()
-        return ##359
+        return ##361
     end
     rt_leavefunction()
     return nothing
@@ -157,15 +220,15 @@ function ##fib2(#n)
     rt_declare_int(SingularInterpreter.SName(:i))
     rtassign(SingularInterpreter.SName(:i), rt_copy(rt_make(SingularInterpreter.SName(:n))))
     while rt_asbool(rtgreater(SingularInterpreter.SName(:i), 0))
-        ##360 = (rt_copy_allow_tuple(rtplus(SingularInterpreter.SName(:b), 0))..., rt_copy_allow_tuple(rtplus(SingularInterpreter.SName(:a), SingularInterpreter.SName(:b)))...)
-        rt_checktuplelength(##360, 2)
-        rtassign(SingularInterpreter.SName(:a), ##360[1])
-        rtassign(SingularInterpreter.SName(:b), ##360[2])
+        ##362 = (rt_copy_allow_tuple(rtplus(SingularInterpreter.SName(:b), 0))..., rt_copy_allow_tuple(rtplus(SingularInterpreter.SName(:a), SingularInterpreter.SName(:b)))...)
+        rt_checktuplelength(##362, 2)
+        rtassign(SingularInterpreter.SName(:a), ##362[1])
+        rtassign(SingularInterpreter.SName(:b), ##362[2])
         rt_incrementby(SingularInterpreter.SName(:i), -1)
     end
-    ##361 = rt_copy(rt_make(SingularInterpreter.SName(:a)))
+    ##363 = rt_copy(rt_make(SingularInterpreter.SName(:a)))
     rt_leavefunction()
-    return ##361
+    return ##363
     rt_leavefunction()
     return nothing
 end
@@ -181,15 +244,15 @@ function ##fib2m(#n)
     rt_declare_int(SingularInterpreter.SName(:i))
     rtassign(SingularInterpreter.SName(:i), rt_copy(rt_make(SingularInterpreter.SName(:n))))
     while rt_asbool(rtgreater(SingularInterpreter.SName(:i), 0))
-        ##362 = (rt_copy_allow_tuple(rtmod(SingularInterpreter.SName(:b), 1000))..., rt_copy_allow_tuple(rtmod(rt_copy_allow_tuple(rtplus(SingularInterpreter.SName(:a), SingularInterpreter.SName(:b))), 1000))...)
-        rt_checktuplelength(##362, 2)
-        rtassign(SingularInterpreter.SName(:a), ##362[1])
-        rtassign(SingularInterpreter.SName(:b), ##362[2])
+        ##364 = (rt_copy_allow_tuple(rtmod(SingularInterpreter.SName(:b), 1000))..., rt_copy_allow_tuple(rtmod(rt_copy_allow_tuple(rtplus(SingularInterpreter.SName(:a), SingularInterpreter.SName(:b))), 1000))...)
+        rt_checktuplelength(##364, 2)
+        rtassign(SingularInterpreter.SName(:a), ##364[1])
+        rtassign(SingularInterpreter.SName(:b), ##364[2])
         rt_incrementby(SingularInterpreter.SName(:i), -1)
     end
-    ##363 = rt_copy(rt_make(SingularInterpreter.SName(:a)))
+    ##365 = rt_copy(rt_make(SingularInterpreter.SName(:a)))
     rt_leavefunction()
-    return ##363
+    return ##365
     rt_leavefunction()
     return nothing
 end
@@ -199,128 +262,87 @@ function ##fib3(#n)
     rt_enterfunction(:Top)
     rt_parameter_int(SingularInterpreter.SName(:n), #n)
     if rt_asbool(rtlessequal(SingularInterpreter.SName(:n), 1))
-        ##364 = (rt_copy_allow_tuple(rt_cast2bigint(rt_make(SingularInterpreter.SName(:n))))..., rt_copy_allow_tuple(rt_cast2bigint(1))...)
+        ##366 = (rt_copy_allow_tuple(rt_cast2bigint(rt_make(SingularInterpreter.SName(:n))))..., rt_copy_allow_tuple(rt_cast2bigint(1))...)
         rt_leavefunction()
-        return ##364
+        return ##366
     end
     rt_declare_bigint(SingularInterpreter.SName(:a))
     rt_declare_bigint(SingularInterpreter.SName(:b))
-    ##365 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtdiv(SingularInterpreter.SName(:n), 2))...))...,)
-    rt_checktuplelength(##365, 2)
-    rtassign(SingularInterpreter.SName(:a), ##365[1])
-    rtassign(SingularInterpreter.SName(:b), ##365[2])
+    ##367 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtdiv(SingularInterpreter.SName(:n), 2))...))...,)
+    rt_checktuplelength(##367, 2)
+    rtassign(SingularInterpreter.SName(:a), ##367[1])
+    rtassign(SingularInterpreter.SName(:b), ##367[2])
     if rt_asbool(rtmod(SingularInterpreter.SName(:n), 2))
-        ##366 = (rt_copy_allow_tuple(rtplus(rttimes(SingularInterpreter.SName(:a), SingularInterpreter.SName(:a)), rttimes(SingularInterpreter.SName(:b), SingularInterpreter.SName(:b))))..., rt_copy_allow_tuple(rttimes(SingularInterpreter.SName(:b), rt_copy_allow_tuple(rtplus(rttimes(2, SingularInterpreter.SName(:a)), SingularInterpreter.SName(:b)))))...)
+        ##368 = (rt_copy_allow_tuple(rtplus(rttimes(SingularInterpreter.SName(:a), SingularInterpreter.SName(:a)), rttimes(SingularInterpreter.SName(:b), SingularInterpreter.SName(:b))))..., rt_copy_allow_tuple(rttimes(SingularInterpreter.SName(:b), rt_copy_allow_tuple(rtplus(rttimes(2, SingularInterpreter.SName(:a)), SingularInterpreter.SName(:b)))))...)
         rt_leavefunction()
-        return ##366
+        return ##368
     else
-        ##367 = (rt_copy_allow_tuple(rttimes(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtminus(rttimes(2, SingularInterpreter.SName(:b)), SingularInterpreter.SName(:a)))))..., rt_copy_allow_tuple(rtplus(rttimes(SingularInterpreter.SName(:a), SingularInterpreter.SName(:a)), rttimes(SingularInterpreter.SName(:b), SingularInterpreter.SName(:b))))...)
+        ##369 = (rt_copy_allow_tuple(rttimes(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtminus(rttimes(2, SingularInterpreter.SName(:b)), SingularInterpreter.SName(:a)))))..., rt_copy_allow_tuple(rtplus(rttimes(SingularInterpreter.SName(:a), SingularInterpreter.SName(:a)), rttimes(SingularInterpreter.SName(:b), SingularInterpreter.SName(:b))))...)
         rt_leavefunction()
-        return ##367
+        return ##369
     end
     rt_leavefunction()
     return nothing
 end
 rtassign(SingularInterpreter.SName(:fib3), SProc(##fib3, "fib3", :Top))
-rt_declare_int(SingularInterpreter.SName(:time))
-rt_declare_bigint(SingularInterpreter.SName(:a))
-rt_declare_bigint(SingularInterpreter.SName(:b))
-rt_printout(rtsystem(rt_copy_allow_tuple(SingularInterpreter.SString("--ticks-per-sec"))..., 1000))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 12)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(12): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 15)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(15): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 18)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(18): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 21)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(21): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 24)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(24): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 27)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(27): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 1000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2(  1000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 10000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2( 10000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 40000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2( 40000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 160000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2(160000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 1000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m(  1000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 10000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m( 10000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 40000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m( 40000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 160000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m(160000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 640000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m(640000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##368 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 3))...))...,)
-rt_checktuplelength(##368, 2)
-rtassign(SingularInterpreter.SName(:a), ##368[1])
-rtassign(SingularInterpreter.SName(:b), ##368[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^3): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##369 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 4))...))...,)
-rt_checktuplelength(##369, 2)
-rtassign(SingularInterpreter.SName(:a), ##369[1])
-rtassign(SingularInterpreter.SName(:b), ##369[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^4): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##370 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 5))...))...,)
-rt_checktuplelength(##370, 2)
-rtassign(SingularInterpreter.SName(:a), ##370[1])
-rtassign(SingularInterpreter.SName(:b), ##370[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^5): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##371 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 6))...))...,)
-rt_checktuplelength(##371, 2)
-rtassign(SingularInterpreter.SName(:a), ##371[1])
-rtassign(SingularInterpreter.SName(:b), ##371[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^6): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##372 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 7))...))...,)
-rt_checktuplelength(##372, 2)
-rtassign(SingularInterpreter.SName(:a), ##372[1])
-rtassign(SingularInterpreter.SName(:b), ##372[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^7): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-------- transpiled in 155.0 ms -------
 ```
 
 -----------------------------
 `julia'` code
 ```
----------- transpiled code ----------
+rt_declare_proc(SingularInterpreter.SName(:permute))
+function ##permute(#N)
+    rt_enterfunction(:Top)
+    local L1::SList
+    local N::SList
+    local j::Int
+    local k::Int
+    local L::SList
+    local i::Int
+    N = rt_convert2list(#N)
+    i = rt_defaultconstructor_int()
+    j = rt_defaultconstructor_int()
+    k = rt_defaultconstructor_int()
+    L = rt_defaultconstructor_list()
+    L1 = rt_defaultconstructor_list()
+    if rt_asbool(rtequalequal(rtsize(rt_ref(N)), 1))
+        ##358 = rt_copy_allow_tuple(rt_cast2list(rt_ref(N)))
+        rt_leavefunction()
+        return ##358
+    else
+        k = rt_assign(k, rt_copy_allow_tuple(1))
+        i = rt_assign(i, rt_copy_allow_tuple(1))
+        while rt_asbool(rtlessequal(rt_ref(i), rtsize(rt_ref(N))))
+            L = rt_assign(L, rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:permute), rt_copy_allow_tuple(rtdelete(rt_ref(N), rt_ref(i)))...)))
+            j = rt_assign(j, rt_copy_allow_tuple(1))
+            while rt_asbool(rtlessequal(rt_ref(j), rtsize(rt_ref(L))))
+                rt_setindex(rt_ref(L1), rt_ref(k), rt_copy_allow_tuple(rtplus(rt_getindex(rt_ref(L), rt_ref(j)), rt_cast2list(rt_copy_allow_tuple(rt_getindex(rt_ref(N), rt_ref(i)))...))))
+                k = rt_assign(k, rt_copy_allow_tuple(rtplus(rt_ref(k), 1)))
+                j = rt_assign(j, rtplus(j, 1))
+            end
+            i = rt_assign(i, rtplus(i, 1))
+        end
+    end
+    ##359 = rt_copy_allow_tuple(rt_ref(L1))
+    rt_leavefunction()
+    return ##359
+    rt_leavefunction()
+    return nothing
+end
+rtassign(SingularInterpreter.SName(:permute), SProc(##permute, "permute", :Top))
 rt_declare_proc(SingularInterpreter.SName(:fib1))
 function ##fib1(#n)
     rt_enterfunction(:Top)
     local n::Int
     n = rt_convert2int(#n)
     if rt_asbool(rtlessequal(rt_ref(n), 1))
-        ##358 = rt_copy_allow_tuple(rt_ref(n))
+        ##360 = rt_copy_allow_tuple(rt_ref(n))
         rt_leavefunction()
-        return ##358
+        return ##360
     else
-        ##359 = rt_copy_allow_tuple(rtplus(rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(rt_ref(n), 1))...), rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(rt_ref(n), 2))...)))
+        ##361 = rt_copy_allow_tuple(rtplus(rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(rt_ref(n), 1))...), rtcall(false, SingularInterpreter.SName(:fib1), rt_copy_allow_tuple(rtminus(rt_ref(n), 2))...)))
         rt_leavefunction()
-        return ##359
+        return ##361
     end
     rt_leavefunction()
     return nothing
@@ -341,15 +363,15 @@ function ##fib2(#n)
     i = rt_defaultconstructor_int()
     i = rt_assign(i, rt_copy_allow_tuple(rt_ref(n)))
     while rt_asbool(rtgreater(rt_ref(i), 0))
-        ##360 = (rt_copy_allow_tuple(rtplus(rt_ref(b), 0))..., rt_copy_allow_tuple(rtplus(rt_ref(a), rt_ref(b)))...)
-        rt_checktuplelength(##360, 2)
-        a = rt_assign(a, ##360[1])
-        b = rt_assign(b, ##360[2])
+        ##362 = (rt_copy_allow_tuple(rtplus(rt_ref(b), 0))..., rt_copy_allow_tuple(rtplus(rt_ref(a), rt_ref(b)))...)
+        rt_checktuplelength(##362, 2)
+        a = rt_assign(a, ##362[1])
+        b = rt_assign(b, ##362[2])
         i = rt_assign(i, rtplus(i, -1))
     end
-    ##361 = rt_copy_allow_tuple(rt_ref(a))
+    ##363 = rt_copy_allow_tuple(rt_ref(a))
     rt_leavefunction()
-    return ##361
+    return ##363
     rt_leavefunction()
     return nothing
 end
@@ -369,15 +391,15 @@ function ##fib2m(#n)
     i = rt_defaultconstructor_int()
     i = rt_assign(i, rt_copy_allow_tuple(rt_ref(n)))
     while rt_asbool(rtgreater(rt_ref(i), 0))
-        ##362 = (rt_copy_allow_tuple(rtmod(rt_ref(b), 1000))..., rt_copy_allow_tuple(rtmod(rt_copy_allow_tuple(rtplus(rt_ref(a), rt_ref(b))), 1000))...)
-        rt_checktuplelength(##362, 2)
-        a = rt_assign(a, ##362[1])
-        b = rt_assign(b, ##362[2])
+        ##364 = (rt_copy_allow_tuple(rtmod(rt_ref(b), 1000))..., rt_copy_allow_tuple(rtmod(rt_copy_allow_tuple(rtplus(rt_ref(a), rt_ref(b))), 1000))...)
+        rt_checktuplelength(##364, 2)
+        a = rt_assign(a, ##364[1])
+        b = rt_assign(b, ##364[2])
         i = rt_assign(i, rtplus(i, -1))
     end
-    ##363 = rt_copy_allow_tuple(rt_ref(a))
+    ##365 = rt_copy_allow_tuple(rt_ref(a))
     rt_leavefunction()
-    return ##363
+    return ##365
     rt_leavefunction()
     return nothing
 end
@@ -390,107 +412,27 @@ function ##fib3(#n)
     local n::Int
     n = rt_convert2int(#n)
     if rt_asbool(rtlessequal(rt_ref(n), 1))
-        ##364 = (rt_copy_allow_tuple(rt_cast2bigint(rt_ref(n)))..., rt_copy_allow_tuple(rt_cast2bigint(1))...)
+        ##366 = (rt_copy_allow_tuple(rt_cast2bigint(rt_ref(n)))..., rt_copy_allow_tuple(rt_cast2bigint(1))...)
         rt_leavefunction()
-        return ##364
+        return ##366
     end
     a = rt_defaultconstructor_bigint()
     b = rt_defaultconstructor_bigint()
-    ##365 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtdiv(rt_ref(n), 2))...))...,)
-    rt_checktuplelength(##365, 2)
-    a = rt_assign(a, ##365[1])
-    b = rt_assign(b, ##365[2])
+    ##367 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtdiv(rt_ref(n), 2))...))...,)
+    rt_checktuplelength(##367, 2)
+    a = rt_assign(a, ##367[1])
+    b = rt_assign(b, ##367[2])
     if rt_asbool(rtmod(rt_ref(n), 2))
-        ##366 = (rt_copy_allow_tuple(rtplus(rttimes(rt_ref(a), rt_ref(a)), rttimes(rt_ref(b), rt_ref(b))))..., rt_copy_allow_tuple(rttimes(rt_ref(b), rt_copy_allow_tuple(rtplus(rttimes(2, rt_ref(a)), rt_ref(b)))))...)
+        ##368 = (rt_copy_allow_tuple(rtplus(rttimes(rt_ref(a), rt_ref(a)), rttimes(rt_ref(b), rt_ref(b))))..., rt_copy_allow_tuple(rttimes(rt_ref(b), rt_copy_allow_tuple(rtplus(rttimes(2, rt_ref(a)), rt_ref(b)))))...)
         rt_leavefunction()
-        return ##366
+        return ##368
     else
-        ##367 = (rt_copy_allow_tuple(rttimes(rt_ref(a), rt_copy_allow_tuple(rtminus(rttimes(2, rt_ref(b)), rt_ref(a)))))..., rt_copy_allow_tuple(rtplus(rttimes(rt_ref(a), rt_ref(a)), rttimes(rt_ref(b), rt_ref(b))))...)
+        ##369 = (rt_copy_allow_tuple(rttimes(rt_ref(a), rt_copy_allow_tuple(rtminus(rttimes(2, rt_ref(b)), rt_ref(a)))))..., rt_copy_allow_tuple(rtplus(rttimes(rt_ref(a), rt_ref(a)), rttimes(rt_ref(b), rt_ref(b))))...)
         rt_leavefunction()
-        return ##367
+        return ##369
     end
     rt_leavefunction()
     return nothing
 end
 rtassign(SingularInterpreter.SName(:fib3), SProc(##fib3, "fib3", :Top))
-rt_declare_int(SingularInterpreter.SName(:time))
-rt_declare_bigint(SingularInterpreter.SName(:a))
-rt_declare_bigint(SingularInterpreter.SName(:b))
-rt_printout(rtsystem(rt_copy_allow_tuple(SingularInterpreter.SString("--ticks-per-sec"))..., 1000))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 12)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(12): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 15)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(15): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 18)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(18): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 21)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(21): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 24)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(24): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib1), 27)))
-rt_printout(rtplus(SingularInterpreter.SString("fib1(27): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 1000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2(  1000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 10000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2( 10000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 40000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2( 40000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2), 160000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2(160000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 1000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m(  1000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 10000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m( 10000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 40000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m( 40000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 160000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m(160000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-rtassign(SingularInterpreter.SName(:a), rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib2m), 640000)))
-rt_printout(rtplus(SingularInterpreter.SString("fib2m(640000): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##368 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 3))...))...,)
-rt_checktuplelength(##368, 2)
-rtassign(SingularInterpreter.SName(:a), ##368[1])
-rtassign(SingularInterpreter.SName(:b), ##368[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^3): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##369 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 4))...))...,)
-rt_checktuplelength(##369, 2)
-rtassign(SingularInterpreter.SName(:a), ##369[1])
-rtassign(SingularInterpreter.SName(:b), ##369[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^4): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##370 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 5))...))...,)
-rt_checktuplelength(##370, 2)
-rtassign(SingularInterpreter.SName(:a), ##370[1])
-rtassign(SingularInterpreter.SName(:b), ##370[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^5): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##371 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 6))...))...,)
-rt_checktuplelength(##371, 2)
-rtassign(SingularInterpreter.SName(:a), ##371[1])
-rtassign(SingularInterpreter.SName(:b), ##371[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^6): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-rtassign(SingularInterpreter.SName(:time), rt_copy_allow_tuple(rt_get_rtimer()))
-##372 = (rt_copy_allow_tuple(rtcall(false, SingularInterpreter.SName(:fib3), rt_copy_allow_tuple(rtpower(10, 7))...))...,)
-rt_checktuplelength(##372, 2)
-rtassign(SingularInterpreter.SName(:a), ##372[1])
-rtassign(SingularInterpreter.SName(:b), ##372[2])
-rt_printout(rtplus(SingularInterpreter.SString("fib3(10^7): "), rt_cast2string(rt_copy_allow_tuple(rtminus(rt_get_rtimer(), SingularInterpreter.SName(:time)))...)))
-------- transpiled in 155.0 ms -------
 ```
