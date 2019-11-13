@@ -1,27 +1,30 @@
 # benchmarks
 
 `singular`: interpreter written in c
+
 `julia`:  interpreter written in julia that stores every variable in a lookup table
+
 `julia'`: interpreter written in julia with local variables optimized where possible
 
 The difference between `julia` and `julia'` can be seen in the output code below.
 Peephole optimizations could be applied to `julia'` to make an even better `julia''`,
-but for now the benefit of having local variables as real local variables is clear.
+but for now the benefit of having local variables as real Julia local variables is clear.
 The code emitted by `julia` is what you get when the transpiler is not able to prove
-the correctness of moving singular local variables to julia local variables,
-which will probably be the case for most variables in most code.
+the correctness of moving Singular local variables to Julia local variables. All of the
+singular code here is well-written enough so that `julia'` can move all local variables,
+but most singular code will not be written this well, hence the performance of `julia` is more indicative.
 
 
 ```
 | task            | singular  |    julia  |   julia'  |
-recursive calls and int arithmetic                  |
+recursive calls and int arithmetic
 | fib1(12)        |        9  |      506  |      374  |
 | fib1(15)        |       18  |        5  |        3  |
 | fib1(18)        |       77  |       20  |       13  |
 | fib1(21)        |      305  |      104  |       69  |
 | fib1(24)        |     1243  |      362  |      241  |
 | fib1(27)        |     5284  |     1444  |      945  |
-for loops with bigint arithmetic                    |
+for loops with bigint arithmetic
 | fib2(  1000)    |       30  |      607  |      164  |
 | fib2( 10000)    |       81  |       64  |       24  |
 | fib2( 40000)    |      329  |      330  |      201  |
@@ -32,7 +35,7 @@ for loops with int arithmetic
 | fib2m( 40000)   |      311  |      142  |       47  |
 | fib2m(160000)   |     1219  |      519  |      142  |
 | fib2m(640000)   |     4824  |     2031  |      472  |
-99.99% bigint mul. julia probably uses a subpar gmp
+99.99% bigint mul: Julia might use a subpar gmp
 | fib3(10^3)      |       16  |      223  |       85  |
 | fib3(10^4)      |        1  |        2  |        2  |
 | fib3(10^5)      |        2  |        1  |        1  |
@@ -152,6 +155,12 @@ time = rtimer; a, b = fib3(10^4);       "fib3(10^4): " + string(rtimer - time);
 time = rtimer; a, b = fib3(10^5);       "fib3(10^5): " + string(rtimer - time);
 time = rtimer; a, b = fib3(10^6);       "fib3(10^6): " + string(rtimer - time);
 time = rtimer; a, b = fib3(10^7);       "fib3(10^7): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3));             "permute(3): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4));           "permute(4): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5));         "permute(5): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6));       "permute(6): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6,7));     "permute(7): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6,7,8));   "permute(8): " + string(rtimer - time);
 ```
 
 
