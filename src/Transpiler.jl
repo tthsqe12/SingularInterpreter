@@ -1211,6 +1211,9 @@ function rt_convert2intvec(a::Tuple{Vararg{Any}})
             push!(v, rt_convert2int(i))
         end
     end
+    if isempty(v)
+        push!(v, 0)
+    end
     return SIntVec(v)
 end
 
@@ -3443,6 +3446,8 @@ const newstructrefprefix = "SNewStructRef_"
 function convert_typestring_tosymbol(s::String)
     if s == "proc"
         return :SProc
+    elseif s == "def"
+        return :Any
     elseif s == "int"
         return :Int
     elseif s == "bigint"
@@ -5049,10 +5054,10 @@ function convert_proc_prologue(body::Expr, env::AstEnv)
     end
 end
 
-function convert_procarglist!(arglist::Vector{Symbol}, body::Expr, a::AstNode, env::AstEnv)
+function convert_procarglist!(arglist::Vector{Any}, body::Expr, a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_procarglist(0) < 100
     for i in a.child
-        convert_procarg!(arglist, body, i, env)
+        convert_procarg!(arglist, body, i, env, i === a.child[end])
     end
 end
 
@@ -5078,33 +5083,39 @@ function scan_procarg(a::AstNode, env::AstEnv)
     end
 end
 
-function convert_procarg!(arglist::Vector{Symbol}, body::Expr, a::AstNode, env::AstEnv)
+function convert_procarg!(arglist::Vector{Any}, body::Expr, a::AstNode, env::AstEnv, at_end::Bool)
     @assert 0 < a.rule - @RULE_procarg(0) < 100
     if a.rule == @RULE_procarg(1)
         b = a.child[2]
-        b.rule == @RULE_extendedid(1) || throw(TranspileError("proc argument must be a name"))
         t = a.child[1]::String
-        s = b.child[1]::String
-        if haskey(env.declared_identifiers, s)
-            push!(body.args, Expr(:(=), Symbol(s), Expr(:call, Symbol("rt_convert2"*t), Symbol("#"*s))))
-        else
-            push!(body.args, Expr(:call, Symbol("rt_parameter_"*t), makeunknown(s), Symbol("#"*s)))
-        end
-        push!(arglist, Symbol("#"*s))
     elseif @RULE_procarg(2) <= a.rule <= @RULE_procarg(7)
         b = a.child[2]
-        b.rule == @RULE_extendedid(1) || throw(TranspileError("proc argument must be a name"))
-        haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in scan_procarg"))
+        haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in convert_procarg"))
         t = cmd_to_builtin_type_string[a.child[1]::Int]
-        s = b.child[1]::String
+    else
+        throw(TranspileError("internal error in convert_procarg"))
+    end
+    b.rule == @RULE_extendedid(1) || throw(TranspileError("proc argument must be a name"))
+    s = b.child[1]::String
+    # arguments are eaten with rt_convert2T, NOT with rt_cast2T
+    if s == "#"
+        at_end || throw(TranspileError("proc argument # only allowed at the end"))
+        # our argument tuple might contain uncopied references
+        # the copy will turn the tuple into a bona fide singular object, which is expected by rt_convert2T
+        inside = Expr(:call, Symbol("rt_convert2"*t), Expr(:call, :map, :rt_copy, Symbol("#"*s)))
+        if haskey(env.declared_identifiers, s)
+            push!(body.args, Expr(:(=), Symbol(s), inside))
+        else
+            push!(body.args, Expr(:call, Symbol("rt_parameter_"*t), makeunknown(s), inside))
+        end
+        push!(arglist, Expr(:(...), Symbol("#"*s)))
+    else
         if haskey(env.declared_identifiers, s)
             push!(body.args, Expr(:(=), Symbol(s), Expr(:call, Symbol("rt_convert2"*t), Symbol("#"*s))))
         else
             push!(body.args, Expr(:call, Symbol("rt_parameter_"*t), makeunknown(s), Symbol("#"*s)))
         end
         push!(arglist, Symbol("#"*s))
-    else
-        throw(TranspileError("internal error in convert_procarg"))
     end
 end
 
@@ -5123,7 +5134,7 @@ function convert_proccmd(a::AstNode, env::AstEnv)
        a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12)
         s = a.child[1]::String
         internalfunc = procname_to_func(s)
-        args = Symbol[]
+        args = Any[]
         body = Expr(:block)
         newenv = AstEnv(true, env.package, s, true, false, false, Dict{String, Int}(), Dict{String, String}())
         if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(13)
@@ -5397,7 +5408,7 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
         static = (a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12))
         s = a.child[1]::String
         internalfunc = procname_to_func(s)
-        args = Symbol[]
+        args = Any[]
         body = Expr(:block)
         newenv = AstEnv(true, env.package, s, true, false, false, Dict{String, Int}(), Dict{String, String}())
         if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(13)
