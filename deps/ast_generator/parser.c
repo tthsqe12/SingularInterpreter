@@ -8,11 +8,6 @@
 jl_value_t * mjl_AstNode_type;
 jl_function_t * mjl_make_fxn, * mjl_append_fxn, * mjl_prepend_fxn, * mjl_func_mydump;
 
-/* global sets used by the lexer */
-stringlist prev_newstruct_names;
-stringlist new_newstruct_names;
-
-
 char * duplicate_string(const char * t)
 {
     size_t n = strlen(t);
@@ -20,70 +15,6 @@ char * duplicate_string(const char * t)
     strcpy(s, t);
     return s;
 }
-
-
-void stringlist_init(stringlist * L)
-{
-    L->first = NULL;
-    L->length = 0;
-}
-
-void stringlist_clear(stringlist * L)
-{
-    size_t i = 0;
-    stringlist_node * n = L->first;
-    while (n != NULL)
-    {
-        i++;
-        stringlist_node * m = n->next;
-        free(n->string);
-        free(n);
-        n = m;
-    }
-    assert(i == L->length);
-    L->first = NULL;
-    L->length = 0;
-}
-
-int stringlist_has(stringlist * L, const char * s)
-{
-    stringlist_node * n = L->first;
-    while (n != NULL)
-    {
-        if (strcmp(s, n->string) == 0)
-            return 1;
-        n = n->next;
-    }
-    return 0;
-}
-
-int stringlist_insert(stringlist * L, const char * s)
-{
-    stringlist_node * n = L->first;
-    if (n == NULL)
-    {
-        assert(L->length == 0);
-        n = (stringlist_node *) malloc(sizeof(stringlist_node));
-        L->first = n;
-    }
-    else
-    {
-        stringlist_node * p;
-        do {
-            p = n;
-            if (strcmp(s, n->string) == 0)
-                return 0;
-            n = n->next;
-        } while (n != NULL);
-        n = (stringlist_node *) malloc(sizeof(stringlist_node));
-        p->next = n;
-    }
-    n->next = NULL;
-    n->string = duplicate_string(s);
-    L->length++;
-    return 1;
-}
-
 
 
 #define TREE_TYPE_NODE   0
@@ -237,23 +168,11 @@ jl_value_t * make_jl_tree(astree * a)
 }
 
 
-jl_value_t * singular_parse(
-    const char * s,
-    const char ** names,
-    size_t length)
+jl_value_t * singular_parse(const char * s)
 {
-    stringlist_init(&prev_newstruct_names);
-    stringlist_init(&new_newstruct_names);
-    for (size_t i = 0; i < length; i++)
-        stringlist_insert(&prev_newstruct_names, names[i]);
-
     jl_value_t * mod = (jl_value_t *) jl_eval_string("SingularInterpreter");
     mjl_make_fxn = jl_get_function((jl_module_t *) mod, "AstNodeMake");
 
-
-/*
-    mjl_make_fxn = jl_get_function(jl_main_module, "AstNodeMake");
-*/
     JL_GC_PUSH1(&mjl_make_fxn);
 
     astree * retv = NULL;
@@ -267,20 +186,10 @@ jl_value_t * singular_parse(
     }
     else
     {
-        astree * strings = astnode_make0(-1);
-        stringlist_node * n = new_newstruct_names.first;
-        while (n != NULL)
-        {
-            strings = astnode_append(strings, aststring_make(duplicate_string(n->string)));
-            n = n->next;
-        }
-        retv = astnode_make2(-1, retv, strings);
         r = make_jl_tree(retv);
         ast_clear(retv);
     }
     JL_GC_POP();
 
-    stringlist_clear(&prev_newstruct_names);
-    stringlist_clear(&new_newstruct_names);
     return r;
 }

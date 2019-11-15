@@ -273,6 +273,7 @@ mutable struct rtGlobalState
     callstack::Array{rtCallStackEntry}
     local_rindep_vars::Array{Pair{Symbol, Any}}
     local_rdep_vars::Array{Pair{Symbol, SingularRingType}}
+    newstruct_casts::Dict{String, Function}   # available newstruct's and their constructors
 end
 
 const rtInvalidRing = SRing(false, libSingular.rDefault_null_helper(), 1)
@@ -284,7 +285,8 @@ const rtGlobal = rtGlobalState(false,
                                Dict(:Top => Dict{Symbol, Any}()),
                                rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
-                               Pair{Symbol, SingularRingType}[])
+                               Pair{Symbol, SingularRingType}[],
+                               Dict{String, Function}())
 
 function rt_basering()
     return rtGlobal.callstack[end].current_ring
@@ -548,8 +550,8 @@ function rtcall(allow_name_ret::Bool, a::SName, v...)
     end
 
     # newstruct constructors
-    if haskey(rtGlobal_NewStructCasts, String(a.name))
-        return rtGlobal_NewStructCasts[String(a.name)](v...)
+    if haskey(rtGlobal.newstruct_casts, String(a.name))
+        return rtGlobal.newstruct_casts[String(a.name)](v...)
     end
 
     # indexed variable constructor
@@ -2650,7 +2652,7 @@ rtnewstruct(a::SName, b) = rtnewstruct(rt_make(a), b)
 rtnewstruct(a, b::SName) = rtnewstruct(a, rt_make(b))
 
 function rtnewstruct(a::SString, b::SString)
-    @error_check(!haskey(rtGlobal_NewStructCasts, a.string), "redefinition of newstruct " * a.string)
+    @error_check(!haskey(rtGlobal.newstruct_casts, a.string), "redefinition of newstruct " * a.string)
     code = convert_newstruct_decl(a.string, b.string)
     eval(code)
     return
@@ -2763,7 +2765,9 @@ function convert_newstruct_decl(newtypename::String, args::String)
         Expr(:call, :error, "cannot construct a " * newtypename * " from ", :f)
     ))
 
-    push!(r.args, Expr(:call, :setindex!, :rtGlobal_NewStructCasts, Symbol("rt_cast2"*newtypename), newtypename))
+    push!(r.args, Expr(:call, :setindex!, Expr(:(.), :rtGlobal, QuoteNode(:newstruct_casts)),
+                                          Symbol("rt_cast2"*newtypename),
+                                          newtypename))
 
     # rt_defaultconstructor_T
     d = Expr(:call, newreftype)
@@ -2867,13 +2871,6 @@ mutable struct AstLoadEnv
     export_names::Bool
     package::Symbol
 end
-
-
-rtGlobal_Proc = Dict{Symbol, SProc}()
-rtGlobal_NewStructNames = String[]
-
-rtGlobal_NewStructCasts = Dict{String, Function}()
-
 
 Base.showerror(io::IO, er::TranspileError) = print(io, "transpilation error: ", er.name)
 
@@ -5368,16 +5365,11 @@ function execute(s::String; debuglevel::Int = 0)
 
     libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
 
-    ast = @eval ccall((:singular_parse, $libpath), Any,
-                    (Cstring, Ptr{Ptr{UInt8}}, UInt),
-                    $s, $rtGlobal_NewStructNames, $(length(rtGlobal_NewStructNames)))
+    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $s)
 
     if isa(ast, String)
         throw(TranspileError(ast))
     else
-#        println("new strings: ", ast.child[2].child)
-#        append!(rtGlobal_NewStructNames, ast.child[2].child)
-#        println("rtGlobal_NewStructNames: ", rtGlobal_NewStructNames)
 
 #        println("singular ast:")
 #        astprint(ast.child[1], 0)
@@ -5385,7 +5377,7 @@ function execute(s::String; debuglevel::Int = 0)
         t0 = time()
 
         env = AstEnv(false, :Top, "", true, true, true, Dict{String, Int}(), Dict{String, String}())
-        expr = convert_toplines(ast.child[1], env)
+        expr = convert_toplines(ast, env)
         t1 = time()
 
         if debuglevel > 0
@@ -5411,9 +5403,7 @@ rtexecute(a::SName) = rtexecute(rt_make(a))
 function rtexecute(s::SString)
 
     libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
-    ast = @eval ccall((:singular_parse, $libpath), Any,
-                    (Cstring, Ptr{Ptr{UInt8}}, UInt),
-                    $(s.string*";"), $rtGlobal_NewStructNames, $(length(rtGlobal_NewStructNames)))
+    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s.string*";"))
 
     if isa(ast, String)
         rt_error("syntax error in execute")
@@ -5421,7 +5411,7 @@ function rtexecute(s::SString)
         n = length(rtGlobal.callstack)
         env = AstEnv(n > 1, rtGlobal.callstack[n].current_package, "execute",
                      true, true, true, Dict{String, Int}(), Dict{String, String}())
-        expr = convert_toplines(ast.child[1], env)
+        expr = convert_toplines(ast, env)
         r = eval(expr)
         return r, n > length(rtGlobal.callstack)
     end
@@ -5605,9 +5595,7 @@ function rt_load(export_names::Bool, path::String)
 
     s = read(path, String)
 
-    ast = @eval ccall((:singular_parse, $libpath), Any,
-                    (Cstring, Ptr{Ptr{UInt8}}, UInt),
-                    $s, $rtGlobal_NewStructNames, $(length(rtGlobal_NewStructNames)))
+    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $s)
 
     if isa(ast, String)
         rt_error("syntax error in load")
@@ -5617,7 +5605,7 @@ function rt_load(export_names::Bool, path::String)
 
         t0 = time()
         loadenv = AstLoadEnv(export_names, package)
-        loadconvert_toplines(ast.child[1], loadenv)
+        loadconvert_toplines(ast, loadenv)
         t1 = time()
 
 #        println()

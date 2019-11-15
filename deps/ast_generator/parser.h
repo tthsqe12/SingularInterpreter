@@ -57,26 +57,7 @@ typedef struct _astree {
     struct _astree ** child;
 } astree;
 
-typedef struct _stringlist_node {
-    char * string;
-    struct _stringlist_node * next;
-} stringlist_node;
-
-typedef struct _stringlist_list {
-    stringlist_node * first;
-    size_t length;
-} stringlist;
-
-
-extern stringlist prev_newstruct_names;
-extern stringlist new_newstruct_names;
-
 char * duplicate_string(const char * t);
-
-void stringlist_init(stringlist * L);
-void stringlist_clear(stringlist * L);
-int stringlist_has(stringlist * L, const char * s);
-int stringlist_insert(stringlist * L, const char * s);
 
 /*
     make an 1d array of type Any
