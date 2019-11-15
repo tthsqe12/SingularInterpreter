@@ -502,6 +502,7 @@ end
 
 function rt_leavefunction()
     n = length(rtGlobal.callstack)
+    @assert n > 1
     i1 = rtGlobal.callstack[n].start_rindep_vars - 1
     i2 = rtGlobal.callstack[n].start_rdep_vars - 1
     @assert length(rtGlobal.local_rindep_vars) >= i1
@@ -2852,11 +2853,11 @@ end
 
 
 mutable struct AstEnv
-    in_proc::Bool
+    ok_to_return::Bool
     package::Symbol
     fxn_name::String
     at_top::Bool
-    everything_is_screwed::Bool                  # no local variables may go into local storage
+    everything_is_screwed::Bool                 # no local variables may go into local storage
     rings_are_screwed::Bool                     # no local ring dependent variables may go into local storage
     appeared_identifiers::Dict{String, Int}     # name => some data
     declared_identifiers::Dict{String, String}  # name => type
@@ -3792,6 +3793,13 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         t = a.child[1]::Int
         if t == Int(ERROR_CMD)
             return Expr(:call, :rtERROR, convert_expr(a.child[2], env), String(env.package) * "::" * env.fxn_name)
+        elseif t == Int(EXECUTE_CMD)
+            t1 = gensym()
+            t2 = gensym()
+            return Expr(:block,
+                        Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, convert_expr(a.child[2], env))),
+                        Expr(:if, t2, Expr(:return, t1))
+                   )
         else
             haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
             return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env))
@@ -4014,6 +4022,7 @@ end
 
 function convert_returncmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_returncmd(0) < 100
+    env.ok_to_return || throw(TranspileError("cannot return from the top level"))
     if a.rule == @RULE_returncmd(1)
         b::Array{Any} = convert_exprlist(a.child[1], env)
         t = gensym()
@@ -5279,6 +5288,8 @@ function convert_top_pprompt(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_top_pprompt(3)
         vars = AstNode[] # unused
         return convert_declare_ip_variable!(vars, a.child[1], env)
+    elseif a.rule == @RULE_top_pprompt(99)
+        return convert_returncmd(a.child[1], env)
     elseif a.rule == @RULE_top_pprompt(5)
         return :nothing
     elseif a.rule == @RULE_top_pprompt(5)
@@ -5395,7 +5406,27 @@ function execute(s::String; debuglevel::Int = 0)
     end
 end
 
+rtexecute(a::SName) = rtexecute(rt_make(a))
 
+function rtexecute(s::SString)
+
+    libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
+    ast = @eval ccall((:singular_parse, $libpath), Any,
+                    (Cstring, Ptr{Ptr{UInt8}}, UInt),
+                    $(s.string*";"), $rtGlobal_NewStructNames, $(length(rtGlobal_NewStructNames)))
+
+    if isa(ast, String)
+        rt_error("syntax error in execute")
+    else
+        n = length(rtGlobal.callstack)
+        env = AstEnv(n > 1, rtGlobal.callstack[n].current_package, "execute",
+                     true, true, true, Dict{String, Int}(), Dict{String, String}())
+        expr = convert_toplines(ast.child[1], env)
+        r = eval(expr)
+        return r, n > length(rtGlobal.callstack)
+    end
+    return nothing, false
+end
 
 
 ##########################################################

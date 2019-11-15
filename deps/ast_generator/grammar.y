@@ -237,6 +237,13 @@ top_pprompt:
                 exitrule("top_pprompt -> declare_ip_variable ';'");
             }
 
+        | returncmd
+            {
+                enterrule("pprompt -> returncmd");
+                $$ = astnode_make1(RULE_top_pprompt(99), $1);
+                exitrule("pprompt -> returncmd");
+            }
+
         | SYS_BREAK
             {
                 enterrule("top_pprompt -> SYS_BREAK");
