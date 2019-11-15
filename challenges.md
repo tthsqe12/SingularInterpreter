@@ -420,10 +420,15 @@ Here is a parse tree following the same grammar.y and ending with `list(a, b);` 
 "fixing" this issue alone drops the number of reduce/reduce conflicts by 40.
 
 
-(18) (executes compilation hope) `execute` Why is execute needed here
-https://github.com/Singular/Sources/blob/spielwiese/Singular/LIB/ellipticcovers.lib#L492
+(18) (executes compilation hope) `execute`
 
-Can it not be written as follows?
+**`execute` and backticks do not need to be agressively removed from libraries**
+
+`execute` is usually used to get around the limited syntax for constructing rings.
+If you are constructing a ring, you are probably changing the current ring.
+If you are changing the current ring, all ring dependent types will be slow anyways.
+
+Other uses of execute are awkward and should be removed. https://github.com/Singular/Sources/blob/spielwiese/Singular/LIB/ellipticcovers.lib#L492
 ```
 proc lsum(list L)
 {
@@ -435,6 +440,56 @@ proc lsum(list L)
     return(s);
 }
 ```
+Both of these functions suffer from an error on `lsum(list(5, bigint(6)))`
+because the variable `s` is bound to the type of the first element of `L`. If
+someone wanted an "improved" version that totals arbitrary types and handles
+the empty list, they would have to write this nonsense.
+```
+proc lsum(list L)
+{
+    int s; // its zero
+    for (int j = 1; j <= size(L); j++)
+    {
+        def t = s + L[j];
+        kill s;
+        def s = t;
+        kill t;
+    }
+    return(s);
+}
+```
+
+This brings us to the main curiosity of the Singular language:
+
+**Interpreter types are not even needed at all.**
+
+Of course the objects themselves have types, but there is no good reason for
+the type restriction on the binding of identifiers. Half of the language deals
+with these functionless restrictions on types, and the other half of the
+language is meant to circumvent the difficulties and limitations caused by the
+first half. Interpreter types do:
+
+* give the lanaguage a superficial resemblance to C.
+
+* govern the operation of pure assignments `a=b` where the new value of `a`
+  depends on both the old value of `a` and the value of `b`. This is a terrible
+  feature anyways because its complexities ripples across the entire
+  implementation of the language, and it makes code harder to understand.
+```
+intmat m[2][3]; // m is [0 0 0; 0 0 0]
+m = 1, 2, 3, 4; // m is [1 2 3; 4 0 0]
+```
+
+* generate errors and warnings when an attempt to assign the wrong type to a
+  variable is made. This is not always desired, hence `kill`.
+
+* give the progammer a hint about what type was roughly intended to be held in
+  an identifier. This is only a hint as the existence of constructs such as
+  `execute`, backticks, `kill`  and the current ring in the language mean that
+  the mere presense of an `int i` or a `list l` in code has no bearing on
+  other `i`'s or other `l`'s in the same code.
+
+
 
 `execute` seems to be broken with respect to `return`.
 ```
