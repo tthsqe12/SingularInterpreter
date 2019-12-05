@@ -115,14 +115,6 @@ function rt_setindex(a::SList, i::Int, b)
 end
 
 
-
-# TODO instead of having stupid stuff like the following 3 methods, compile a list
-# of commands (CMD) that never take a name as an argument and call rt_make in
-# the transpiler in those cases
-rtplus(a::SName, b::SName) = rtplus(rt_make(a), rt_make(b))
-rtplus(a::SName, b) = rtplus(rt_make(a), b)
-rtplus(a, b::SName) = rtplus(a, rt_make(b))
-
 function rtplus(a::_List, b::_List)
     return SList(SListData(vcat(rt_edit(a).data, rt_edit(b).data)))
 end
@@ -501,18 +493,6 @@ function rtplus(a::SString, b::SString)
     return SString(a.string * b.string)
 end
 
-
-rtminus(a::SName) = rtminus(rt_make(a))
-
-rtminus(a::SName, b::SName) = rtminus(rt_make(a), rt_make(b))
-rtminus(a::SName, b) = rtminus(rt_make(a), b)
-rtminus(a, b::SName) = rtminus(a, rt_make(b))
-
-
-rttimes(a::SName, b::SName) = rttimes(rt_make(a), rt_make(b))
-rttimes(a::SName, b) = rttimes(rt_make(a), b)
-rttimes(a, b::SName) = rttimes(a, rt_make(b))
-
 function stimes(a::_BigIntMat, b::_BigIntMat)
     return SBigIntMat(rt_ref(a) * rt_ref(b))
 end
@@ -520,11 +500,6 @@ end
 function stimes(a::Int, b::_BigIntMat)
     return SBigIntMat(a*rt_ref(b))
 end
-
-
-rtpower(a::SName, b::SName) = rtpower(rt_make(a), rt_make(b))
-rtpower(a::SName, b) = rtpower(rt_make(a), b)
-rtpower(a, b::SName) = rtpower(a, rt_make(b))
 
 rtpower(a::Int, b::Int) = a ^ b
 rtpower(a::Int, b::BigInt) = a ^ b
@@ -566,10 +541,6 @@ function rtpower(a::SIdealData, b::Int)
     return SIdeal(SIdealData(r1, a.parent))
 end
 
-
-rtdivide(a::SName, b::SName) = rtdivide(rt_make(a), rt_make(b))
-rtdivide(a::SName, b) = rtdivide(rt_make(a), b)
-rtdivide(a, b::SName) = rtdivide(a, rt_make(b))
 
 function rtdivide(a::Union{Int, BigInt}, b::Union{Int, BigInt})
     R = rt_basering()
@@ -624,29 +595,15 @@ function rtdivide(a::SNumber, b::SNumber)
 end
 
 
-rtdiv(a::SName, b::SName) = rtdiv(rt_make(a), rt_make(b))
-rtdiv(a::SName, b) = rtdiv(rt_make(a), b)
-rtdiv(a, b::SName) = rtdiv(a, rt_make(b))
-
 rtdiv(a::Int, b::Int) = Base.checked_div(a, b)
 rtdiv(a::Int, b::BigInt) = div(a, b)
 rtdiv(a::BigInt, b::Int) = div(a, b)
 rtdiv(a::BigInt, b::BigInt) = div(a, b)
 
-
-rtmod(a::SName, b::SName) = rtmod(rt_make(a), rt_make(b))
-rtmod(a::SName, b) = rtmod(rt_make(a), b)
-rtmod(a, b::SName) = rtmod(a, rt_make(b))
-
 rtmod(a::Int, b::Int) = Base.checked_mod(a, b)
 rtmod(a::Int, b::BigInt) = mod(a, b)
 rtmod(a::BigInt, b::Int) = mod(a, b)
 rtmod(a::BigInt, b::BigInt) = mod(a, b)
-
-
-rtequalequal(a::SName, b::SName) = rtequalequal(rt_make(a), rt_make(b))
-rtequalequal(a::SName, b) = rtequalequal(rt_make(a), b)
-rtequalequal(a, b::SName) = rtequalequal(a, rt_make(b))
 
 rtequalequal(a::Int, b::Int) = Int(a == b)
 rtequalequal(a::Int, b::BigInt) = Int(a == b)
@@ -654,40 +611,20 @@ rtequalequal(a::BigInt, b::Int) = Int(a == b)
 rtequalequal(a::BigInt, b::BigInt) = Int(a == b)
 rtequalequal(a::SString, b::SString) = Int(a == b)
 
-
-rtless(a::SName, b::SName) = rtless(rt_make(a), rt_make(b))
-rtless(a::SName, b) = rtless(rt_make(a), b)
-rtless(a, b::SName) = rtless(a, rt_make(b))
-
 rtless(a::Int, b::Int) = Int(a < b)
 rtless(a::Int, b::BigInt) = Int(a < b)
 rtless(a::BigInt, b::Int) = Int(a < b)
 rtless(a::BigInt, b::BigInt) = Int(a < b)
-
-
-rtlessequal(a::SName, b::SName) = rtlessequal(rt_make(a), rt_make(b))
-rtlessequal(a::SName, b) = rtlessequal(rt_make(a), b)
-rtlessequal(a, b::SName) = rtlessequal(a, rt_make(b))
 
 rtlessequal(a::Int, b::Int) = Int(a <= b)
 rtlessequal(a::Int, b::BigInt) = Int(a <= b)
 rtlessequal(a::BigInt, b::Int) = Int(a <= b)
 rtlessequal(a::BigInt, b::BigInt) = Int(a <= b)
 
-
-rtgreater(a::SName, b::SName) = rtgreater(rt_make(a), rt_make(b))
-rtgreater(a::SName, b) = rtgreater(rt_make(a), b)
-rtgreater(a, b::SName) = rtgreater(a, rt_make(b))
-
 rtgreater(a::Int, b::Int) = Int(a > b)
 rtgreater(a::Int, b::BigInt) = Int(a > b)
 rtgreater(a::BigInt, b::Int) = Int(a > b)
 rtgreater(a::BigInt, b::BigInt) = Int(a > b)
-
-
-rtgreaterequal(a::SName, b::SName) = rtgreaterequal(rt_make(a), rt_make(b))
-rtgreaterequal(a::SName, b) = rtgreaterequal(rt_make(a), b)
-rtgreaterequal(a, b::SName) = rtgreaterequal(a, rt_make(b))
 
 rtgreaterequal(a::Int, b::Int) = Int(a >= b)
 rtgreaterequal(a::Int, b::BigInt) = Int(a >= b)

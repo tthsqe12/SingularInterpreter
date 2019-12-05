@@ -449,38 +449,45 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
             b = convert_expr(a.child[2], env)
             return Expr(:call, Symbol("rt_cast2"*t), make_nocopy(b))
         end
-    elseif a.rule == @RULE_elemexpr(18) || a.rule == @RULE_elemexpr(19) ||
-                                           a.rule == @RULE_elemexpr(20) ||
-                                           a.rule == @RULE_elemexpr(21)
+    elseif @RULE_elemexpr(18) <= a.rule <= @RULE_elemexpr(21)
         t = a.child[1]::Int
+        arg1 = convert_expr(a.child[2], env)
+        if !in(t, cmds_that_accept_names)
+            arg1 = make_nocopy(arg1)
+        end
         if t == Int(ERROR_CMD)
-            return Expr(:call, :rtERROR, convert_expr(a.child[2], env), String(env.package) * "::" * env.fxn_name)
+            return Expr(:call, :rtERROR, arg1, String(env.package) * "::" * env.fxn_name)
         elseif t == Int(EXECUTE_CMD)
             t1 = gensym()
             t2 = gensym()
-            return Expr(:block,
-                        Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, convert_expr(a.child[2], env))),
-                        Expr(:if, t2, Expr(:return, t1))
-                   )
+            return Expr(:block, Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, arg1)),
+                                Expr(:if, t2, Expr(:return, t1))      )
         else
             haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
-            return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env))
+            return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1)
         end
-    elseif a.rule == @RULE_elemexpr(22) || a.rule == @RULE_elemexpr(23) ||
-                                           a.rule == @RULE_elemexpr(24) ||
-                                           a.rule == @RULE_elemexpr(25)
+    elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
         t = a.child[1]::Int
+        arg1 = convert_expr(a.child[2], env)
+        arg2 = convert_expr(a.child[3], env)
+        if !in(t, cmds_that_accept_names)
+            arg1 = make_nocopy(arg1)
+            arg2 = make_nocopy(arg2)
+        end
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 22|23|24|25"))
-        return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env),
-                                                            convert_expr(a.child[3], env))
-    elseif a.rule == @RULE_elemexpr(26) || a.rule == @RULE_elemexpr(27) ||
-                                           a.rule == @RULE_elemexpr(28) ||
-                                           a.rule == @RULE_elemexpr(29)
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2)
+    elseif @RULE_elemexpr(26) <= a.rule == @RULE_elemexpr(29)
         t = a.child[1]::Int
+        arg1 = convert_expr(a.child[2], env)
+        arg2 = convert_expr(a.child[3], env)
+        arg3 = convert_expr(a.child[4], env)
+        if !in(t, cmds_that_accept_names)
+            arg1 = make_nocopy(arg1)
+            arg2 = make_nocopy(arg2)
+            arg3 = make_nocopy(arg3)
+        end
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 26|27|28|29"))
-        return Expr(:call, Symbol("rt" * cmd_to_string[t]), convert_expr(a.child[2], env),
-                                                            convert_expr(a.child[3], env),
-                                                            convert_expr(a.child[4], env))
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2, arg3)
     elseif a.rule == @RULE_elemexpr(30) || a.rule == @RULE_elemexpr(31)
         if a.rule == @RULE_elemexpr(31)
             b = convert_exprlist(a.child[2], env)::Array{Any}
@@ -489,7 +496,20 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         end
         t = a.child[1]::Int
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 30|31"))
-        return Expr(:call, Symbol("rt" * cmd_to_string[t]), make_tuple_array_nocopy(b)...)
+        # like make_tuple_array_nocopy but we have the possibility of emitting names
+        r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
+        for i in 1:length(a)
+            if isa(a[i], Expr) && a[i].head == :tuple
+                append!(r.args, a[i].args)   # each of a[i].args should already be copied and splatted
+            elseif is_a_name(a[i])
+                push!(r.args, in(t, cmds_that_accept_name) ? a[i] : Expr(:call, :rt_make, a[i]))
+            elseif we_know_splat_is_trivial(a[i])
+                push!(r.args, a[i])
+            else
+                push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, a[i])))
+            end
+        end
+        return  r
     elseif a.rule == @RULE_elemexpr(99)
         return convert_newstruct_decl(a.child[1], a.child[2])
     elseif a.rule == @RULE_elemexpr(37)
@@ -556,43 +576,43 @@ function convert_expr_arithmetic(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_expr_arithmetic(2)
         return convert_expr_arithmetic_incdec(a.child[1], -1, env)
     elseif a.rule == @RULE_expr_arithmetic(3)
-        return Expr(:call, :rtplus, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtplus, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(4)
-        return Expr(:call, :rtminus, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtminus, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(5)
-        return Expr(:call, :rttimes, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rttimes, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(6)
-        return Expr(:call, :rtmod, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtmod, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(99)
-        return Expr(:call, :rtdiv, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtdiv, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(7)
-        return Expr(:call, :rtdivide, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtdivide, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(8)
-        return Expr(:call, :rtpower, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtpower, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(9)
-        return Expr(:call, :rtgreaterequal, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtgreaterequal, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(10)
-        return Expr(:call, :rtlessequal, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtlessequal, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(11)
-        return Expr(:call, :rtgreater, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtgreater, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(12)
-        return Expr(:call, :rtless, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtless, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(13)
-        return Expr(:call, :rtand, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtand, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(14)
-        return Expr(:call, :rtor, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtor, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(15)
-        return Expr(:call, :rtnotequal, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtnotequal, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(16)
-        return Expr(:call, :rtequalequal, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtequalequal, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(17)
-        return Expr(:call, :rtdotdot, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtdotdot, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(18)
-        return Expr(:call, :rtcolon, convert_expr(a.child[1], env), convert_expr(a.child[2], env))
+        return Expr(:call, :rtcolon, make_nocopy(convert_expr(a.child[1], env)), make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr_arithmetic(19)
-        return Expr(:call, :rtnot, convert_expr(a.child[1], env))
+        return Expr(:call, :rtnot, make_nocopy(convert_expr(a.child[1], env)))
     elseif a.rule == @RULE_expr_arithmetic(20)
-        return Expr(:call, :rtminus, convert_expr(a.child[1], env))
+        return Expr(:call, :rtminus, make_nocopy(convert_expr(a.child[1], env)))
     else
         throw(TranspileError("internal error in convert_expr_arithmetic "))
     end
@@ -681,7 +701,7 @@ function convert_returncmd(a::AstNode, env::AstEnv)
         end
         push!(r.args, Expr(:call, :rt_leavefunction))
         push!(r.args, Expr(:return, t))
-        return r;
+        return r
     elseif a.rule == @RULE_returncmd(2)
         return Expr(:return, :nothing)
     else
@@ -971,7 +991,7 @@ function convert_typecmd(a::AstNode, env::AstEnv)
             if b isa Expr && b.head == :block && length(b.args) > 0 && b.args[length(b.args)] == :nothing
                 push!(t.args, b)
             else
-                push!(t.args, Expr(:call, :rt_printout, b))
+                push!(t.args, Expr(:call, :rt_printout, make_nocopy(b)))
             end
         end
     else
@@ -1991,10 +2011,10 @@ function scan_toplines(a::AstNode, env::AstEnv)
     end
 end
 
-# return is always a toplevel
+# return is a toplevel or block
 function convert_toplines(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_top_lines(0) < 100
-    r = Expr(:toplevel)
+    r = Expr(env.ok_to_return ? :block : :toplevel)
     i = 1
     while i <= length(a.child)
         have_if_else, b = find_if_else(a, i, env)

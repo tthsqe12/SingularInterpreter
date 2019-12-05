@@ -1297,10 +1297,6 @@ function rt_printout(::Nothing)
     return  # we will probably be printing nothing often - very important to not print anything in this case
 end
 
-function rt_printout(a::SName)
-    return rt_printout(rt_make(a))
-end
-
 function rt_printout(a)
     rtGlobal.last_printed = rt_copy_allow_tuple(a)
     println(rt_indenting_print(a, 0))
@@ -1338,7 +1334,6 @@ rt_typedata_to_singular(a::Array{String}) = Tuple([SString(i) for i in a])
 rt_typedata_to_string(a::String) = a
 rt_typedata_to_string(a::Array{String}) = join(a, ", ")
 
-rttypeof(a::SName) = rttypeof(rt_make(a))
 rttypeof(a) = rt_typedata_to_singular(rt_typedata(a))
 
 rt_typestring(a) = rt_typedata_to_string(rt_typedata(a))
@@ -1541,9 +1536,6 @@ end
 
 
 ########################### newstruct installer ###############################
-
-rtnewstruct(a::SName, b) = rtnewstruct(rt_make(a), b)
-rtnewstruct(a, b::SName) = rtnewstruct(a, rt_make(b))
 
 # newstructs are allowed to be created inside a proc, hence no choice but eval(code)
 function rtnewstruct(a::SString, b::SString)

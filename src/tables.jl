@@ -288,14 +288,14 @@ const system_var_to_string = Dict{Int, String}(
     Int(VOICE)          => "voice"
 )
 
-#const cmds_that_accept_names = Set{Int}(
-#    Int(FETCH_CMD),
-#    Int(IMAP_CMD)
-#)
+const cmds_that_accept_names = Set{Int}([
+    Int(FETCH_CMD),
+    Int(IMAP_CMD)
+])
 
-const cmds_that_screw_everything = Set{Int}(
+const cmds_that_screw_everything = Set{Int}([
     Int(EXECUTE_CMD)
-)
+])
 
 const cmd_to_string = Dict{Int, String}(
     Int(ALIGN_CMD)    => "align",

@@ -1,7 +1,3 @@
-rtintert(a::SName, b::SName) = rtsystem(rt_make(a), rt_make(b))
-rtinsert(a::SName, b) = rtsystem(rt_make(a), b)
-rtinsert(a, b::SName) = rtsystem(a, rt_make(b))
-
 function rtinsert(a::_List, b, i::Int)
     bcopy = rt_copy(b)
     r = rt_edit(a);
@@ -17,12 +13,6 @@ function rtinsert(a::_List, b, i::Int)
     end
     return SList(r)
 end
-
-
-
-rtdelete(a::SName, b::SName) = rtdelete(rt_make(a), rt_make(b))
-rtdelete(a::SName, b) = rtdelete(rt_make(a), b)
-rtdelete(a, b::SName) = rtdelete(a, rt_make(b))
 
 
 function rtdelete(a::_List, i::Int)
@@ -44,11 +34,6 @@ function rt_get_rtimer()
         return -Int(div(rtGlobal.rtimer_base - t, rtGlobal.rtimer_scale))
     end
 end
-
-
-rtsystem(a::SName, b::SName) = rtsystem(rt_make(a), rt_make(b))
-rtsystem(a::SName, b) = rtsystem(rt_make(a), b)
-rtsystem(a, b::SName) = rtsystem(a, rt_make(b))
 
 
 function rtsystem(a::SString, b)
@@ -74,8 +59,6 @@ function rtbasering()
     end
 end
 
-
-rtsize(a::SName) = rtsize(rt_make(a))
 
 function rtsize(a::Int)
     return Int(a != 0)
@@ -104,7 +87,6 @@ end
 
 ################## assertions/errors/messages #################################
 
-
 function rt_warn(s::String)
     @warn s
 end
@@ -114,8 +96,6 @@ function rt_error(s::String)
     error("runtime error")
 end
 
-
-rtERROR(s::SName, leaving::String) = rtERROR(rt_make(s), leaving)
 
 function rtERROR(s::SString, leaving::String)
     @error s.string * "\nleaving " * leaving
@@ -144,7 +124,6 @@ end
 
 ################### call back to the transpiler ###############################
 
-rtload(a::SName) = rtload(rt_make(a))
 function rtload(a::SString)
     rt_load(false, a.string)
 end
@@ -184,12 +163,11 @@ function rt_load(export_names::Bool, path::String)
     end
 end
 
-rtexecute(a::SName) = rtexecute(rt_make(a))
-
 
 # singular's execute does not act like a function and only returns nothing.
 # what happens to return inside of execute? current c singular has error,
 # but we allow it in julia to be a real return from the enclosing function
+# TODO: does rtexecute work well recursively?
 # SINGULAR      JULIA
 # execute(s)    a, b = execute(s); if b; return a; end;
 function rtexecute(s::SString)
