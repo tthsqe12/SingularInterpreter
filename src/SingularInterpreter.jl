@@ -7,6 +7,8 @@ import Base: abs, checkbounds, deepcopy, deepcopy_internal,
              zero, +, -, *, ==, ^, &, |, <<, >>, ~, <=, >=, <, >, //,
              /, !=
 
+import Libdl
+
 export execute
 
 using ReplMaker
@@ -31,6 +33,12 @@ function __init__()
 end
 
 include("LibSingular.jl")
-include("Transpiler.jl")
+
+include("types.jl")
+include("tables.jl")
+include("transpiler.jl")
+include("runtime_basic.jl")
+include("runtime_ops.jl")
+include("runtime_cmds.jl")
 
 end # module
