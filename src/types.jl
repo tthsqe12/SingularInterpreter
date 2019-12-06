@@ -275,9 +275,11 @@ end
 Base.showerror(io::IO, er::TranspileError) = print(io, "transpilation error: ", er.name)
 
 mutable struct AstEnv
-    ok_to_return::Bool
     package::Symbol
     fxn_name::String
+    ok_to_branchto::Bool    # is cmd branchTo allowed?
+    branchto_appeared::Bool # have we seen a branchTo yet?
+    ok_to_return::Bool      # is return allowed?
     at_top::Bool
     everything_is_screwed::Bool                 # no local variables may go into local storage
     rings_are_screwed::Bool                     # no local ring dependent variables may go into local storage

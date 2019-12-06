@@ -361,26 +361,21 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_elemexpr(16)
         scan_exprlist(a.child[2], env)
     elseif a.rule == @RULE_elemexpr(17)
-    elseif a.rule == @RULE_elemexpr(18) || a.rule == @RULE_elemexpr(19) ||
-                                           a.rule == @RULE_elemexpr(20) ||
-                                           a.rule == @RULE_elemexpr(21)
+    elseif @RULE_elemexpr(18) <= a.rule <= @RULE_elemexpr(21)
         env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
         scan_expr(a.child[2], env)
-    elseif a.rule == @RULE_elemexpr(22) || a.rule == @RULE_elemexpr(23) ||
-                                           a.rule == @RULE_elemexpr(24) ||
-                                           a.rule == @RULE_elemexpr(25)
+    elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
         env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
         scan_expr(a.child[2], env)
         scan_expr(a.child[3], env)
-    elseif a.rule == @RULE_elemexpr(26) || a.rule == @RULE_elemexpr(27) ||
-                                           a.rule == @RULE_elemexpr(28) ||
-                                           a.rule == @RULE_elemexpr(29)
+    elseif @RULE_elemexpr(26) <= a.rule == @RULE_elemexpr(29)
         env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
         scan_expr(a.child[2], env)
         scan_expr(a.child[3], env)
         scan_expr(a.child[4], env)
     elseif a.rule == @RULE_elemexpr(30)
     elseif a.rule == @RULE_elemexpr(31)
+        env.branchto_appeared |= (a.child[1]::Int == Int(BRANCHTO_CMD))
         env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
         scan_exprlist(a.child[2], env)
     elseif a.rule == @RULE_elemexpr(37)
@@ -496,20 +491,82 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         end
         t = a.child[1]::Int
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 30|31"))
-        # like make_tuple_array_nocopy but we have the possibility of emitting names
-        r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
-        for i in 1:length(a)
-            if isa(a[i], Expr) && a[i].head == :tuple
-                append!(r.args, a[i].args)   # each of a[i].args should already be copied and splatted
-            elseif is_a_name(a[i])
-                push!(r.args, in(t, cmds_that_accept_name) ? a[i] : Expr(:call, :rt_make, a[i]))
-            elseif we_know_splat_is_trivial(a[i])
-                push!(r.args, a[i])
-            else
-                push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, a[i])))
+        if t == Int(BRANCHTO_CMD)
+            @assert env.branchto_appeared
+            env.ok_to_branchto || throw(TranspileError("branchTo not allowed in this context"))
+            t_array = gensym()
+            t_length = gensym()
+            t_i = gensym()
+            t_ok = gensym()
+            t_return = gensym()
+            r = Expr(:block)
+            push!(r.args, Expr(:(=), t_array, Expr(:tuple, make_tuple_array_copy(b)...)))
+            push!(r.args, Expr(:(=), t_length, Expr(:call, :length, t_array)))
+            # TODO: fix this disgusting mess with some quotation
+            push!(r.args,
+                Expr(:if,
+                    Expr(:call,
+                        :(==),
+                        Expr(:call, :length, Symbol("##")),
+                        Expr(:call, :(-), t_length, 1)
+                    ),
+                    Expr(:block,
+                        Expr(:(=), t_ok, true),
+                        Expr(:for,
+                            Expr(:(=),
+                                t_i,
+                                Expr(:call, :(:), 1, Expr(:call, :(-), t_length, 1))
+                            ),
+                            Expr(:block,
+                                Expr(:if,
+                                    Expr(
+                                        :call,
+                                        :(!=),
+                                        Expr(:call, :rt_typedata, Expr(:ref, Symbol("##"), t_i)),
+                                        Expr(:(.), Expr(:ref, t_array, t_i), QuoteNode(:string))
+                                    ),
+                                    Expr(:(=), t_ok, false)
+                                )
+                            )
+                        ),
+                        Expr(:if,
+                            t_ok,
+                            Expr(:block,
+                                Expr(:(=),
+                                    t_return,
+                                    Expr(:call,
+                                        :rtcall,
+                                        false,
+                                        Expr(:ref, t_array, t_length),
+                                        Expr(:(...), Symbol("##"))
+                                    )
+                                ),
+                                Expr(:call, :rt_leavefunction),
+                                Expr(:return, t_return)
+                            )
+                        )
+                    )
+                )
+            )
+            push!(r.args, nothing)
+            return r
+        else
+            # like make_tuple_array_nocopy but we have the possibility of emitting names
+            r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
+            for i in 1:length(a)
+                if isa(a[i], Expr) && a[i].head == :tuple
+                    append!(r.args, a[i].args)   # each of a[i].args should already be copied and splatted
+                elseif is_a_name(a[i])
+                    push!(r.args, in(t, cmds_that_accept_name) ? a[i] : Expr(:call, :rt_make, a[i]))
+                elseif we_know_splat_is_trivial(a[i])
+                    push!(r.args, a[i])
+                else
+                    push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, a[i])))
+                end
             end
+            return  r
         end
-        return  r
+
     elseif a.rule == @RULE_elemexpr(99)
         return convert_newstruct_decl(a.child[1], a.child[2])
     elseif a.rule == @RULE_elemexpr(37)
@@ -1735,6 +1792,9 @@ function convert_procarglist!(arglist::Vector{Any}, body::Expr, a::AstNode, env:
     for i in a.child
         convert_procarg!(arglist, body, i, env, i === a.child[end])
     end
+    if env.branchto_appeared
+        push!(arglist, Expr(:(...), Symbol("##")))
+    end
 end
 
 function scan_procarg(a::AstNode, env::AstEnv)
@@ -1775,6 +1835,7 @@ function convert_procarg!(arglist::Vector{Any}, body::Expr, a::AstNode, env::Ast
     s = b.child[1]::String
     # arguments are eaten with rt_convert2T, NOT with rt_cast2T
     if s == "#"
+        !env.branchto_appeared || throw(TranspileError("proc argument # not allowed with branchTo"))
         at_end || throw(TranspileError("proc argument # only allowed at the end"))
         # our argument tuple might contain uncopied references
         # the copy will turn the tuple into a bona fide singular object, which is expected by rt_convert2T
@@ -1812,20 +1873,27 @@ function convert_proccmd(a::AstNode, env::AstEnv)
         internalfunc = procname_to_func(s)
         args = Any[]
         body = Expr(:block)
-        newenv = AstEnv(true, env.package, s, true, false, false, Dict{String, Int}(), Dict{String, String}())
+        newenv = AstEnv(env.package, s,
+                        true,   # branchTo is allowed
+                        false,  # have not seen branchTo yet
+                        true,   # return is allowed
+                        true,   # at top
+                        false, false, # nothing is screwed yet
+                        Dict{String, Int}(), Dict{String, String}())
         if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(13)
-            scan_procarglist(a.child[2], newenv)
-            scan_lines(a.child[3], newenv, true)
-            convert_proc_prologue(body, newenv)
-            convert_procarglist!(args, body, a.child[2], newenv)
-            join_blocks!(body, convert_lines(a.child[3], newenv))
+            fxnargs = a.child[2]
+            fxnbody = a.child[3]
         else
             # empty args
-            scan_lines(a.child[2], newenv, true)
-            convert_proc_prologue(body, newenv)
-            join_blocks!(body, convert_lines(a.child[2], newenv))
+            fxnargs = AstNodeMake(@RULE_procarglist(1))
+            fxnbody = a.child[2]
         end
-        #procedures return nothing by default
+        scan_procarglist(fxnargs, newenv)
+        scan_lines(fxnbody, newenv, true)
+        convert_proc_prologue(body, newenv)
+        convert_procarglist!(args, body, fxnargs, newenv)
+        join_blocks!(body, convert_lines(fxnbody, newenv))
+        # procedures return nothing by default
         push!(body.args, Expr(:call, :rt_leavefunction))
         push!(body.args, Expr(:return, :nothing))
         r = Expr(:block)
@@ -1968,16 +2036,12 @@ end
 
 function scan_lines(a::AstNode, env::AstEnv, at_top::Bool)
     @assert 0 < a.rule - @RULE_lines(0) < 100
-    if !rtGlobal.optimize_locals
-        empty!(env.declared_identifiers)
-        return
-    end
     for i in a.child
         env.at_top = at_top
         scan_pprompt(i, env)
     end
     if at_top
-        if env.everything_is_screwed
+        if env.everything_is_screwed || !rtGlobal.optimize_locals
             empty!(env.declared_identifiers)
         elseif env.rings_are_screwed
             env.declared_identifiers = filter(x->(!type_is_ring_dependent(last(x))), env.declared_identifiers)
@@ -2046,7 +2110,13 @@ function execute(s::String; debuglevel::Int = 0)
         t0 = time()
 
         # no need to call scan because everything is by definition screwed at the top level
-        env = AstEnv(false, :Top, "", true, true, true, Dict{String, Int}(), Dict{String, String}())
+        env = AstEnv(:Top, "",
+                     false, # branchTo not allowed
+                     false, # branchTo not seen yet
+                     false, # return not allowed
+                     true,  # at top
+                     true, true,    # everthing is screwed
+                     Dict{String, Int}(), Dict{String, String}())
         expr = convert_toplines(ast, env)
         t1 = time()
 
@@ -2081,21 +2151,27 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
         internalfunc = procname_to_func(s)
         args = Any[]
         body = Expr(:block)
-        newenv = AstEnv(true, env.package, s, true, false, false, Dict{String, Int}(), Dict{String, String}())
+        newenv = AstEnv(env.package, s,
+                        true,   # branchTo is allowed
+                        false,  # have not seen branchTo yet
+                        true,   # return is allowed
+                        true,   # at top
+                        false, false,   # nothing is screwed yet
+                        Dict{String, Int}(), Dict{String, String}())
         if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(13)
-            scan_procarglist(a.child[2], newenv)
-            scan_lines(a.child[3], newenv, true)
-            convert_proc_prologue(body, newenv)
-            convert_procarglist!(args, body, a.child[2], newenv)
-            join_blocks!(body, convert_lines(a.child[3], newenv))
+            fxnargs = a.child[2]
+            fxnbody = a.child[3]
         else
             # empty args
-            scan_lines(a.child[2], newenv, true)
-            convert_proc_prologue(body, newenv)
-            join_blocks!(body, convert_lines(a.child[2], newenv))
+            fxnargs = AstNodeMake(@RULE_procarglist(1))
+            fxnbody = a.child[2]
         end
-
-        #procedures return nothing by default
+        scan_procarglist(fxnargs, newenv)
+        scan_lines(fxnbody, newenv, true)
+        convert_proc_prologue(body, newenv)
+        convert_procarglist!(args, body, fxnargs, newenv)
+        join_blocks!(body, convert_lines(fxnbody, newenv))
+        # procedures return nothing by default
         push!(body.args, Expr(:call, :rt_leavefunction))
         push!(body.args, Expr(:return, :nothing))
 

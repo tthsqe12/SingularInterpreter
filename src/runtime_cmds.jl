@@ -179,8 +179,13 @@ function rtexecute(s::SString)
     else
         # if callstack management changes, this will need significant changes
         n = length(rtGlobal.callstack)
-        env = AstEnv(n > 1, rtGlobal.callstack[n].current_package, "execute",
-                     true, true, true, Dict{String, Int}(), Dict{String, String}())
+        env = AstEnv(rtGlobal.callstack[n].current_package, "execute",
+                     false, # branchTo is not allowed
+                     false, # have not seen branchTo yet
+                     n > 1, # return is allowed <=> we inside a proc
+                     true,  # at top
+                     true, true,    # everything is screwed (and it should also have been screwed in the calling env)
+                     Dict{String, Int}(), Dict{String, String}())
         expr = convert_toplines(ast, env)
         r = eval(expr)
         return r, n > length(rtGlobal.callstack)
