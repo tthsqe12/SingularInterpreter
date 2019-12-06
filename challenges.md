@@ -658,7 +658,7 @@ Test of type 'ANY'. Trying load.
 
 ```
 
-Unfortunately, it is possible to declare local variables with a prefix.
+Unfortunately it is possible to declare local variables with a prefix.
 ```
 > package Test;
 > proc f() {int Test::i = 5; return(Test::i);};
@@ -671,7 +671,35 @@ Unfortunately, it is possible to declare local variables with a prefix.
 However, the only way the Current package can change is through proc calls.
 Therefore, local variables with a prefix are quite useless unless they are exported.
 
+(22) multiple dispatch via `branchTo` https://www.singular.uni-kl.de/Manual/4-0-3/sing_155.htm#SEC194
 
+Unfortunately, none of the restrictions on `branchTo` in the documentation are actually enforced through warnings or errors.
+
+https://github.com/Singular/Sources/blob/spielwiese/Singular/LIB/methods.lib#L178
+
+This seems to be a bug in usage that strictly follows the documentation:
+```
+proc f()
+{
+    return("int")
+}
+
+proc g()
+{
+    branchTo(f(), g1);
+    "oops";
+}
+
+proc g1(int a)
+{
+    "ok";
+}
+```
+Unexpected behaviour:
+```
+> g(10)
+oops
+```
 
 -------------------------------
 
