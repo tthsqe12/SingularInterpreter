@@ -289,6 +289,7 @@ const system_var_to_string = Dict{Int, String}(
 )
 
 const cmds_that_accept_names = Set{Int}([
+    Int(DEFINED_CMD),
     Int(FETCH_CMD),
     Int(IMAP_CMD)
 ])

@@ -311,6 +311,50 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     return a
 end
 
+function rtdefined(a::SName)
+
+    # local ring independent
+    b, i = rt_search_callstack_rindep(a.name)
+    if b
+        return size(rtGlobal.callstack)
+    end
+
+    # local ring dependent
+    b, i = rt_search_callstack_rdep(a.name)
+    if b
+        return size(rtGlobal.callstack)
+    end
+
+    # global ring independent
+    for p in (rtGlobal.callstack[end].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                return 1
+            end
+        end
+    end
+
+    # global ring dependent
+    R = rtGlobal.callstack[end].current_ring
+    if haskey(R.vars, a.name)
+        return 1
+    end
+
+    # monomials
+    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.ring_ptr)
+    if ok
+        rt_box_it_with_ring(p, R) # consume p  TODO clean this up
+        return -1
+    end
+
+    return 0
+end
+
+function rtdefined(a)
+    return -1
+end
+
 function rtkill(a::SName)
 
     # local ring independent
