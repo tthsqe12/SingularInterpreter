@@ -771,10 +771,22 @@ commands with unknown effects:
 
 ----------------------------------------------
 
+Definition: `i` is _available_ at a program point `p` if every path from `start` to `p` has a declaration of `i`.
+Definition: `i` is _free_ at a program point `p` if no path from `start` to `p` has a declaration of `i`.
+The meaning of "every path" is: all possible program execution paths assuming branches are chosen non-deterministically.
+
+We put the local variable `i` of a singular proc into a local julia variable if
+- `i` is available at every use, and
+- `i` is free at every declaration, and
+- there is no `kill i`, and
+- there are no backticks, and
+- there are no commands that require `i` to be known globally (`execute`, `setring`, ... )
+
+
 examples of fast/slow variables.
 
 
-`i` gets the slow treament everywhere (even with real code analysis):
+`i` gets the slow treament everywhere:
 ```
 proc f(...) {
     ...
@@ -787,6 +799,23 @@ proc f(...) {
 }
 ```
 
+`i` gets the slow treament everywhere:
+```
+proc f(int b) {
+    ... // no i in here
+    if (b) {
+        int i;
+    }
+    ... // no i in here, no changes to b
+    if (b) {
+        i;
+    }
+    ... // no i in here
+}
+```
+
+
+
 `i` could get the fast treament after the declaration, but we will not support mixing fast/slow variables, so it will actually get the slow treatment everywhere.
 ```
 proc f(...) {
@@ -796,44 +825,27 @@ proc f(...) {
 
     int i;      // this sets i to 0
     if (...) {
-        i;      // could be fast
+        i;      // could be fast but will be slow
     } else {
-        i;      // could be fast
+        i;      // could be fast but will be slow
     }
-    i;          // could be fast
+    i;          // could be fast but will be slow
 }
 ```
 
-Determining that `i` can be fast everywhere here would require real code analysis:
+Determining that `i` can be fast everywhere here is the purpose of code analysis:
 ```
 proc f(...) {
     if (...) {
         for (int i = 0, i < ..., i++) {
-            ...
+            i;
         }
     } else {
         for (int i = 0, i < ..., i++) {
-            ...
+            i;
         }
     }
-    ...
-}
-```
-
-Rewriting the previous example as follows gives `i` the fast treatment everywhere with easy code analysis:
-```
-proc f(...) {
-    int i;
-    if (...) {
-        for (i = 0, i < ..., i++) {
-            ... // fast i in here
-        }
-    } else {
-        for (i = 0, i < ..., i++) {
-            ... // fast i in here
-        }
-    }
-    ... // fast i in here
+    i;
 }
 ```
 
