@@ -53,11 +53,11 @@ function createRing(coeff::Array{Any, 1}, vars::Array{String, 1}, ord::Array{Ord
                i.order == ringorder_ws ||
                i.order == ringorder_Wp ||
                i.order == ringorder_Ws
-                if blocksize <= 0 || length(weights) != blocksize
+                if blocksize <= 0 || length(i.weights) != blocksize
                     error("internal error")
                 end
             elseif i.order == ringorder_M
-                if blocksize <= 0 || length(weights) != blocksize*blocksize
+                if blocksize <= 0 || length(i.weights) != blocksize*blocksize
                     error("internal error")
                 end
             elseif i.order == ringorder_lp ||

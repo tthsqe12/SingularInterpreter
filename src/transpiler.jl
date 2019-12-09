@@ -1194,12 +1194,12 @@ function make_rlist(a::AstNode, env::AstEnv)
     return r
 end
 
-function push_ordering_orderelem!(r::Expr, a::AstNode, anv::AstEnv)
+function push_ordering_orderelem!(r::Expr, a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_orderelem(0) < 100
     if a.rule == @RULE_orderelem(1)
         push!(r.args, Expr(:vect, a.child[1].child[1]::String))
     elseif a.rule == @RULE_orderelem(2)
-        b = convert_exprlist(a.child[2])
+        b = convert_exprlist(a.child[2], env)
         push!(r.args, Expr(:vect, a.child[1].child[1]::String, make_tuple_array_copy(b)...))
     else
         throw(TranspileError("internal error in push_ordering_orderelem"))
@@ -1209,9 +1209,9 @@ end
 function push_ordering_OrderingList!(r::Expr, a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_OrderingList(0) < 100
     if a.rule == @RULE_OrderingList(1)
-        push_ordering_orderelem(r, a.child[1], env)
+        push_ordering_orderelem!(r, a.child[1], env)
     elseif a.rule == @RULE_OrderingList(2)
-        push_ordering_orderelem(r, a.child[1], env)
+        push_ordering_orderelem!(r, a.child[1], env)
         push_ordering_OrderingList!(r, a.child[2], env)
     else
         throw(TranspileError("internal error in push_ordering_OrderingList"))
@@ -1281,13 +1281,13 @@ function rt_parse_var(var)
     return r
 end
 
-function rt_flatten_ord_weights(w::Array{Int, 1}, a::Any)
+function rt_flatten_ord_weights!(w::Array{Int, 1}, a::Any)
     if isa(a, Int)
         push!(w, a)
     elseif isa(a, SIntVec)
         append!(w, a.vector)
     elseif isa(a, SIntMat)
-        append!(w, vec(a.matrix))
+        append!(w, vec(transpose(a.matrix)))
     else
         rt_error("bad order specification")
     end
@@ -1301,6 +1301,15 @@ function rt_blocksize_simple(w::Array{Int, 1})
         rt_error("bad order specification")
     end
     return blocksize
+end
+
+function rt_blocksize_weights(w::Array{Int, 1})
+    blocksize = length(w)
+    if length(w) > 0
+        return blocksize, w
+    elseif length(w) != 0
+        rt_error("bad order specification")
+    end
 end
 
 function rt_parse_ord(ord)

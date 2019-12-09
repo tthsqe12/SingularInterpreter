@@ -740,8 +740,6 @@ The following keywords simply cannot be dealt with and will be considered a synt
 
 - `parameter`
 
-- `keepring`
-
 The following commands will immediately prevent _every ring dependent local variable_
 from going faster. This list is probably also not complete.
 
@@ -753,7 +751,7 @@ from going faster. This list is probably also not complete.
 There are probably more commands that are immediate showstoppers. Other strange
 commands with unknown effects:
 
-- `defined` The main problem is that `defined` can take a string argument. https://www.singular.uni-kl.de/Manual/4-0-3/sing_275.htm#SEC314
+- `defined` https://www.singular.uni-kl.de/Manual/4-0-3/sing_275.htm#SEC314
 
 - `nameof` https://www.singular.uni-kl.de/Manual/4-0-3/sing_355.htm#SEC394
 

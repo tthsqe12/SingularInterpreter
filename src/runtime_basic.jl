@@ -669,18 +669,18 @@ function rt_parameter_intvec(a::SName, b)
 end
 
 #### intmat
-function rt_defaultconstructor_intmat()
-    return SBigIntMat(zeros(Int, 1, 1))
+function rt_defaultconstructor_intmat(nrows::Int = 1, ncols::Int = 1)
+    return SIntMat(zeros(Int, nrows, ncols))
 end
 
-function rt_declare_intmat(a::SName)
+function rt_declare_intmat(a::SName, nrows::Int = 1, ncols::Int = 1)
     n = length(rtGlobal.callstack)
     if n > 1
         rt_check_declaration_local(true, a.name, SIntMat)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intmat()))
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intmat(nrows, ncols)))
     else
         d = rt_check_declaration_global(true, a.name, SIntMat)
-        d[a.name] = rt_defaultconstructor_intmat()
+        d[a.name] = rt_defaultconstructor_intmat(nrows, ncols)
     end
 end
 
@@ -690,18 +690,18 @@ function rt_parameter_intmat(a::SName, b)
 end
 
 #### bigintmat
-function rt_defaultconstructor_bigintmat()
-    return SBigIntMat(zeros(BigInt, 1, 1))
+function rt_defaultconstructor_bigintmat(nrows::Int = 1, ncols::Int = 1)
+    return SBigIntMat(zeros(BigInt, nrows, ncols))
 end
 
-function rt_declare_bigintmat(a::SName)
+function rt_declare_bigintmat(a::SName, nrows::Int = 1, ncols::Int = 1)
     n = length(rtGlobal.callstack)
     if n > 1
         rt_check_declaration_local(true, a.name, SBigIntMat)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigintmat()))
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigintmat(nrows, ncols)))
     else
         d = rt_check_declaration_global(true, a.name, SBigIntMat)
-        d[a.name] = rt_defaultconstructor_bigintmat()
+        d[a.name] = rt_defaultconstructor_bigintmat(nrows, ncols)
     end
     return nothing
 end
@@ -1192,9 +1192,8 @@ function rt_indenting_print(a::SString, indent::Int)
     return " "^indent * a.string
 end
 
-function rt_indenting_print(a::Union{_IntMat, _BigIntMat}, indent::Int)
+function rt_indenting_print(A::Union{Array{Int, 2}, Array{BigInt, 2}}, indent::Int)
     s = ""
-    A = rtef(a)
     nrows, ncols = size(A)
     for i in 1:nrows
         s *= " "^indent
@@ -1208,7 +1207,11 @@ function rt_indenting_print(a::Union{_IntMat, _BigIntMat}, indent::Int)
             s *= ",\n"
         end
     end
-    return s;
+    return s
+end
+
+function rt_indenting_print(a::Union{SIntMat, SBigIntMat}, indent::Int)
+    return rt_indenting_print(rt_ref(a))
 end
 
 function rt_indenting_print(a::SIntVec, indent::Int)

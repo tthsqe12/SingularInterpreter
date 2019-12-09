@@ -119,7 +119,7 @@ struct SIntMat
 end
 
 
-#### singular type "bigintmat"  immutable in the singular language
+#### singular type "bigintmat"  mutable in the singular language
 struct SBigIntMat
     matrix::Array{BigInt, 2}
 end
