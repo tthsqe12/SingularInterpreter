@@ -335,6 +335,90 @@ function convert_typestring_tosymbol(s::String)
     end
 end
 
+# commands in convert_elemexpr that require special constructs
+
+function convert_DEFINED_CMD(arg1, env::AstEnv)
+    if isa(arg1, SName) && haskey(env.declared_identifiers, String(arg1.name))
+        @warn "transpilation warning: variable "*String(arg1.name)*" is trivially defined"
+        return Expr(:call, :rt_get_voice())
+    else
+        return Expr(:call, :rtdefined, arg1)
+    end
+end
+
+function convert_ERROR_CMD(arg1, env::AstEnv)
+    return Expr(:call, :rtERROR, arg1, String(env.package) * "::" * env.fxn_name)
+end
+
+function convert_EXECUTE_CMD(arg1, env::AstEnv)
+    t1 = gensym()
+    t2 = gensym()
+    return Expr(:block,
+                Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, arg1)),
+                Expr(:if, t2, Expr(:return, t1))
+           )
+end
+
+function convert_BRANCHTO_CMD(args, env::AstEnv)
+    @assert env.branchto_appeared
+    env.ok_to_branchto || throw(TranspileError("branchTo not allowed in this context"))
+    t_array = gensym()
+    t_length = gensym()
+    t_i = gensym()
+    t_ok = gensym()
+    t_return = gensym()
+    r = Expr(:block)
+    push!(r.args, Expr(:(=), t_array, Expr(:tuple, make_tuple_array_copy(args)...)))
+    push!(r.args, Expr(:(=), t_length, Expr(:call, :length, t_array)))
+    # TODO: fix this disgusting mess with some quotation
+    push!(r.args,
+        Expr(:if,
+            Expr(:call,
+                :(==),
+                Expr(:call, :length, Symbol("##")),
+                Expr(:call, :(-), t_length, 1)
+            ),
+            Expr(:block,
+                Expr(:(=), t_ok, true),
+                Expr(:for,
+                    Expr(:(=),
+                        t_i,
+                        Expr(:call, :(:), 1, Expr(:call, :(-), t_length, 1))
+                    ),
+                    Expr(:block,
+                        Expr(:if,
+                            Expr(
+                                :call,
+                                :(!=),
+                                Expr(:call, :rt_typedata, Expr(:ref, Symbol("##"), t_i)),
+                                Expr(:(.), Expr(:ref, t_array, t_i), QuoteNode(:string))
+                            ),
+                            Expr(:(=), t_ok, false)
+                        )
+                    )
+                ),
+                Expr(:if,
+                    t_ok,
+                    Expr(:block,
+                        Expr(:(=),
+                            t_return,
+                            Expr(:call,
+                                :rtcall,
+                                false,
+                                Expr(:ref, t_array, t_length),
+                                Expr(:(...), Symbol("##"))
+                            )
+                        ),
+                        Expr(:call, :rt_leavefunction),
+                        Expr(:return, t_return)
+                    )
+                )
+            )
+        )
+    )
+    push!(r.args, nothing)
+    return r
+end
 
 
 function scan_elemexpr(a::AstNode, env::AstEnv)
@@ -445,43 +529,42 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
             return Expr(:call, Symbol("rt_cast2"*t), make_nocopy(b))
         end
     elseif @RULE_elemexpr(18) <= a.rule <= @RULE_elemexpr(21)
-        t = a.child[1]::Int
         arg1 = convert_expr(a.child[2], env)
+        t = a.child[1]::Int
+        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
         if !in(t, cmds_that_accept_names)
             arg1 = make_nocopy(arg1)
         end
-        if t == Int(ERROR_CMD)
-            return Expr(:call, :rtERROR, arg1, String(env.package) * "::" * env.fxn_name)
+        if t == Int(DEFINED_CMD)
+            return convert_DEFINED_CMD(arg1, env)
+        elseif t == Int(ERROR_CMD)
+            return convert_ERROR_CMD(arg1, env)
         elseif t == Int(EXECUTE_CMD)
-            t1 = gensym()
-            t2 = gensym()
-            return Expr(:block, Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, arg1)),
-                                Expr(:if, t2, Expr(:return, t1))      )
+            return convert_EXECUTE_CMD(arg1, env)
         else
-            haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
             return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1)
         end
     elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
-        t = a.child[1]::Int
         arg1 = convert_expr(a.child[2], env)
         arg2 = convert_expr(a.child[3], env)
+        t = a.child[1]::Int
+        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 22|23|24|25"))
         if !in(t, cmds_that_accept_names)
             arg1 = make_nocopy(arg1)
             arg2 = make_nocopy(arg2)
         end
-        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 22|23|24|25"))
         return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2)
     elseif @RULE_elemexpr(26) <= a.rule <= @RULE_elemexpr(29)
-        t = a.child[1]::Int
         arg1 = convert_expr(a.child[2], env)
         arg2 = convert_expr(a.child[3], env)
         arg3 = convert_expr(a.child[4], env)
+        t = a.child[1]::Int
+        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 26|27|28|29"))
         if !in(t, cmds_that_accept_names)
             arg1 = make_nocopy(arg1)
             arg2 = make_nocopy(arg2)
             arg3 = make_nocopy(arg3)
         end
-        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 26|27|28|29"))
         return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2, arg3)
     elseif a.rule == @RULE_elemexpr(30) || a.rule == @RULE_elemexpr(31)
         if a.rule == @RULE_elemexpr(31)
@@ -492,64 +575,7 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         t = a.child[1]::Int
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 30|31"))
         if t == Int(BRANCHTO_CMD)
-            @assert env.branchto_appeared
-            env.ok_to_branchto || throw(TranspileError("branchTo not allowed in this context"))
-            t_array = gensym()
-            t_length = gensym()
-            t_i = gensym()
-            t_ok = gensym()
-            t_return = gensym()
-            r = Expr(:block)
-            push!(r.args, Expr(:(=), t_array, Expr(:tuple, make_tuple_array_copy(b)...)))
-            push!(r.args, Expr(:(=), t_length, Expr(:call, :length, t_array)))
-            # TODO: fix this disgusting mess with some quotation
-            push!(r.args,
-                Expr(:if,
-                    Expr(:call,
-                        :(==),
-                        Expr(:call, :length, Symbol("##")),
-                        Expr(:call, :(-), t_length, 1)
-                    ),
-                    Expr(:block,
-                        Expr(:(=), t_ok, true),
-                        Expr(:for,
-                            Expr(:(=),
-                                t_i,
-                                Expr(:call, :(:), 1, Expr(:call, :(-), t_length, 1))
-                            ),
-                            Expr(:block,
-                                Expr(:if,
-                                    Expr(
-                                        :call,
-                                        :(!=),
-                                        Expr(:call, :rt_typedata, Expr(:ref, Symbol("##"), t_i)),
-                                        Expr(:(.), Expr(:ref, t_array, t_i), QuoteNode(:string))
-                                    ),
-                                    Expr(:(=), t_ok, false)
-                                )
-                            )
-                        ),
-                        Expr(:if,
-                            t_ok,
-                            Expr(:block,
-                                Expr(:(=),
-                                    t_return,
-                                    Expr(:call,
-                                        :rtcall,
-                                        false,
-                                        Expr(:ref, t_array, t_length),
-                                        Expr(:(...), Symbol("##"))
-                                    )
-                                ),
-                                Expr(:call, :rt_leavefunction),
-                                Expr(:return, t_return)
-                            )
-                        )
-                    )
-                )
-            )
-            push!(r.args, nothing)
-            return r
+            return convert_BRANCHTO_CMD(b, env)
         else
             # like make_tuple_array_nocopy but we have the possibility of emitting names
             r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
@@ -566,9 +592,6 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
             end
             return  r
         end
-
-    elseif a.rule == @RULE_elemexpr(99)
-        return convert_newstruct_decl(a.child[1], a.child[2])
     elseif a.rule == @RULE_elemexpr(37)
         b = convert_exprlist(a.child[1], env)
         if length(b) == 1
@@ -676,6 +699,24 @@ function convert_expr_arithmetic(a::AstNode, env::AstEnv)
 end
 
 
+function rt_assume_level_ok(a::Int)
+    level = rt_make(SName(:assumeLevel), true)
+    if isa(level, SName)
+        # assumeLevel is undefined
+        return a == 0
+    elseif isa(level, Int)
+        # assumeLevel is an int
+        return a <= level
+    else
+        rt_error("assumeLevel, if defined, must be an int in ASSUME")
+        return false
+    end
+end
+
+function rt_assume_level_ok(a)
+        rt_error("first argument of ASSUME must be an int")
+end
+
 function scan_expr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_expr(0) < 100
     if a.rule == @RULE_expr(1)
@@ -690,6 +731,7 @@ function scan_expr(a::AstNode, env::AstEnv)
         scan_expr(a.child[1], env)
         scan_expr(a.child[2], env)
     elseif a.rule == @RULE_expr(13)
+        env.appeared_identifiers["assumeLevel"] = 1
         scan_expr(a.child[1], env)
         scan_expr(a.child[2], env)
     else
@@ -711,8 +753,14 @@ function convert_expr(a::AstNode, env::AstEnv)
         return Expr(:call, :rt_getindex, make_nocopy(convert_expr(a.child[1], env)),
                                          make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_expr(13)
-        return Expr(:if, Expr(:call, :rt_assume_level_ok, make_nocopy(convert_expr(a.child[1], env))),
-                         Expr(:call, :rt_assume, make_nocopy(convert_expr(a.child[2], env)), "string message for ASSUME failure"))
+        level = make_nocopy(convert_expr(a.child[1], env))
+        if haskey(env.declared_identifiers, "assumeLevel")
+            env.declared_identifiers["assumeLevel"] == "int" || throw(TranspileError("assumeLevel should be declared int"))
+            cond = Expr(:call, :(<), Expr(:(::), level, :Int), Symbol("assumeLevel"))
+        else
+            cond = Expr(:call, :rt_assume_level_ok, level)
+        end
+        return Expr(:if, cond, Expr(:call, :rt_assume, make_nocopy(convert_expr(a.child[2], env)), "TODO: string message for ASSUME failure"))
     else
         throw(TranspileError("internal error in convert_expr"))
     end

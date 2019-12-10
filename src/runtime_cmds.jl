@@ -106,12 +106,6 @@ function rtERROR(v...)
     rt_error("ERROR should be called with a string")
 end
 
-
-function rt_assume_level_ok(a::Int)
-    # TODO
-    return true
-end
-
 function rt_assume(a::Int, message::String)
     if a == 0
         rt_error(message)
