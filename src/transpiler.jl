@@ -462,6 +462,12 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
         env.branchto_appeared |= (a.child[1]::Int == Int(BRANCHTO_CMD))
         env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
         scan_exprlist(a.child[2], env)
+    elseif a.rule == @RULE_elemexpr(34)
+        scan_rlist(a.child[2], env)
+        scan_rlist(a.child[3], env)
+        scan_ordering(a.child[4], env)
+    elseif a.rule == @RULE_elemexpr(35)
+        scan_expr(a.child[2], env)
     elseif a.rule == @RULE_elemexpr(37)
         scan_exprlist(a.child[1], env)
     else
@@ -579,19 +585,25 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         else
             # like make_tuple_array_nocopy but we have the possibility of emitting names
             r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
-            for i in 1:length(a)
-                if isa(a[i], Expr) && a[i].head == :tuple
-                    append!(r.args, a[i].args)   # each of a[i].args should already be copied and splatted
-                elseif is_a_name(a[i])
-                    push!(r.args, in(t, cmds_that_accept_name) ? a[i] : Expr(:call, :rt_make, a[i]))
-                elseif we_know_splat_is_trivial(a[i])
-                    push!(r.args, a[i])
+            for i in 1:length(b)
+                if isa(b[i], Expr) && b[i].head == :tuple
+                    append!(r.args, b[i].args)   # each of b[i].args should already be copied and splatted
+                elseif is_a_name(b[i])
+                    push!(r.args, in(t, cmds_that_accept_names) ? b[i] : Expr(:call, :rt_make, b[i]))
+                elseif we_know_splat_is_trivial(b[i])
+                    push!(r.args, b[i])
                 else
-                    push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, a[i])))
+                    push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, b[i])))
                 end
             end
             return  r
         end
+    elseif a.rule == @RULE_elemexpr(34)
+        return Expr(:call, :rt_make_ring, convert_rlist(a.child[2], env),
+                                          convert_rlist(a.child[3], env),
+                                          convert_ordering(a.child[4], env))
+    elseif a.rule == @RULE_elemexpr(35)
+        return Expr(:call, :rt_make_ring_from_ringlist, make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_elemexpr(37)
         b = convert_exprlist(a.child[1], env)
         if length(b) == 1
@@ -1018,12 +1030,98 @@ function push_exprlist_expr!(l::Array{AstNode}, a::AstNode, env::AstEnv)
 end
 
 
+function rt_set_current_ring(a::SRing)
+    rtGlobal.callstack[end].current_ring = a
+end
+
+function rt_make_ring_from_ringlist(a::SListData)
+    error("rt_make_ring_from_ringlist not implement")
+    return rtInvalidRing
+end
+
+function rt_make_ring_from_ringlist(a::SList)
+    return rt_make_ring_from_ringlist(a.data)
+end
+
+function rt_make_ring(coeff, var, ord)
+    coeff = rt_parse_coeff(coeff)
+    var = rt_parse_var(var)
+    @error_check(length(ord) > 0, "bad ordering specification")
+    ord = [rt_parse_ord(a) for a in ord]
+    return SRing(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
+end
+
+function rt_make_qring(a::SIdeal)
+    error("rt_make_qring not implement")
+    return rtInvalidRing
+end
+
+function rt_declare_assign_ring(a::SName, b::SRing)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(true, a.name, SRing)
+        push!(rtGlobal.local_rindep_vars, Pair(a.name, b))
+    else
+        d = rt_check_declaration_global(true, a.name, SRing)
+        d[a.name] = b
+    end
+    rtGlobal.callstack[n].current_ring = b
+    return
+end
+
+function scan_assign_qring(a::AstNode, b::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_extendedid(0) < 100
+    @assert 0 < b.rule - @RULE_exprlist(0) < 100
+    scan_exprlist(b, env)
+    if a.rule == @RULE_extendedid(1)
+        scan_add_declaration(a.child[1]::String, "ring", env)
+        env.rings_are_screwed = true
+    elseif a.rule == @RULE_extendedid(2)
+        scan_expr(b.child[1], env)
+        env.everything_is_screwed = true
+    else
+        throw(TranspileError("invalid qring name"))
+    end
+end
+
+function convert_assign_qring(a::AstNode, b::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_extendedid(0) < 100
+    @assert 0 < b.rule - @RULE_exprlist(0) < 100
+    rhs::Array{Any} = convert_exprlist(b, env)
+    r = Expr(:block)
+    if a.rule == @RULE_extendedid(1)
+        var = a.child[1]::String
+        if haskey(env.declared_identifiers, var)
+            @assert env.declared_identifiers[var] == "ring"
+            push!(r.args, Expr(:(=), Symbol(var), Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
+            push!(r.args, Expr(:call, :rt_set_current_ring, Symbol(var)))
+        else
+            push!(r.args, Expr(:call, :rt_declare_assign_ring,
+                                        makeunknown(var),
+                                        Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
+        end
+    elseif a.rule == @RULE_extendedid(2)
+        @assert isempty(env.declared_identifiers)
+        push!(r.args, Expr(:call, :rt_declare_assign_ring,
+                                        Expr(:call, :rt_backtick, make_nocopy(convert_expr(a.child[1], env))),
+                                        Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
+    else
+        throw(TranspileError("internal error in convert_assign_qring"))
+    end
+    push!(r.args, :nothing)
+    return r
+end
+
 function scan_assign(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_assign(0) < 100
     if a.rule == @RULE_assign(1)
-        scan_exprlist(a.child[2], env)
         left::AstNode = a.child[1]
+        if left.rule == @RULE_left_value(1) && left.child[1].child[1] === Int(QRING_CMD)
+            scan_assign_qring(left.child[1].child[2], a.child[2], env)
+            return
+        end
         lhs::Array{AstNode} = AstNode[]
+        scan_exprlist(a.child[2], env)
         if left.rule == @RULE_left_value(1)
             scan_declare_ip_variable!(lhs, left.child[1], env)
         elseif left.rule == @RULE_left_value(2)
@@ -1043,6 +1141,9 @@ function convert_assign(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_assign(0) < 100
     if a.rule == @RULE_assign(1)
         left::AstNode = a.child[1]
+        if left.rule == @RULE_left_value(1) && left.child[1].child[1] === Int(QRING_CMD)
+            return convert_assign_qring(left.child[1].child[2], a.child[2], env)
+        end
         lhs::Array{AstNode} = AstNode[]
         rhs::Array{Any} = convert_exprlist(a.child[2], env)
         r = Expr(:block)
@@ -1167,6 +1268,28 @@ function rt_name_cross(a::Vector{SName}, v::SIntVec)
     return rt_name_cross(a, v.vector)
 end
 
+function scan_rlist_expr_head(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_elemexpr(0) < 100
+    if a.rule == @RULE_elemexpr(2)
+        b = a.child[1]
+        if b.rule == @RULE_extendedid(1)
+            return
+        elseif b.rule == @RULE_extendedid(2)
+            scan_expr(b.child[1], env)
+            env.everything_is_screwed = true
+            return
+        else
+            throw(TranspileError("bad ring list construction"))
+        end
+    elseif a.rule == @RULE_elemexpr(6)
+        scan_rlist_expr_head(head, env)
+        scan_expr(arg, env)
+        return
+    else
+        throw(TranspileError("bad ring list construction"))
+    end
+end
+
 function convert_rlist_expr_head(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
     if a.rule == @RULE_elemexpr(2)
@@ -1187,6 +1310,38 @@ function convert_rlist_expr_head(a::AstNode, env::AstEnv)
         arg = arg.child[1]
         return Expr(:call, :rt_name_cross, convert_rlist_expr_head(head, env),
                                            make_nocopy(convert_expr(arg, env)))
+    else
+        throw(TranspileError("bad ring list construction"))
+    end
+end
+
+function scan_rlist_expr(r::Expr, a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_expr(0) < 100
+    if a.rule == @RULE_expr(2)
+        b = a.child[1]
+        if b.rule == @RULE_elemexpr(37)
+            for c in b.child[1].child
+                scan_rlist_expr(r, c, env)
+            end
+            return
+        elseif b.rule == @RULE_elemexpr(2)
+            b = b.child[1]
+            if b.rule == @RULE_extendedid(1)
+                return
+            elseif b.rule == @RULE_extendedid(2)
+                scan_expr(b.child[1], env)
+                env.everything_is_screwed = true
+                return
+            else
+                throw(TranspileError("bad ring list construction"))
+            end
+        elseif b.rule == @RULE_elemexpr(6)
+            scan_rlist_expr_head(b, env)
+            return
+        else
+            scan_elemexpr(b, env)
+            return
+        end
     else
         throw(TranspileError("bad ring list construction"))
     end
@@ -1226,7 +1381,21 @@ function push_rlist_expr!(r::Expr, a::AstNode, env::AstEnv)
     end
 end
 
-function make_rlist(a::AstNode, env::AstEnv)
+function scan_rlist(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_rlist(0) < 100
+    if a.rule == @RULE_rlist(1)
+        scan_rlist_expr(a.child[1], env)
+    elseif a.rule == @RULE_rlist(2)
+        scan_rlist_expr(a.child[1], env::AstEnv)
+        for b in a.child[2].child
+            scan_rlist_expr(b, env::AstEnv)
+        end
+    else
+        throw(TranspileError("internal error in scan_rlist"))
+    end
+end
+
+function convert_rlist(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_rlist(0) < 100
     r = Expr(:vect)
     if a.rule == @RULE_rlist(1)
@@ -1237,9 +1406,20 @@ function make_rlist(a::AstNode, env::AstEnv)
             push_rlist_expr!(r, b, env::AstEnv)
         end
     else
-        throw(TranspileError("internal error in make_rlist"))
+        throw(TranspileError("internal error in convert_rlist"))
     end
     return r
+end
+
+function scan_ordering_orderelem(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_orderelem(0) < 100
+    if a.rule == @RULE_orderelem(1)
+        return
+    elseif a.rule == @RULE_orderelem(2)
+        scan_exprlist(a.child[2], env)
+    else
+        throw(TranspileError("internal error in scan_ordering_orderelem"))
+    end
 end
 
 function push_ordering_orderelem!(r::Expr, a::AstNode, env::AstEnv)
@@ -1251,6 +1431,18 @@ function push_ordering_orderelem!(r::Expr, a::AstNode, env::AstEnv)
         push!(r.args, Expr(:vect, a.child[1].child[1]::String, make_tuple_array_copy(b)...))
     else
         throw(TranspileError("internal error in push_ordering_orderelem"))
+    end
+end
+
+function scan_ordering_OrderingList(r::Expr, a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_OrderingList(0) < 100
+    if a.rule == @RULE_OrderingList(1)
+        scan_ordering_orderelem(a.child[1], env)
+    elseif a.rule == @RULE_OrderingList(2)
+        scan_ordering_orderelem(a.child[1], env)
+        scan_ordering_OrderingList(a.child[2], env)
+    else
+        throw(TranspileError("internal error in scan_ordering_OrderingList"))
     end
 end
 
@@ -1266,7 +1458,18 @@ function push_ordering_OrderingList!(r::Expr, a::AstNode, env::AstEnv)
     end
 end
 
-function make_ordering(a::AstNode, env::AstEnv)
+function scan_ordering(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_ordering(0) < 100
+    if a.rule == @RULE_ordering(1)
+        scan_orderelem(a.child[1], env)
+    elseif a.rule == @RULE_ordering(2)
+        scan_OrderingList(a.child[1], env)
+    else
+        throw(TranspileError("internal error in scan_ordering"))
+    end
+end
+
+function convert_ordering(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_ordering(0) < 100
     r = Expr(:vect)
     if a.rule == @RULE_ordering(1)
@@ -1274,7 +1477,7 @@ function make_ordering(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_ordering(2)
         push_ordering_OrderingList!(r, a.child[1], env)
     else
-        throw(TranspileError("internal error in make_ring_ordering"))
+        throw(TranspileError("internal error in convert_ordering"))
     end
     return r
 end
@@ -1413,46 +1616,95 @@ function rt_parse_ord(ord)
     return libSingular.OrderingEntry(order, blocksize, weights)
 end
 
-
-function rt_declare_assign_ring(a::SName, coeff, var, ord)
-    coeff = rt_parse_coeff(coeff)
-    var = rt_parse_var(var)
-    @error_check(length(ord) > 0, "bad variable specification")
-    ord = [rt_parse_ord(a) for a in ord]
-    r = SRing(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
-    n = length(rtGlobal.callstack)
-    if n > 1
-        rt_check_declaration_local(true, a.name, SRing)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, r))
+function scan_ringcmd_lhs(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_elemexpr(0) < 100
+    if a.rule == @RULE_elemexpr(2)
+        b = a.child[1]
+        if b.rule == @RULE_extendedid(1)
+            scan_add_declaration(b.child[1]::String, "ring", env)
+        elseif b.rule == @RULE_extendedid(2)
+            scan_expr(b.child[1], env)
+            env.everything_is_screwed = 1
+        else
+            throw(TranspileError("internal error in scan_ringcmd_lhs"))
+        end
     else
-        d = rt_check_declaration_global(true, a.name, SRing)
-        d[a.name] = r
+        throw(TranspileError("bad name of ring"))
     end
-    rtGlobal.callstack[n].current_ring = r
-    return
 end
 
+function convert_ringcmd_lhs(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_elemexpr(0) < 100
+    if a.rule == @RULE_elemexpr(2)
+        b = a.child[1]
+        if b.rule == @RULE_extendedid(1)
+            s = b.child[1]::String
+            if haskey(env.declared_identifiers, s)
+                @assert env.declared_identifiers[s] == "ring"
+                return Symbol(s), true
+            else
+                return makeunknown(s), false
+            end
+        elseif b.rule == @RULE_extendedid(2)
+            @assert isempty(env.declared_identifiers)
+            return Expr(:call, :rt_backtick, make_nocopy(convert_expr(b.child[1], env))), false
+        else
+            throw(TranspileError("internal error in scan_ringcmd_lhs"))
+        end
+    else
+        throw(TranspileError("bad name of ring"))
+    end
+end
 
 function scan_ringcmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_ringcmd(0) < 100
-    env.everything_is_screwed = true
+    if a.rule == @RULE_ringcmd(1)
+        scan_rlist(a.child[2], env)
+        scan_rlist(a.child[3], env)
+        scan_ordering(a.child[4], env)
+        scan_ringcmd_lhs(a.child[1], env)
+    elseif a.rule == @RULE_ringcmd(2)
+        scan_rlist(a.child[2], env)
+        scan_rlist(a.child[3], env)
+        scan_ordering(a.child[4], env)
+        scan_ringcmd_lhs(a.child[1], env)
+    elseif a.rule == @RULE_ringcmd(3)
+        scan_elemexpr(a.child[2], env)
+        scan_ringcmd_lhs(a.child[1], env)
+    else
+        throw(TranspileError("internal error in scan_ringcmd"))
+    end
+    env.rings_are_screwed = true # change of basering
 end
 
 function convert_ringcmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_ringcmd(0) < 100
     r = Expr(:block)
     if a.rule == @RULE_ringcmd(1)
-        m = a.child[1]
-        (m.rule == @RULE_elemexpr(2) && m.child[1].rule == @RULE_extendedid(1)) || throw(TranspileError("declaration expects identifer name"))
-        push!(r.args, Expr(:call, :rt_declare_assign_ring,
-                                        makeunknown(m.child[1].child[1]::String),
-                                        make_rlist(a.child[2], env),
-                                        make_rlist(a.child[3], env),
-                                        make_ordering(a.child[4], env)))
-        return r
+        ring = Expr(:call, :rt_make_ring, convert_rlist(a.child[2], env),
+                                          convert_rlist(a.child[3], env),
+                                          convert_ordering(a.child[4], env))
+        var, use_local = convert_ringcmd_lhs(a.child[1], env)
+    elseif a.rule == @RULE_ringcmd(2)
+        ring = Expr(:call, :rt_make_ring, [32003],
+                                          [makeunknown("x"), makeunknown("y"), makeunknown("z")],
+                                          [["dp"]])
+        var, use_local = convert_ringcmd_lhs(a.child[1], env)
+    elseif a.rule == @RULE_ringcmd(3)
+        ring = make_nocopy(convert_elemexpr(a.child[2], env))
+        var, use_local = convert_ringcmd_lhs(a.child[1], env)
     else
         throw(TranspileError("internal error in convert_ringcmd"))
     end
+    if use_local
+        @assert isa(var, Symbol)
+        push!(r.args, Expr(:(=), var, ring))
+        push!(r.args, Expr(:call, :rt_set_current_ring, var))
+    else
+        @assert is_a_name(var)
+        push!(r.args, Expr(:call, :rt_declare_assign_ring, var, ring))
+    end
+    return r
 end
 
 
@@ -1516,17 +1768,27 @@ end
 function scan_command(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_command(0) < 100
     if a.rule == @RULE_command(1)
-        return scan_assign(a.child[1], env)
+        scan_assign(a.child[1], env)
     elseif a.rule == @RULE_command(3)
-        return scan_killcmd(a.child[1], env)
+        scan_killcmd(a.child[1], env)
     elseif a.rule == @RULE_command(6)
-        return scan_ringcmd(a.child[1], env)
+        scan_ringcmd(a.child[1], env)
     elseif a.rule == @RULE_command(7)
-        return scan_scriptcmd(a.child[1], env)
+        scan_scriptcmd(a.child[1], env)
+    elseif a.rule == @RULE_command(8)
+        b = a.child[1]
+        scan_expr(b.child[2], env)
+        if b.child[1].rule == @RULE_setrings(1)
+            env.rings_are_screwed = 1
+        elseif b.child[1].rule == @RULE_setrings(1)
+            throw(TranspileError("keepring is not allowed"))
+        else
+            throw(TranspileError("internal error in scan_command 8"))
+        end
     elseif a.rule == @RULE_command(9)
-        return scan_typecmd(a.child[1], env)
+        scan_typecmd(a.child[1], env)
     else
-        throw(TranspileError("internal error in convert_command"))
+        throw(TranspileError("internal error in scan_command"*string(a.rule)))
     end
 end
 
@@ -1540,10 +1802,19 @@ function convert_command(a::AstNode, env::AstEnv)
         return convert_ringcmd(a.child[1], env)
     elseif a.rule == @RULE_command(7)
         return convert_scriptcmd(a.child[1], env)
+    elseif a.rule == @RULE_command(8)
+        b = a.child[1]
+        if b.child[1].rule == @RULE_setrings(1)
+            return Expr(:call, :rt_set_current_ring, make_nocopy(convert_expr(b.child[2], env)))
+        elseif b.child[1].rule == @RULE_setrings(1)
+            throw(TranspileError("keepring is not allowed"))
+        else
+            throw(TranspileError("internal error in convert_command 8"))
+        end
     elseif a.rule == @RULE_command(9)
         return convert_typecmd(a.child[1], env)
     else
-        throw(TranspileError("internal error in convert_command"))
+        throw(TranspileError("internal error in convert_command"*string(a.rule)))
     end
 end
 
@@ -1584,7 +1855,7 @@ function scan_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::AstEnv
         if @RULE_declare_ip_variable(1) <= a.rule <= @RULE_declare_ip_variable(4) ||
                                                a.rule == @RULE_declare_ip_variable(8)
             pushfirst!(vars, a.child[2])
-            haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in scan_declare_ip_variable"))
+            haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in scan_declare_ip_variable 1|2|3|4|8"))
             typ = cmd_to_builtin_type_string[a.child[1]::Int]
             for v in vars
                 scan_declared_var(v, typ, env)
@@ -1631,7 +1902,7 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
         @assert 0 < a.rule - @RULE_declare_ip_variable(0) < 100
         if @RULE_declare_ip_variable(1) <= a.rule <= @RULE_declare_ip_variable(4) ||
                                                a.rule == @RULE_declare_ip_variable(8)
-            haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in convert_declare_ip_variable"))
+            haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in convert_declare_ip_variable 1|2|3|4|8"))
             typ = cmd_to_builtin_type_string[a.child[1]::Int]
             pushfirst!(vars, a.child[2])
             r = Expr(:block)
@@ -2233,7 +2504,6 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
         push!(body.args, Expr(:return, :nothing))
 
         jfunction = eval(Expr(:function, Expr(:call, internalfunc, args...), body))
-
         our_proc_object = SProc(jfunction, s, env.package)
 
         export_packages = [env.package]
