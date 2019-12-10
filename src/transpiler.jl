@@ -2106,8 +2106,8 @@ end
 function execute(s::String; debuglevel::Int = 0)
 
     libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
-
-    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $s)
+    # as with rtexecute, we allow the trailing semicolon to be omitted
+    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s*";"))
 
     if isa(ast, String)
         throw(TranspileError(ast))

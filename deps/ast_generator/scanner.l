@@ -13,10 +13,13 @@ int feReadLine(char* b, int l);
 #ifndef NEW_FLEX
 #endif /* NEW_LEX */
 int blocknest = 0;
-extern char * yytext;
+
+// WARNING: different version of flex define different types for these vars
+//          we do not need any of them right now
+//extern char * yytext;
 //extern unsigned char * yytext;
-extern yy_size_t yyleng;
-extern int inerror;
+//extern yy_size_t yyleng;
+//extern int inerror;
 
 static char * dupyytext()
 {
