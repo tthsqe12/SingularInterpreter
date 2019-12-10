@@ -1,17 +1,23 @@
 #!/bin/sh
-#export LD_LIBRARY_PATH=/home/schultz/julia-1.0.0/lib:$LD_LIBRARY_PATH
-#export LD_LIBRARY_PATH=/home/schultz/julia-1.0.0/lib/julia:$LD_LIBRARY_PATH
+
+# TODO: write a Makefile
+
+set -e # terminate on error
 
 flex -s --header-file=scanner.h scanner.l
 bison -d grammar.y
 
+JULIA_PATH=$(dirname $(dirname $(readlink $(which julia))))
 
-gcc -shared -fPIC -c lex.yy.c -o scanner.o -I/home/schultz/julia-1.0.0/include/julia
+[ -d "$JULIA_PATH" ] || echo "FAILURE: could not find julia installation path"
 
-gcc -shared -fPIC -c grammar.tab.c -o grammar.o -DJULIA_ENABLE_THREADING -I/home/schultz/julia-1.0.0/include/julia -L/home/schultz/julia-1.0.0/lib -L/home/schultz/julia-1.0.0/lib/julia
+gcc -shared -fPIC -c lex.yy.c -o scanner.o -I$JULIA_PATH/include/julia
 
-gcc -shared -fPIC -c parser.c -o parser.o -DJULIA_ENABLE_THREADING -I/home/schultz/julia-1.0.0/include/julia -L/home/schultz/julia-1.0.0/lib -L/home/schultz/julia-1.0.0/lib/julia
+gcc -shared -fPIC -c grammar.tab.c -o grammar.o -DJULIA_ENABLE_THREADING -I$JULIA_PATH/include/julia -L$JULIA_PATH/lib -L$JULIA_PATH/lib/julia
 
-gcc -shared -fPIC -o libsingularparse.so scanner.o grammar.o parser.o -DJULIA_ENABLE_THREADING -I/home/schultz/julia-d386e40c17/include/julia -L/home/schultz/julia-1.0.0/lib -L/home/schultz/julia-1.0.0/lib/julia -ljulia
+gcc -shared -fPIC -c parser.c -o parser.o -DJULIA_ENABLE_THREADING -I$JULIA_PATH/include/julia -L$JULIA_PATH/lib -L$JULIA_PATH/lib/julia
 
-cp -p /home/schultz/git/SingularInterpreter/deps/ast_generator/libsingularparse.so /home/schultz/git/SingularInterpreter/local/lib/libsingularparse.so
+gcc -shared -fPIC -o libsingularparse.so scanner.o grammar.o parser.o -DJULIA_ENABLE_THREADING -I$JULIA_PATH/include/julia -L$JULIA_PATH/lib -L$JULIA_PATH/lib/julia -ljulia
+
+mkdir -p ../../local/lib
+cp -p libsingularparse.so ../../local/lib/libsingularparse.so
