@@ -701,6 +701,47 @@ Unexpected behaviour:
 oops
 ```
 
+(23) The following behaviour ruins everything.
+
+New session:
+```
+> int n = 5;
+> int a(n) = 7;      
+> a(5);
+7
+> a(6);
+   ? `a(6)` is undefined
+   ? error occurred in or before STDIN line 4: `a(6);`
+> proc a(n) {"proc a called on " + string(n); return(-n)}
+> a(5);
+proc a called on 5
+-5
+> a(6);
+proc a called on 6
+-6
+> kill a;
+> a(5);
+7
+> a(6);
+   ? `a(6)` is undefined
+   ? error occurred in or before STDIN line 10: `a(6);`
+> quit;
+```
+
+New session:
+```
+> proc a(n) {"proc a called on " + string(n); return(-n)}
+> int n = 5;
+> a(5);
+proc a called on 5
+-5
+> int a(n) = 7;
+proc a called on 5
+   ? object to declare is not a name
+   ? error occurred in or before STDIN line 4: `"proc a called on " + string(n); return(-n)`
+> quit;
+```
+
 -------------------------------
 
 Conclusion: The Singular language is completely different from C or Julia.
