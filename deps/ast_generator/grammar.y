@@ -1599,58 +1599,30 @@ forcmd:
 proccmd:
         PROC_CMD UNKNOWN_IDENT '{' lines '}'
             {
-                enterrule("proccmd -> PROC_CMD extendedid '{' lines '}'");
-                $$ = astnode_make2(RULE_proccmd(1), aststring_make($2), $4);
-                exitrule("proccmd -> PROC_CMD extendedid '{' lines '}'");
+                enterrule("proccmd -> PROC_CMD UNKNOWN_IDENT '{' lines '}'");
+                $$ = astnode_make3(RULE_proccmd(1), astint_make($1), aststring_make($2), $4);
+                exitrule("proccmd -> PROC_CMD UNKNOWN_IDENT '{' lines '}'");
             }
 
         | PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'
             {
-                enterrule("proccmd -> PROC_CMD extendedid '(' ')' '{' lines '}'");
-                $$ = astnode_make2(RULE_proccmd(2), aststring_make($2), $6);
-                exitrule_ex("proccmd -> PROC_CMD extendedid '(' ')' '{' lines '}'",$$);
+                enterrule("proccmd -> PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'");
+                $$ = astnode_make3(RULE_proccmd(1), astint_make($1), aststring_make($2), $6);
+                exitrule_ex("proccmd -> PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'",$$);
             }
 
         | PROC_CMD UNKNOWN_IDENT '(' procarglist ')' '{' lines '}'
             {
-                enterrule("proccmd -> PROC_CMD extendedid '(' procarglist ')' '{' lines '}'");
-                $$ = astnode_make3(RULE_proccmd(3), aststring_make($2), $4, $7);
-                exitrule_ex("proccmd -> PROC_CMD extendedid '(' procarglist ')' '{' lines '}'",$$);
+                enterrule("proccmd -> PROC_CMD UNKNOWN_IDENT '(' procarglist ')' '{' lines '}'");
+                $$ = astnode_make4(RULE_proccmd(2), astint_make($1), aststring_make($2), $4, $7);
+                exitrule_ex("proccmd -> PROC_CMD UNKNOWN_IDENT '(' procarglist ')' '{' lines '}'",$$);
             }
 
-        | PROC_CMD UNKNOWN_IDENT STRINGTOK '(' procarglist ')' '{' lines '}'
+        | PROC_CMD UNKNOWN_IDENT '(' procarglist ')' STRINGTOK '{' lines '}'
             {
-                enterrule("proccmd -> PROC_CMD extendedid STRINGTOK '(' procarglist ')' '{' lines '}'");
-                $$ = astnode_make4(RULE_proccmd(4), aststring_make($2), aststring_make($3), $5, $8);
-                exitrule_ex("proccmd -> PROC_CMD extendedid STRINGTOK '(' procarglist ')' '{' lines '}'",$$);
-            }
-
-        | STATIC_PROC_CMD UNKNOWN_IDENT '{' lines '}'
-            {
-                enterrule("proccmd -> STATIC_PROC_CMD extendedid '{' lines '}'");
-                $$ = astnode_make2(RULE_proccmd(11), aststring_make($2), $4);
-                exitrule("proccmd -> STATIC_PROC_CMD extendedid '{' lines '}'");
-            }
-
-        | STATIC_PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'
-            {
-                enterrule("proccmd -> STATIC_PROC_CMD extendedid '(' ')' '{' lines '}'");
-                $$ = astnode_make2(RULE_proccmd(12), aststring_make($2), $6);
-                exitrule_ex("proccmd -> STATIC_PROC_CMD extendedid '(' ')' '{' lines '}'",$$);
-            }
-
-        | STATIC_PROC_CMD UNKNOWN_IDENT '(' procarglist ')' '{' lines '}'
-            {
-                enterrule("proccmd -> STATIC_PROC_CMD extendedid '(' procarglist ')' '{' lines '}'");
-                $$ = astnode_make3(RULE_proccmd(13), aststring_make($2), $4, $7);
-                exitrule_ex("proccmd -> STATIC_PROC_CMD extendedid '(' procarglist ')' '{' lines '}'",$$);
-            }
-
-        | STATIC_PROC_CMD UNKNOWN_IDENT STRINGTOK '(' procarglist ')' '{' lines '}'
-            {
-                enterrule("proccmd -> STATIC_PROC_CMD extendedid STRINGTOK '(' procarglist ')' '{' lines '}'");
-                $$ = astnode_make4(RULE_proccmd(14), aststring_make($2), aststring_make($3), $5, $8);
-                exitrule_ex("proccmd -> STATIC_PROC_CMD extendedid STRINGTOK '(' procarglist ')' '{' lines '}'",$$);
+                enterrule("proccmd -> PROC_CMD UNKNOWN_IDENT STRINGTOK '(' procarglist ')' '{' lines '}'");
+                $$ = astnode_make4(RULE_proccmd(2), astint_make($1), aststring_make($2), $4, $8);
+                exitrule_ex("proccmd -> PROC_CMD UNKNOWN_IDENT STRINGTOK '(' procarglist ')' '{' lines '}'",$$);
             }
         ;
 

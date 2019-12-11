@@ -214,7 +214,7 @@ static struct token_lookup_entry token_lookup[] = {
 {"print",           PRINT_CMD ,         CMD_12},
 {"printlevel",      VPRINTLEVEL,        SYSVAR},
 {"prune",           PRUNE_CMD ,         CMD_1},
-{"proc",            PROC_CMD ,          PROC_CMD},
+{"proc",            0,                  PROC_CMD},
 {"qhweight",        QHWEIGHT_CMD ,      CMD_1},
 {"qrds",            QRDS_CMD ,          CMD_M},
 {"qring",           QRING_CMD ,         ROOT_DECL},
@@ -324,9 +324,11 @@ parname        #
                             }
                          }
 static[ \t\n]+proc      {
-                            return STATIC_PROC_CMD;
+                            lvalp->i = 1;
+                            return PROC_CMD;
                         }
 proc                    {
+                            lvalp->i = 0;
                             return PROC_CMD;
                         }
 if                      {
@@ -350,10 +352,6 @@ return                  {
                            return HELP_CMD;
                          }
 
-example[ \t\n]*          {
-                           BEGIN(asstring);
-                           return EXAMPLE_CMD;
-                         }
 <asstring>[^;\n]+        {
                            lvalp->name = dupyytext();
                            BEGIN(INITIAL);
@@ -499,7 +497,6 @@ newline                  {
                             }
                             if (rc)
                             {
-//printf("SCANNER: %s RETURN %d with lpval->i = %d\n", yytext, rc, lvalp->i);
                                 return rc;
                             }
 

@@ -469,53 +469,41 @@ function rtcall(allow_name_ret::Bool, a::SName, v...)
 end
 
 function rtcall(allow_name_ret::Bool, a::Array{String}, v...)
-    length(v) == 1 || rt_error("bad indexed variable construction")
-    v = v[1]
-
+    # will take the cross product of a and V
     V = Int[]
-    if isa(v, Int)
-        V = Int[v]
-    elseif isa(v, _IntVec)
-        V = rt_ref(v)
-    else
-        rt_error("bad indexed variable construction")
+    for i in v
+        if isa(i, Int)
+            push!(V, i)
+        elseif isa(i, _IntVec)
+            append!(V, rt_ref(i))
+        else
+            rt_error("bad indexed variable construction")
+        end
     end
 
-    # TODO lookup a(v) in currentring vars/pars v is int or intvec
-
-    R = rt_basering()
+    isempty(a) && rt_error("bad indexed variable construction")
+    isempty(V) && rt_error("bad indexed variable construction")
 
     r = Any[]
-    ok = true
-    for b in a
-        if ok && R.valid
-            for i in V
-                ok, p = libSingular.lookupIdentifierInRing(b * "(" * string(i) * ")", R.ring_ptr)
-                if ok
-                    push!(r, rt_box_it_with_ring(p, R))
-                else
-                    break
-                end
-            end
-        else
-            ok = false
-            break
-        end
-    end
-
-    if ok
-        return length(r) == 1 ? r[1] : Tuple(r)
-    end
-
-    allow_name_ret || rt_error("bad indexed variable construction")
-
-    r = String[]
     for b in a
         for i in V
-            push!(r, b * "(" * string(i) * ")")
+            c = rt_make(SName(Symbol(b * "(" * string(i) * ")")), true)
+            if isa(c, SName)
+                allow_name_ret || rt_error("bad indexed variable construction")
+                R = String[]
+                for B in a
+                    for I in V
+                        push!(R, B * "(" * string(I) * ")")
+                    end
+                end
+                return R
+            else
+                push!(r, rt_copy(c))
+            end
         end
     end
-    return r
+
+    return length(r) == 1 ? r[1] : Tuple(r)
 end
 
 ########### declarers and default constructors ################################

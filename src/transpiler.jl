@@ -1246,26 +1246,22 @@ like this, your code is probably already screwed anyways.
 =#
 
 
-function rt_name_cross(a::Vector{SName}, i::Int)
+function rt_name_cross(a::Vector{SName}, v...)
     r = SName[]
     for b in a
-        push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
-    end
-    return r
-end
-
-function rt_name_cross(a::Vector{SName}, v::Vector{Int})
-    r = SName[]
-    for b in a  # i loop is on the inside
         for i in v
-            push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
+            if isa(i, Int)
+                push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
+            elseif isa(i, _IntVec)
+                for j in rt_ref(i)
+                    push!(r, makeunknown(String(b.name)*"("*string(j)*")"))
+                end
+            else
+                rt_error("bad indexed variable construction")
+            end
         end
     end
     return r
-end
-
-function rt_name_cross(a::Vector{SName}, v::SIntVec)
-    return rt_name_cross(a, v.vector)
 end
 
 function scan_rlist_expr_head(a::AstNode, env::AstEnv)
@@ -1305,11 +1301,8 @@ function convert_rlist_expr_head(a::AstNode, env::AstEnv)
         end
     elseif a.rule == @RULE_elemexpr(6)
         head = a.child[1]::AstNode
-        arg = a.child[2]::AstNode
-        length(arg.child) == 1 || throw(TranspileError("bad ring list construction"))
-        arg = arg.child[1]
-        return Expr(:call, :rt_name_cross, convert_rlist_expr_head(head, env),
-                                           make_nocopy(convert_expr(arg, env)))
+        arg = convert_exprlist(a.child[2]::AstNode, env)
+        return Expr(:call, :rt_name_cross, convert_rlist_expr_head(head, env), make_tuple_array_nocopy(arg)...)
     else
         throw(TranspileError("bad ring list construction"))
     end
@@ -2151,9 +2144,11 @@ function convert_procarg!(arglist::Vector{Any}, body::Expr, a::AstNode, env::Ast
     @assert 0 < a.rule - @RULE_procarg(0) < 100
     if a.rule == @RULE_procarg(1)
         b = a.child[2]
+        b.rule == @RULE_extendedid(1) || throw(TranspileError("proc argument must be a name"))
         t = a.child[1]::String
     elseif @RULE_procarg(2) <= a.rule <= @RULE_procarg(7)
         b = a.child[2]
+        b.rule == @RULE_extendedid(1) || throw(TranspileError("proc argument must be a name"))
         haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in convert_procarg"))
         t = cmd_to_builtin_type_string[a.child[1]::Int]
     else
@@ -2195,9 +2190,8 @@ end
 
 function convert_proccmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_proccmd(0) < 100
-    if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(2) ||
-       a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12)
-        s = a.child[1]::String
+    if a.rule == @RULE_proccmd(1) || a.rule == @RULE_proccmd(2)
+        s = a.child[2]::String
         internalfunc = procname_to_func(s)
         args = Any[]
         body = Expr(:block)
@@ -2208,13 +2202,13 @@ function convert_proccmd(a::AstNode, env::AstEnv)
                         true,   # at top
                         false, false, # nothing is screwed yet
                         Dict{String, Int}(), Dict{String, String}())
-        if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(13)
-            fxnargs = a.child[2]
-            fxnbody = a.child[3]
+        if a.rule == @RULE_proccmd(2)
+            fxnargs = a.child[3]
+            fxnbody = a.child[4]
         else
             # empty args
             fxnargs = AstNodeMake(@RULE_procarglist(1))
-            fxnbody = a.child[2]
+            fxnbody = a.child[3]
         end
         scan_procarglist(fxnargs, newenv)
         scan_lines(fxnbody, newenv, true)
@@ -2225,10 +2219,17 @@ function convert_proccmd(a::AstNode, env::AstEnv)
         push!(body.args, Expr(:call, :rt_leavefunction))
         push!(body.args, Expr(:return, :nothing))
         r = Expr(:block)
-        push!(r.args, Expr(:call, :rt_declare_proc, makeunknown(s)))
         push!(r.args, Expr(:function, Expr(:call, internalfunc, args...), body))
-        push!(r.args, Expr(:call, :rtassign, makeunknown(s), Expr(:call, :SProc, internalfunc, s, QuoteNode(env.package))))
-        return r
+        procobj = Expr(:call, :SProc, internalfunc, s, QuoteNode(env.package))
+        if haskey(env.declared_identifiers, s)
+            @assert env.declared_identifers[s] == "proc"
+            push!(r.args, Expr(:(=), Symbol(s), procobj))
+
+        else
+            push!(r.args, Expr(:call, :rt_declare_proc, makeunknown(s)))
+            push!(r.args, Expr(:call, :rtassign, makeunknown(s), procobj))
+            return r
+        end
     else
         throw(TranspileError("internal error in convert_proccmd"))
     end
@@ -2241,10 +2242,12 @@ function scan_flowctrl(a::AstNode, env::AstEnv)
         scan_ifcmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(2)
         scan_whilecmd(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(3)
     elseif a.rule == @RULE_flowctrl(4)
         scan_forcmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(5)
         scan_proccmd(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(8)
     else
         throw(TranspileError("internal error in scan_flowctrl"))
     end
@@ -2256,10 +2259,14 @@ function convert_flowctrl(a::AstNode, env::AstEnv)
         return convert_ifcmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(2)
         return convert_whilecmd(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(3)
+        return Expr(:block)
     elseif a.rule == @RULE_flowctrl(4)
         return convert_forcmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(5)
         return convert_proccmd(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(8)
+        return Expr(:block)
     else
         throw(TranspileError("internal error in convert_flowctrl"))
     end
@@ -2472,10 +2479,9 @@ end
 
 function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
     @assert 0 < a.rule - @RULE_proccmd(0) < 100
-    if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(2) ||
-       a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12)
-        static = (a.rule == @RULE_proccmd(13) || a.rule == @RULE_proccmd(12))
-        s = a.child[1]::String
+    if a.rule == @RULE_proccmd(1) || a.rule == @RULE_proccmd(2)
+        static = (a.child[1] != 0)
+        s = a.child[2]::String
         internalfunc = procname_to_func(s)
         args = Any[]
         body = Expr(:block)
@@ -2486,13 +2492,13 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
                         true,   # at top
                         false, false,   # nothing is screwed yet
                         Dict{String, Int}(), Dict{String, String}())
-        if a.rule == @RULE_proccmd(3) || a.rule == @RULE_proccmd(13)
-            fxnargs = a.child[2]
-            fxnbody = a.child[3]
+        if a.rule == @RULE_proccmd(2)
+            fxnargs = a.child[3]
+            fxnbody = a.child[4]
         else
             # empty args
             fxnargs = AstNodeMake(@RULE_procarglist(1))
-            fxnbody = a.child[2]
+            fxnbody = a.child[3]
         end
         scan_procarglist(fxnargs, newenv)
         scan_lines(fxnbody, newenv, true)
@@ -2528,23 +2534,12 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
 end
 
 
-function loadconvert_example_dummy(a::AstNode, env::AstLoadEnv)
-    return
-end
-
-function loadconvert_examplecmd(a::AstNode, env::AstLoadEnv)
-    return
-end
-
-
 function loadconvert_flowctrl(a::AstNode, env::AstLoadEnv)
     @assert 0 < a.rule - @RULE_flowctrl(0) < 100
     if a.rule == @RULE_flowctrl(3)
-        loadconvert_example_dummy(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(5)
         loadconvert_proccmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(8)
-        loadconvert_examplecmd(a.child[1], env)
     else
         rt_error("error in loadconvert_flowctrl")
     end
