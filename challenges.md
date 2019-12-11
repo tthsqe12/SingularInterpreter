@@ -706,13 +706,26 @@ oops
 New session:
 ```
 > int n = 5;
-> int a(n) = 7;      
+> int a(n)(n)=77;
+> a(5)(5);
+77
+> int a(n)=7;
 > a(5);
 7
+> a(5)(5);
+77
+> a(5)(6);
+   ? `a(5)(6)` is undefined
+   ? error occurred in or before STDIN line 7: `a(5)(6);`
 > a(6);
    ? `a(6)` is undefined
-   ? error occurred in or before STDIN line 4: `a(6);`
-> proc a(n) {"proc a called on " + string(n); return(-n)}
+   ? error occurred in or before STDIN line 8: `a(6);`
+> proc a(n) {"proc a called on " + string(n); return(-n)};
+> a(5)(5);
+proc a called on 5
+   ? `int` ( `int` failed
+fxn call error 0
+   ? error occurred in or before STDIN line 10: `"proc a called on " + string(n); return(-n)`
 > a(5);
 proc a called on 5
 -5
@@ -720,13 +733,28 @@ proc a called on 5
 proc a called on 6
 -6
 > kill a;
+> a(5)(5);
+77
 > a(5);
 7
-> a(6);
-   ? `a(6)` is undefined
-   ? error occurred in or before STDIN line 10: `a(6);`
 > quit;
+
 ```
+
+New session:
+```
+> proc f(x(1)) {return(x(1)^2)}
+> f(7);
+49
+```
+
+New session:
+```
+> proc f(string s, int `s`) {return(n^2)}
+> f("n", 7);
+49
+```
+
 
 New session:
 ```
