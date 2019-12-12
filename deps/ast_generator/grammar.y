@@ -1173,13 +1173,6 @@ rlist:
                 $$ = astnode_make1(RULE_rlist(1), $1);
                 exitrule("rlist -> expr");
             }
-
-        | '(' expr ',' exprlist ')'
-            {
-                enterrule("rlist -> '(' expr ',' exprlist ')'");
-                $$ = astnode_make2(RULE_rlist(2), $2, $4);
-                exitrule("rlist -> '(' expr ',' exprlist ')'");
-            }
         ;
 
 ordername:

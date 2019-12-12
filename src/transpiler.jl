@@ -1378,11 +1378,6 @@ function scan_rlist(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_rlist(0) < 100
     if a.rule == @RULE_rlist(1)
         scan_rlist_expr(a.child[1], env)
-    elseif a.rule == @RULE_rlist(2)
-        scan_rlist_expr(a.child[1], env::AstEnv)
-        for b in a.child[2].child
-            scan_rlist_expr(b, env::AstEnv)
-        end
     else
         throw(TranspileError("internal error in scan_rlist"))
     end
