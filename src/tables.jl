@@ -471,5 +471,12 @@ const cmd_to_builtin_type_string = Dict{Int, String}(
     Int(RING_CMD) => "ring",
     Int(NUMBER_CMD) => "number",
     Int(POLY_CMD) => "poly",
-    Int(IDEAL_CMD) => "ideal"
+    Int(IDEAL_CMD) => "ideal",
+    Int(MODUL_CMD) => "module",
+    Int(MATRIX_CMD) => "matrix",
+    Int(MODUL_CMD) => "module",
+    Int(VECTOR_CMD) => "vector",
+    Int(MAP_CMD) => "map",
+    Int(LINK_CMD) => "link",
+    Int(RESOLUTION_CMD) => "resolution"
 )

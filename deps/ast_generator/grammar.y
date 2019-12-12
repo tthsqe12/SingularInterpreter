@@ -523,11 +523,18 @@ elemexpr:
                 exitrule("elemexpr -> RINGVAR");
             }
 
-        | extendedid
+        | UNKNOWN_IDENT
             {
-                enterrule("elemexpr -> extendedid");
-                $$ = astnode_make1(RULE_elemexpr(2), $1);
-                exitrule_ex("elemexpr -> extendedid",$$);
+                enterrule("extendedid -> UNKNOWN_IDENT");
+                $$ = astnode_make1(RULE_elemexpr(99), aststring_make($1));
+                exitrule_ex("extendedid -> UNKNOWN_IDENT",$$);
+            }
+
+        | '`' expr '`'
+            {
+                enterrule("extendedid -> '`' expr '`'");
+                $$ = astnode_make1(RULE_elemexpr(98), $2);
+                exitrule_ex("extendedid -> '`' expr '`'",$$);
             }
 
         | elemexpr COLONCOLON elemexpr
@@ -1089,6 +1096,13 @@ extendedid:
                 $$ = astnode_make1(RULE_extendedid(2), $2);
                 exitrule_ex("extendedid -> '`' expr '`'",$$);
             }
+
+        | extendedid '(' exprlist ')'
+            {
+                enterrule("extendedid -> extendedid '(' exprlist ')'");
+                $$ = astnode_make2(RULE_extendedid(3), $1, $3);
+                exitrule_ex("extendedid -> extendedid '(' exprlist ')'", $$);
+            }
         ;
 
 declare_ip_variable:
@@ -1597,10 +1611,24 @@ proccmd:
                 exitrule("proccmd -> PROC_CMD UNKNOWN_IDENT '{' lines '}'");
             }
 
+        | PROC_CMD UNKNOWN_IDENT STRINGTOK '{' lines '}'
+            {
+                enterrule("proccmd -> PROC_CMD UNKNOWN_IDENT '{' lines '}'");
+                $$ = astnode_make3(RULE_proccmd(1), astint_make($1), aststring_make($2), $5);
+                exitrule("proccmd -> PROC_CMD UNKNOWN_IDENT '{' lines '}'");
+            }
+
         | PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'
             {
                 enterrule("proccmd -> PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'");
                 $$ = astnode_make3(RULE_proccmd(1), astint_make($1), aststring_make($2), $6);
+                exitrule_ex("proccmd -> PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'",$$);
+            }
+
+        | PROC_CMD UNKNOWN_IDENT '(' ')' STRINGTOK '{' lines '}'
+            {
+                enterrule("proccmd -> PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'");
+                $$ = astnode_make3(RULE_proccmd(1), astint_make($1), aststring_make($2), $7);
                 exitrule_ex("proccmd -> PROC_CMD UNKNOWN_IDENT '(' ')' '{' lines '}'",$$);
             }
 

@@ -172,44 +172,6 @@ end
 # scan: collect candidate local variables for local storage, i.e. local i::Int in the julia code
 # convert: use info from scan to produce the final code
 
-function scan_extendedid(a::AstNode, env::AstEnv)
-    @assert 0 < a.rule - @RULE_extendedid(0) < 100
-    if a.rule == @RULE_extendedid(1)
-        if a.child[1]::String == "_"
-        elseif a.child[1]::String == "basering"
-        else
-            env.appeared_identifiers[a.child[1]::String] = 1
-        end
-    elseif a.rule == @RULE_extendedid(2)
-        env.everything_is_screwed = true
-    else
-        throw(TranspileError("internal error in scan_extendedid"))
-    end
-end
-
-
-function convert_extendedid(a::AstNode, env::AstEnv)
-    @assert 0 < a.rule - @RULE_extendedid(0) < 100
-    if a.rule == @RULE_extendedid(1)
-        if a.child[1]::String == "_"
-            return Expr(:call, :rt_get_last_printed)
-        elseif a.child[1]::String == "basering"
-            return Expr(:call, :rtbasering)
-        else
-            s = a.child[1]::String
-            if haskey(env.declared_identifiers, s)
-                return Expr(:call, :rt_ref, Symbol(s))
-            else
-                return makeunknown(s)
-            end
-        end
-    elseif a.rule == @RULE_extendedid(2)
-        s = make_nocopy(convert_expr(a.child[1], env))
-        return Expr(:call, :rt_backtick, s)
-    else
-        throw(TranspileError("internal error in convert_extendedid"))
-    end
-end
 
 function we_know_splat_is_trivial(a)
     if a isa Expr && a.head == :call && length(a.args) == 2 &&
@@ -423,8 +385,15 @@ end
 
 function scan_elemexpr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-    if a.rule == @RULE_elemexpr(2)
-        return scan_extendedid(a.child[1], env)
+    if a.rule == @RULE_elemexpr(99)
+        if a.child[1]::String == "_"
+        elseif a.child[1]::String == "basering"
+        else
+            env.appeared_identifiers[a.child[1]::String] = 1
+        end
+    elseif a.rule == @RULE_elemexpr(98)
+        scan_expr(a.child[1], env)
+        env.everything_is_screwed = true
     elseif a.rule == @RULE_elemexpr(4)
         scan_expr(a.child[1], env)
     elseif a.rule == @RULE_elemexpr(5)
@@ -462,6 +431,12 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
         env.branchto_appeared |= (a.child[1]::Int == Int(BRANCHTO_CMD))
         env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
         scan_exprlist(a.child[2], env)
+    elseif a.rule == @RULE_elemexpr(32)
+        scan_expr(a.child[2], env)
+        scan_expr(a.child[3], env)
+        scan_expr(a.child[4], env)
+    elseif a.rule == @RULE_elemexpr(33)
+        scan_expr(a.child[2], env)        
     elseif a.rule == @RULE_elemexpr(34)
         scan_rlist(a.child[2], env)
         scan_rlist(a.child[3], env)
@@ -477,8 +452,22 @@ end
 
 function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-    if a.rule == @RULE_elemexpr(2)
-        return convert_extendedid(a.child[1], env)
+    if a.rule == @RULE_elemexpr(99)
+        if a.child[1]::String == "_"
+            return Expr(:call, :rt_get_last_printed)
+        elseif a.child[1]::String == "basering"
+            return Expr(:call, :rtbasering)
+        else
+            s = a.child[1]::String
+            if haskey(env.declared_identifiers, s)
+                return Expr(:call, :rt_ref, Symbol(s))
+            else
+                return makeunknown(s)
+            end
+        end
+    elseif a.rule == @RULE_elemexpr(98)
+        s = make_nocopy(convert_expr(a.child[1], env))
+        return Expr(:call, :rt_backtick, s)
     elseif a.rule == @RULE_elemexpr(4)
         c = a.child[2]
         c.child[1].rule == @RULE_extendedid(1) || throw(TranspileError("rhs of dot is no good"))
@@ -598,6 +587,14 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
             end
             return  r
         end
+    elseif a.rule == @RULE_elemexpr(32)
+        typ = cmd_to_builtin_type_string[a.child[1].child[1]::Int]
+        return Expr(:call, Symbol("rt_cast2"*typ), make_nocopy(a.child[2]),
+                                                   make_nocopy(a.child[3]),
+                                                   make_nocopy(a.child[4]))
+    elseif a.rule == @RULE_elemexpr(33)
+        typ = cmd_to_builtin_type_string[a.child[1].child[1]::Int]
+        return Expr(:call, Symbol("rt_cast2"*typ), make_nocopy(a.child[2]))
     elseif a.rule == @RULE_elemexpr(34)
         return Expr(:call, :rt_make_ring, convert_rlist(a.child[2], env),
                                           convert_rlist(a.child[3], env),
@@ -844,27 +841,86 @@ function scan_add_appearance(s::String, env::AstEnv)
 end
 
 
+function scan_elemexpr_name_call(a::AstNode, env::AstEnv)
+    @assert @RULE_elemexpr(0) < a.rule < @RULE_elemexpr(100)
+    env.everything_is_screwed = true
+    if a.rule == @RULE_elemexpr(99)
+        scan_add_appearance(a.child[1]::String, env)
+    elseif a.rule == @RULE_elemexpr(98)
+        scan_expr(a.child[1], env)
+    elseif a.rule == @RULE_elemexpr(6)
+        scan_elemexpr_name_call(a.child[1], env)
+        scan_exprlist(a.child[2], env)
+    else
+        throw(TranspileError("bad name construction"))
+    end
+end
+
+function convert_elemexpr_name_call(a::AstNode, env::AstEnv)
+    @assert @RULE_elemexpr(0) < a.rule < @RULE_elemexpr(100)
+    @assert isempty(env.declared_identifiers)
+    if a.rule == @RULE_elemexpr(99)
+        return makeunknown(a.child[1]::String)
+    elseif a.rule == @RULE_elemexpr(98)
+        s = make_nocopy(convert_expr(b.child[1], env))
+        return Expr(:call, :rt_backtick, s)
+    elseif a.rule == @RULE_elemexpr(6)
+        head = convert_elemexpr_name_call(a.child[1]::AstNode, env)
+        arg = convert_exprlist(a.child[2]::AstNode, env)
+        return Expr(:call, :rt_name_compose, head, make_tuple_array_nocopy(arg)...)
+    else
+        throw(TranspileError("bad name construction"))
+    end
+end
+
+
+function scan_extendedid_name_call(a::AstNode, env::AstEnv)
+    @assert @RULE_extendedid(0) < a.rule < @RULE_extendedid(100)
+    env.everything_is_screwed = true
+    if a.rule == @RULE_extendedid(1)
+        scan_add_appearance(a.child[1]::String, env)
+    elseif a.rule == @RULE_extendedid(2)
+        scan_expr(a.child[1], env)
+    elseif a.rule == @RULE_extendedid(3)
+        scan_extendedid_name_call(a.child[1], env)
+        scan_exprlist(a.child[2], env)
+    else
+        throw(TranspileError("bad name construction"))
+    end
+end
+
+function convert_extendedid_name_call(a::AstNode, env::AstEnv)
+    @assert @RULE_extendedid(0) < a.rule < @RULE_extendedid(100)
+    @assert isempty(env.declared_identifiers)
+    if a.rule == @RULE_extendedid(1)
+        return makeunknown(a.child[1]::String)
+    elseif a.rule == @RULE_extendedid(2)
+        s = make_nocopy(convert_expr(b.child[1], env))
+        return Expr(:call, :rt_backtick, s)
+    elseif a.rule == @RULE_extendedid(3)
+        head = convert_extendedid_name_call(a.child[1]::AstNode, env)
+        arg = convert_exprlist(a.child[2]::AstNode, env)
+        return Expr(:call, :rt_name_compose, head, make_tuple_array_nocopy(arg)...)
+    else
+        throw(TranspileError("bad name construction"))
+    end
+end
+
 function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
-    if left.rule == @RULE_expr(2) || left.rule == @RULE_elemexpr(2)
+    if left.rule == @RULE_expr(2) || 0 < left.rule - @RULE_elemexpr(0) < 100
         a::AstNode = left.rule == @RULE_expr(2) ? left.child[1] : left
         @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-        if a.rule == @RULE_elemexpr(2)
-            b = a.child[1]::AstNode
-            @assert 0 < b.rule - @RULE_extendedid(0) < 100
-            if b.rule == @RULE_extendedid(1)
-                var = b.child[1]::String
-                if haskey(env.declared_identifiers, var)
-                    push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign, Symbol(var), Expr(:call, :rtplus, Symbol(var), right))))
-                else
-                    push!(out.args, Expr(:call, :rt_incrementby, makeunknown(var), right))
-                end
-            elseif b.rule == @RULE_extendedid(2)
-                @assert isempty(env.declared_identifiers)
-                s = make_nocopy(convert_expr(b.child[1], env))
-                push!(out.args, Expr(:call, :rt_incrementby, Expr(:call, :rt_backtick, s), right))
+        if a.rule == @RULE_elemexpr(99)
+            var = a.child[1]::String
+            if haskey(env.declared_identifiers, var)
+                push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign, Symbol(var), Expr(:call, :rtplus, Symbol(var), right))))
             else
-                throw(TranspileError("cannot increment/decrement lhs"))
+                push!(out.args, Expr(:call, :rt_incrementby, makeunknown(var), right))
             end
+        elseif a.rule == @RULE_elemexpr(98)
+            @assert isempty(env.declared_identifiers)
+            s = make_nocopy(convert_expr(b.child[1], env))
+            push!(out.args, Expr(:call, :rt_incrementby, Expr(:call, :rt_backtick, s), right))
         elseif a.rule == @RULE_elemexpr(4)
             b = convert_expr(a.child[1], env)
             c = a.child[2]
@@ -880,8 +936,12 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
                 b = Expr(:(.), t, QuoteNode(Symbol(s)))
             end
             push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign, b, Expr(:call, :rtplus, b, right))))
+        elseif a.rule == @RULE_elemexpr(6)
+            @assert isempty(env.declared_identifiers)
+            s = convert_elemexpr_name_call(a, env)
+            push!(out.args, Expr(:call, :rt_incrementby, s, right))
         else
-            throw(TranspileError("cannot increment lhs"))
+            throw(TranspileError("cannot increment/decrement lhs"))
         end
     elseif left.rule == @RULE_extendedid(1)
         var = left.child[1]::String
@@ -894,6 +954,10 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
         @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_expr(left.child[1], env))
         push!(out.args, Expr(:call, :rt_incrementby, Expr(:call, :rt_backtick, s), right))
+    elseif left.rule == @RULE_extendedid(3)
+        @assert isempty(env.declared_identifiers)
+        s = convert_extendedid_name_call(left, env)
+        push!(out.args, Expr(:call, :rt_incrementby, s, right))
     elseif left.rule == @RULE_expr(3)
         t1 = gensym()
         t2 = gensym()
@@ -916,26 +980,29 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
 end
 
 function scan_assignment(left::AstNode, env::AstEnv)
-    if left.rule == @RULE_expr(2) || left.rule == @RULE_elemexpr(2)
+    if left.rule == @RULE_expr(2) || @RULE_elemexpr(0) < left.rule < @RULE_elemexpr(100)
         a::AstNode = left.rule == @RULE_expr(2) ? left.child[1] : left
         @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-        if a.rule == @RULE_elemexpr(2)
-            b = a.child[1]::AstNode
-            @assert 0 < b.rule - @RULE_extendedid(0) < 100
-            if b.rule == @RULE_extendedid(1)
-                scan_add_appearance(b.child[1]::String, env)
-            elseif b.rule == @RULE_extendedid(2)
-                empty!(env.declared_identifiers)
-                env.everything_is_screwed = true
-            end
+        if a.rule == @RULE_elemexpr(99)
+            scan_add_appearance(a.child[1]::String, env)
+        elseif a.rule == @RULE_elemexpr(98)
+            scan_expr(a.child[1], env)
+            env.everything_is_screwed = true
         elseif a.rule == @RULE_elemexpr(4)
             scan_expr(a.child[1], env)
+            a.child[2].rule == @RULE_elemexpr(99) || throw(TranspileError("rhs of dot in assignment is no good"))
         elseif a.rule == @RULE_elemexpr(9)
+        elseif a.rule == @RULE_elemexpr(6)
+            scan_elemexpr_name_call(a, env)
+            env.everything_is_screwed = true 
         end
     elseif left.rule == @RULE_extendedid(1)
         scan_add_appearance(left.child[1]::String, env)
     elseif left.rule == @RULE_extendedid(2)
-        empty!(env.declared_identifiers)
+        scan_expr(left.child[1], env)
+        env.everything_is_screwed = true
+    elseif left.rule == @RULE_extendedid(3)
+        scan_extendedid_name_call(left, env)
         env.everything_is_screwed = true
     elseif left.rule == @RULE_expr(3)
         scan_expr(left.child[1], env)
@@ -950,31 +1017,25 @@ function scan_assignment(left::AstNode, env::AstEnv)
 end
 
 function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
-    if left.rule == @RULE_expr(2) || left.rule == @RULE_elemexpr(2)
+    if left.rule == @RULE_expr(2) || @RULE_elemexpr(0) < left.rule < @RULE_elemexpr(100)
         a::AstNode = left.rule == @RULE_expr(2) ? left.child[1] : left
         @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-        if a.rule == @RULE_elemexpr(2)
-            b = a.child[1]::AstNode
-            @assert 0 < b.rule - @RULE_extendedid(0) < 100
-            if b.rule == @RULE_extendedid(1)
-                var = b.child[1]::String
-                if haskey(env.declared_identifiers, var)
-                    push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign, Symbol(var), right)))
-                else
-                    push!(out.args, Expr(:call, :rtassign, makeunknown(var), right))
-                end
-            elseif b.rule == @RULE_extendedid(2)
-                @assert isempty(env.declared_identifiers)
-                s = make_nocopy(convert_expr(b.child[1], env))
-                push!(out.args, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right))
+        if a.rule == @RULE_elemexpr(99)
+            var = a.child[1]::String
+            if haskey(env.declared_identifiers, var)
+                push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign, Symbol(var), right)))
             else
-                throw(TranspileError("cannot assign to lhs"))
+                push!(out.args, Expr(:call, :rtassign, makeunknown(var), right))
             end
+        elseif a.rule == @RULE_elemexpr(98)
+            @assert isempty(env.declared_identifiers)
+            s = make_nocopy(convert_expr(a.child[1], env))
+            push!(out.args, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right))
         elseif a.rule == @RULE_elemexpr(4)
             b = convert_expr(a.child[1], env)
             c = a.child[2]
-            c.child[1].rule == @RULE_extendedid(1) || throw(TranspileError("rhs of dot in assignment is no good"))
-            s = c.child[1].child[1]::String
+            c.rule == @RULE_elemexpr(99) || throw(TranspileError("rhs of dot in assignment is no good"))
+            s = c.child[1]::String
             length(s) < 2 || s[1:2] != "r_" || throw(TranspileError("cannot assign to r_ member of a newstruct"))
             is_valid_newstruct_member(s) || throw(TranspileError(s * " is not a valid newstruct member name"))
             if isa(b, Symbol)
@@ -989,6 +1050,10 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
             t = a.child[1]::Int
             haskey(system_var_to_string, t) || throw(TranspileError("internal error push_assignment - elemexpr 9"))
             push!(out.args, Expr(:call, Symbol("rt_set_" * system_var_to_string[t]), right))
+        elseif a.rule == @RULE_elemexpr(6)
+            @assert isempty(env.declared_identifiers)
+            s = make_nocopy(convert_elemexpr_name_call(a, env))
+            push!(out.args, Expr(:call, :rtassign, s, right))
         else
             throw(TranspileError("cannot assign to lhs"))
         end
@@ -1003,6 +1068,10 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
         @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_expr(left.child[1], env))
         push!(out.args, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right))
+    elseif left.rule == @RULE_extendedid(3)
+        @assert isempty(env.declared_identifiers)
+        s = make_nocopy(convert_extendedid_name_call(left, env))
+        push!(out.args, Expr(:call, :rtassign, s, right))
     elseif left.rule == @RULE_expr(3)
         push!(out.args, Expr(:call, :rt_setindex, make_nocopy(convert_expr(left.child[1], env)),
                                                   make_nocopy(convert_expr(left.child[2], env)),
@@ -1013,7 +1082,7 @@ function push_assignment!(out::Expr, left::AstNode, right, env::AstEnv)
                                                   make_nocopy(convert_expr(left.child[2], env)),
                                                   make_nocopy(right)))
     else
-        throw(TranspileError("cannot assign to lhs"))
+        throw(TranspileError("cannot assign to lhs 3"))
     end
 end
 
@@ -1264,19 +1333,19 @@ function rt_name_cross(a::Vector{SName}, v...)
     return r
 end
 
+# like rt_name_cross, but we are only allowed to return one name
+function rt_name_compose(a::SName, i::Int)
+    return makeunknown(String(a.name)*"("*string(i)*")")
+end
+
 function scan_rlist_expr_head(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-    if a.rule == @RULE_elemexpr(2)
-        b = a.child[1]
-        if b.rule == @RULE_extendedid(1)
-            return
-        elseif b.rule == @RULE_extendedid(2)
-            scan_expr(b.child[1], env)
-            env.everything_is_screwed = true
-            return
-        else
-            throw(TranspileError("bad ring list construction"))
-        end
+    if a.rule == @RULE_elemexpr(99)
+        return
+    elseif a.rule == @RULE_elemexpr(98)
+        scan_expr(a.child[1], env)
+        env.everything_is_screwed = true
+        return
     elseif a.rule == @RULE_elemexpr(6)
         scan_rlist_expr_head(head, env)
         scan_expr(arg, env)
@@ -1288,21 +1357,16 @@ end
 
 function convert_rlist_expr_head(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-    if a.rule == @RULE_elemexpr(2)
-        b = a.child[1]
-        if b.rule == @RULE_extendedid(1)
-            return Expr(:vect, makeunknown(b.child[1]::String))
-        elseif b.rule == @RULE_extendedid(2)
-            @assert isempty(env.declared_identifiers)
-            s = make_nocopy(convert_expr(b.child[1], env))
-            return Expr(:vect, Expr(:call, :rt_backtick, s))
-        else
-            throw(TranspileError("bad ring list construction"))
-        end
+    if a.rule == @RULE_elemexpr(99)
+        return Expr(:vect, makeunknown(a.child[1]::String))
+    elseif a.rule == @RULE_elemexpr(98)
+        @assert isempty(env.declared_identifiers)
+        s = make_nocopy(convert_expr(a.child[1], env))
+        return Expr(:vect, Expr(:call, :rt_backtick, s))
     elseif a.rule == @RULE_elemexpr(6)
-        head = a.child[1]::AstNode
+        head = convert_rlist_expr_head(a.child[1]::AstNode, env)
         arg = convert_exprlist(a.child[2]::AstNode, env)
-        return Expr(:call, :rt_name_cross, convert_rlist_expr_head(head, env), make_tuple_array_nocopy(arg)...)
+        return Expr(:call, :rt_name_cross, head, make_tuple_array_nocopy(arg)...)
     else
         throw(TranspileError("bad ring list construction"))
     end
@@ -1317,17 +1381,12 @@ function scan_rlist_expr(r::Expr, a::AstNode, env::AstEnv)
                 scan_rlist_expr(r, c, env)
             end
             return
-        elseif b.rule == @RULE_elemexpr(2)
-            b = b.child[1]
-            if b.rule == @RULE_extendedid(1)
-                return
-            elseif b.rule == @RULE_extendedid(2)
-                scan_expr(b.child[1], env)
-                env.everything_is_screwed = true
-                return
-            else
-                throw(TranspileError("bad ring list construction"))
-            end
+        elseif b.rule == @RULE_elemexpr(99)
+            return
+        elseif b.rule == @RULE_extendedid(98)
+            scan_expr(b.child[1], env)
+            env.everything_is_screwed = true
+            return
         elseif b.rule == @RULE_elemexpr(6)
             scan_rlist_expr_head(b, env)
             return
@@ -1349,19 +1408,14 @@ function push_rlist_expr!(r::Expr, a::AstNode, env::AstEnv)
                 push_rlist_expr!(r, c, env)
             end
             return
-        elseif b.rule == @RULE_elemexpr(2)
-            b = b.child[1]
-            if b.rule == @RULE_extendedid(1)
-                push!(r.args, makeunknown(b.child[1]::String))
-                return
-            elseif b.rule == @RULE_extendedid(2)
-                @assert isempty(env.declared_identifiers)
-                s = make_nocopy(convert_expr(b.child[1], env))
-                push!(r.args, Expr(:call, :rt_backtick, s))
-                return
-            else
-                throw(TranspileError("bad ring list construction"))
-            end
+        elseif b.rule == @RULE_elemexpr(99)
+            push!(r.args, makeunknown(b.child[1]::String))
+            return
+        elseif b.rule == @RULE_elemexpr(98)
+            @assert isempty(env.declared_identifiers)
+            s = make_nocopy(convert_expr(b.child[1], env))
+            push!(r.args, Expr(:call, :rt_backtick, s))
+            return
         elseif b.rule == @RULE_elemexpr(6)
             push!(r.args, convert_rlist_expr_head(b, env))
             return
@@ -1606,16 +1660,11 @@ end
 
 function scan_ringcmd_lhs(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-    if a.rule == @RULE_elemexpr(2)
-        b = a.child[1]
-        if b.rule == @RULE_extendedid(1)
-            scan_add_declaration(b.child[1]::String, "ring", env)
-        elseif b.rule == @RULE_extendedid(2)
-            scan_expr(b.child[1], env)
-            env.everything_is_screwed = 1
-        else
-            throw(TranspileError("internal error in scan_ringcmd_lhs"))
-        end
+    if a.rule == @RULE_elemexpr(99)
+        scan_add_declaration(a.child[1]::String, "ring", env)
+    elseif a.rule == @RULE_elemexpr(98)
+        scan_expr(a.child[1], env)
+        env.everything_is_screwed = 1
     else
         throw(TranspileError("bad name of ring"))
     end
@@ -1623,22 +1672,17 @@ end
 
 function convert_ringcmd_lhs(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-    if a.rule == @RULE_elemexpr(2)
-        b = a.child[1]
-        if b.rule == @RULE_extendedid(1)
-            s = b.child[1]::String
-            if haskey(env.declared_identifiers, s)
-                @assert env.declared_identifiers[s] == "ring"
-                return Symbol(s), true
-            else
-                return makeunknown(s), false
-            end
-        elseif b.rule == @RULE_extendedid(2)
-            @assert isempty(env.declared_identifiers)
-            return Expr(:call, :rt_backtick, make_nocopy(convert_expr(b.child[1], env))), false
+    if a.rule == @RULE_elemexpr(99)
+        s = a.child[1]::String
+        if haskey(env.declared_identifiers, s)
+            @assert env.declared_identifiers[s] == "ring"
+            return Symbol(s), true
         else
-            throw(TranspileError("internal error in scan_ringcmd_lhs"))
+            return makeunknown(s), false
         end
+    elseif a.rule == @RULE_elemexpr(98)
+        @assert isempty(env.declared_identifiers)
+        return Expr(:call, :rt_backtick, make_nocopy(convert_expr(a.child[1], env))), false
     else
         throw(TranspileError("bad name of ring"))
     end
@@ -1652,9 +1696,6 @@ function scan_ringcmd(a::AstNode, env::AstEnv)
         scan_ordering(a.child[4], env)
         scan_ringcmd_lhs(a.child[1], env)
     elseif a.rule == @RULE_ringcmd(2)
-        scan_rlist(a.child[2], env)
-        scan_rlist(a.child[3], env)
-        scan_ordering(a.child[4], env)
         scan_ringcmd_lhs(a.child[1], env)
     elseif a.rule == @RULE_ringcmd(3)
         scan_elemexpr(a.child[2], env)
@@ -1695,21 +1736,48 @@ function convert_ringcmd(a::AstNode, env::AstEnv)
     return r
 end
 
-
-
 function prepend_killelem!(r::Expr, a::AstNode, env::AstEnv)
-    @assert 0 < a.rule - @RULE_elemexpr(0) < 100
-    if a.rule == @RULE_elemexpr(2) && a.child[1].rule == @RULE_extendedid(1)
-        push!(r.args, Expr(:call, :rtkill, makeunknown(a.child[1].child[1]::String)))
+    if a.rule == @RULE_expr(2)
+        a = a.child[1]
+    end
+    if a.rule == @RULE_elemexpr(99)
+        s = a.child[1]::String
+        @assert !haskey(env.declared_identifiers, s)
+        push!(r.args, Expr(:call, :rtkill, makeunknown(s)))
+    elseif a.rule == @RULE_elemexpr(98)
+        @assert isempty(env.declared_identifiers)
+        s = make_nocopy(convert_expr(a.child[1], env))
+        push!(r.args, Expr(:call, :rtkill, Expr(:call, :rt_backtick, s)))
+    elseif a.rule == @RULE_elemexpr(6)
+        @assert isempty(env.declared_identifiers)
+        s = convert_elemexpr_name_call(a, env)
+        push!(r.args, Expr(:call, :rtkill, s))
+    elseif a.rule == @RULE_elemexpr(37)
+        l = AstNode[]
+        push_exprlist_expr!(l, a.child[1], env)
+        for i in l
+            prepend_killelem!(r, i, env)
+        end
     else
-        throw(TranspileError("bad argument to kill"))
+        throw(TranspileError("bad argument to kill 2"))
     end
 end
 
 function scan_killcmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_killcmd(0) < 100
-    empty!(env.declared_identifiers)
     env.everything_is_screwed = true
+    while true
+        @assert 0 < a.rule - @RULE_killcmd(0) < 100
+        if a.rule == @RULE_killcmd(1)
+            scan_elemexpr(a.child[1], env)
+            break
+        elseif a.rule == @RULE_killcmd(2)
+            scan_elemexpr(a.child[2], env)
+            a = a.child[1]
+        else
+            throw(TranspileError("internal error in convert_killcmd"))
+        end
+    end
 end
 
 function convert_killcmd(a::AstNode, env::AstEnv)
@@ -1729,10 +1797,41 @@ function convert_killcmd(a::AstNode, env::AstEnv)
     return r
 end
 
+function scan_exportcmd(a::AstNode, env::AstEnv)
+    scan_exprlist(a.child[1], env)
+end
+
+function convert_exportcmd(a::AstNode, env::AstEnv)
+    l = AstNode[]
+    push_exprlist_expr!(l, a.child[1], env)
+    r = Expr(:block)
+    for b::AstNode in l
+        if b.rule == @RULE_expr(2)
+            b = b.child[1]
+        end
+        if b.rule == @RULE_elemexpr(99)
+            s = b.child[1]::String
+            if haskey(env.declared_identifiers, s)
+                push!(r.args, Expr(:call, :rt_export, makeunknown(s), Symbol(s)))
+            else
+                push!(r.args, Expr(:call, :rtexport, makeunknown(s)))
+            end
+        elseif b.rule == @RULE_elemexpr(98)
+            s = make_nocopy(convert_expr(a.child[1], env))
+            push!(r.args, Expr(:call, :rtexport, Expr(:call, :rt_backtick, s)))
+        elseif b.rule == @RULE_elemexpr(6)
+            push!(r.args, Expr(:call, :rtexport, convert_elemexpr_name_call(b, env)))
+        else
+            throw(TranspileError("bad argument to export"))
+        end
+    end
+    return r
+end
+
+
 function scan_scriptcmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_scriptcmd(0) < 100
     if a.rule == @RULE_scriptcmd(1)
-        empty!(env.declared_identifiers)
         env.everything_is_screwed = true
     else
         throw(TranspileError("internal error in scan_scriptcmd"))
@@ -1757,6 +1856,8 @@ function scan_command(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_command(0) < 100
     if a.rule == @RULE_command(1)
         scan_assign(a.child[1], env)
+    elseif a.rule == @RULE_command(2)
+        scan_exportcmd(a.child[1], env)
     elseif a.rule == @RULE_command(3)
         scan_killcmd(a.child[1], env)
     elseif a.rule == @RULE_command(6)
@@ -1784,6 +1885,8 @@ function convert_command(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_command(0) < 100
     if a.rule == @RULE_command(1)
         return convert_assign(a.child[1], env)
+    elseif a.rule == @RULE_command(2)
+        return convert_exportcmd(a.child[1], env)
     elseif a.rule == @RULE_command(3)
         return convert_killcmd(a.child[1], env)
     elseif a.rule == @RULE_command(6)
@@ -1812,10 +1915,14 @@ function scan_declared_var(v::AstNode, typ::String, env::AstEnv)
     @assert 0 < v.rule - @RULE_extendedid(0) < 100
     if v.rule == @RULE_extendedid(1)
         scan_add_declaration(v.child[1]::String, typ, env)
-        return
-    else v.rule == @RULE_extendedid(2)
-        empty!(env.declared_identifiers)
+    elseif v.rule == @RULE_extendedid(2)
+        scan_expr(v.child[1], env)
         env.everything_is_screwed = true
+    elseif v.rule == @RULE_extendedid(3)
+        scan_extendedid_name_call(v, env)
+        env.everything_is_screwed = true
+    else
+        throw(TranspileError("internal error in scan_declared_var"*string(v.rule)))
     end
 end
 
@@ -1829,10 +1936,16 @@ function convert_declared_var(v::AstNode, typ::String, env::AstEnv, extra_args..
         else
             return Expr(:call, Symbol("rt_declare_"*typ), makeunknown(s), extra_args...)
         end
-    else v.rule == @RULE_extendedid(2)
+    elseif v.rule == @RULE_extendedid(2)
         @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_expr(v.child[1], env))
         return Expr(:call, Symbol("rt_declare_"*typ), Expr(:call, :rt_backtick, s), extra_args...)
+    elseif v.rule == @RULE_extendedid(3)
+        @assert isempty(env.declared_identifiers)
+        b = convert_extendedid_name_call(v, env)
+        return Expr(:call, Symbol("rt_declare_"*typ), b, extra_args...)
+    else
+        throw(TranspileError("internal error in convert_declared_var"*string(v.rule)))
     end
 end
 
@@ -1862,17 +1975,9 @@ function scan_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::AstEnv
                 scan_expr(a.child[4], env)
             end
             pushfirst!(vars, a.child[2])
-            t::AstNode = a.child[1]
-            if t.rule == @RULE_mat_cmd(2)
-                for v in vars
-                    scan_declared_var(v, "intmat", env)
-                end
-            elseif t.rule == @RULE_mat_cmd(3)
-                for v in vars
-                    scan_declared_var(v, "bigintmat", env)
-                end
-            else
-                throw(TranspileError("internal error in scan_declare_ip_variable 5"))
+            typ = cmd_to_builtin_type_string[a.child[1].child[1]::Int]
+            for v in vars
+                scan_declared_var(v, typ, env)
             end
             return
         elseif a.rule == @RULE_declare_ip_variable(7)
@@ -1914,20 +2019,11 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
                 numrows = numcols = 1 # default matrix size is 1x1
             end
             pushfirst!(vars, a.child[2])
-            t::AstNode = a.child[1]
             r = Expr(:block)
-            if t.rule == @RULE_mat_cmd(2)
-                for v in vars
-                    push!(r.args, convert_declared_var(v, "intmat", env, numrows, numcols))
-                    numrows = numcols = 1 # the rest of the matrices are 1x1
-                end
-            elseif t.rule == @RULE_mat_cmd(3)
-                for v in vars
-                    push!(r.args, convert_declared_var(v, "bigintmat", env, numrows, numcols))
-                    numrows = numcols = 1 # the rest of the matrices are 1x1
-                end
-            else
-                throw(TranspileError("internal error in convert_declare_ip_variable 5|6"))
+            typ = cmd_to_builtin_type_string[a.child[1].child[1]::Int]
+            for v in vars
+                push!(r.args, convert_declared_var(v, typ, env, numrows, numcols))
+                numrows = numcols = 1 # the rest of the matrices are 1x1
             end
             return r
         elseif a.rule == @RULE_declare_ip_variable(7)
@@ -2552,9 +2648,7 @@ function loadconvert_assign(a::AstNode, env::AstLoadEnv)
         b = b.child[1]
         @error_check(b.rule == @RULE_expr(2), "???")
         b = b.child[1]
-        @error_check(b.rule == @RULE_elemexpr(2), "???")
-        b = b.child[1]
-        @error_check(b.rule == @RULE_extendedid(1), "???")
+        @error_check(b.rule == @RULE_elemexpr(99), "???")
         b = b.child[1]::String
         # find rhs stringexpr
         c = a.child[2]
