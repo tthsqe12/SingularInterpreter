@@ -436,7 +436,7 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
         scan_expr(a.child[3], env)
         scan_expr(a.child[4], env)
     elseif a.rule == @RULE_elemexpr(33)
-        scan_expr(a.child[2], env)        
+        scan_expr(a.child[2], env)
     elseif a.rule == @RULE_elemexpr(34)
         scan_rlist(a.child[2], env)
         scan_rlist(a.child[3], env)
@@ -994,7 +994,7 @@ function scan_assignment(left::AstNode, env::AstEnv)
         elseif a.rule == @RULE_elemexpr(9)
         elseif a.rule == @RULE_elemexpr(6)
             scan_elemexpr_name_call(a, env)
-            env.everything_is_screwed = true 
+            env.everything_is_screwed = true
         end
     elseif left.rule == @RULE_extendedid(1)
         scan_add_appearance(left.child[1]::String, env)

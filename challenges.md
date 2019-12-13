@@ -701,7 +701,7 @@ Unexpected behaviour:
 oops
 ```
 
-(23) The following behaviour ruins everything.
+(23) The following behaviour encourages the worst possible programming practices.
 
 New session:
 ```
@@ -768,6 +768,17 @@ proc a called on 5
    ? object to declare is not a name
    ? error occurred in or before STDIN line 4: `"proc a called on " + string(n); return(-n)`
 > quit;
+```
+
+(24) Is `quit` a keyword?
+```
+> int quit = 6;
+> listvar();
+// quit                           [0]  int 6
+> string(quit);
+6
+> quit;
+Auf Wiedersehen.
 ```
 
 -------------------------------
