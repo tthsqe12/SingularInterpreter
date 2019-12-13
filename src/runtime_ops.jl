@@ -64,7 +64,7 @@ function rt_getindex(a::SIdealData, i::Int)
     1 <= i <= n || rt_error("ideal index out of range")
     r1 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
     r2 = libSingular.p_Copy(r1, a.parent.ring_ptr)
-    return SIdeal(SIdealData(r2, a.parent))
+    return SPoly(r2, a.parent)
 end
 
 function rt_setindex(a::SIdeal, i::Int, b)

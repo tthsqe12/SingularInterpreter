@@ -1169,16 +1169,16 @@ function rt_convert2ideal(a::Union{Int, BigInt})
     @error_check(R.valid, "cannot convert to an ideal when no basering is active")
     r1 = rt_convert2poly_ptr(a, R)
     r2 = libSingular.idInit(1, 1)
-    libsingular.setindex_internal(r2, r1, 0) # r1 is consumed
-    return SIdeal(r2, rtGlobal.currentring)
+    libSingular.setindex_internal(r2, r1, 0) # r1 is consumed
+    return SIdeal(SIdealData((r2, R)))
 end
 
 function rt_convert2ideal(a::Union{SNumber, SPoly})
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a polynomial outside of basering")
     r1 = rt_convert2poly_ptr(a, a.parent)
     r2 = libSingular.idInit(1, 1)
-    libsingular.setindex_internal(r2, r1, 0) # r1 is consumed
-    return SIdeal(r2, rtGlobal.currentring)
+    libSingular.setindex_internal(r2, r1, 0) # r1 is consumed
+    return SIdeal(SIdealData(r2, a.parent))
 end
 
 function rt_convert2ideal(a::Tuple{Vararg{Any}})
