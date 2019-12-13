@@ -464,11 +464,6 @@ newline                  {
                            lvalp->name = duplicate_string(yytext);
                            return INT_CONST;
                          }
-(quit|exit)[ \t\n]*;     {
-                           lvalp->name = duplicate_string(yytext);
-                            return INT_CONST;
-                         }
-
 {rgvars}|{realnum}       {
                            lvalp->name = duplicate_string(yytext);
                            return RINGVAR;

@@ -755,7 +755,6 @@ New session:
 49
 ```
 
-
 New session:
 ```
 > proc a(n) {"proc a called on " + string(n); return(-n)}
@@ -777,7 +776,15 @@ proc a called on 5
 // quit                           [0]  int 6
 > string(quit);
 6
+> `"quit"`;
+6
 > quit;
+Auf Wiedersehen.
+```
+
+New session:
+```
+> 1+2(quit;
 Auf Wiedersehen.
 ```
 
