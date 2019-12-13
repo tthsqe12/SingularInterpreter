@@ -1,4 +1,5 @@
 # grammar rules are communicated via integer codes, not strings
+macro RULE_SYNTAX_ERROR()          ;return(-1); end
 macro RULE_top_lines(i)            ;return(100 + i); end
 macro RULE_top_pprompt(i)          ;return(200 + i); end
 macro RULE_lines(i)                ;return(300 + i); end
@@ -2524,10 +2525,10 @@ function execute(s::String; debuglevel::Int = 0)
 
     libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
     # as with rtexecute, we allow the trailing semicolon to be omitted
-    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s*";"))
+    ast::AstNode = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s*";"))
 
-    if isa(ast, String)
-        throw(TranspileError(ast))
+    if ast.rule == @RULE_SYNTAX_ERROR
+        error("syntax error around line "*string(ast.child[1]::Int)*" of top level input")
     else
 
 #        println("singular ast:")

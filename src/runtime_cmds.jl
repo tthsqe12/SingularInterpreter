@@ -140,10 +140,10 @@ function rt_load(export_names::Bool, path::String)
 
     s = read(path, String)
 
-    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $s)
+    ast::AstNode = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $s)
 
-    if isa(ast, String)
-        rt_error("syntax error in load")
+    if ast.rule == @RULE_SYNTAX_ERROR
+        rt_error("syntax error around line "*string(ast.child[1]::Int)*" of "*Base.Filesystem.basename(path))
     else
 #        println("library ast:")
 #        astprint(ast.child[1], 0)
@@ -167,9 +167,9 @@ end
 function rtexecute(s::SString)
     libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
     # the trailing semicolon may be omitted in exectue
-    ast = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s.string*";"))
-    if isa(ast, String)
-        rt_error("syntax error in execute")
+    ast::AstNode = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s.string*";"))
+    if ast.rule == @RULE_SYNTAX_ERROR
+        rt_error("syntax error around line "*string(ast.child[1]::Int)*" of execute")
     else
         # if callstack management changes, this will need significant changes
         n = length(rtGlobal.callstack)

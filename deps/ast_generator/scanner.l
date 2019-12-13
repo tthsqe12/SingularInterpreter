@@ -301,6 +301,7 @@ parname        #
 
 /* %start START */
 %option never-interactive
+%option yylineno
 
 %x string
 %x brace

@@ -182,13 +182,12 @@ jl_value_t * singular_parse(const char * s)
     jl_value_t * r;
     if (retv == NULL)
     {
-        r = jl_cstr_to_string("syntax/parser error you/I dummy");
+        /* for a syntax error around line n, lets just return AstNode(-1, [n]) */
+        retv = astnode_make1(RULE_SYNTAX_ERROR, astint_make(yylineno));
     }
-    else
-    {
-        r = make_jl_tree(retv);
-        ast_clear(retv);
-    }
+    r = make_jl_tree(retv);
+    ast_clear(retv);
+
     JL_GC_POP();
 
     return r;

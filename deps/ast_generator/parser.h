@@ -1,4 +1,4 @@
-
+#define RULE_SYNTAX_ERROR            (-1)
 #define RULE_top_lines(i)            (100 + i)
 #define RULE_top_pprompt(i)          (200 + i)
 #define RULE_lines(i)                (300 + i)
