@@ -1348,8 +1348,8 @@ function scan_rlist_expr_head(a::AstNode, env::AstEnv)
         env.everything_is_screwed = true
         return
     elseif a.rule == @RULE_elemexpr(6)
-        scan_rlist_expr_head(head, env)
-        scan_expr(arg, env)
+        scan_rlist_expr_head(a.child[1]::AstNode, env)
+        scan_exprlist(a.child[2]::AstNode, env)
         return
     else
         throw(TranspileError("bad ring list construction"))
@@ -1373,13 +1373,13 @@ function convert_rlist_expr_head(a::AstNode, env::AstEnv)
     end
 end
 
-function scan_rlist_expr(r::Expr, a::AstNode, env::AstEnv)
+function scan_rlist_expr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_expr(0) < 100
     if a.rule == @RULE_expr(2)
         b = a.child[1]
         if b.rule == @RULE_elemexpr(37)
             for c in b.child[1].child
-                scan_rlist_expr(r, c, env)
+                scan_rlist_expr(c, env)
             end
             return
         elseif b.rule == @RULE_elemexpr(99)
@@ -1504,7 +1504,7 @@ end
 function scan_ordering(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_ordering(0) < 100
     if a.rule == @RULE_ordering(1)
-        scan_orderelem(a.child[1], env)
+        scan_ordering_orderelem(a.child[1], env)
     elseif a.rule == @RULE_ordering(2)
         scan_OrderingList(a.child[1], env)
     else
