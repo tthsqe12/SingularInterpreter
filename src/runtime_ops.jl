@@ -1,5 +1,5 @@
 #=
-the transpiler may produce names for any arguments of these functions
+the transpiler DOES NOT produce names for any arguments of these functions
     SINGULAR    JULIA
     a[i, j]     rt_getindex(a, i, j)
     a[i, j] = b rt_setindex(a, i, j, b)

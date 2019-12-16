@@ -484,26 +484,39 @@ function rtcall(allow_name_ret::Bool, a::Array{String}, v...)
     isempty(a) && rt_error("bad indexed variable construction")
     isempty(V) && rt_error("bad indexed variable construction")
 
-    r = Any[]
-    for b in a
-        for i in V
-            c = rt_make(SName(Symbol(b * "(" * string(i) * ")")), true)
-            if isa(c, SName)
-                allow_name_ret || rt_error("bad indexed variable construction")
-                R = String[]
-                for B in a
-                    for I in V
-                        push!(R, B * "(" * string(I) * ")")
+    if allow_name_ret
+        r = Any[]
+        for b in a
+            for i in V
+                c = rt_make(SName(Symbol(b * "(" * string(i) * ")")), true)
+                if isa(c, SProc)    # TODO extend this to a list of "callable" types
+                    push!(r, rt_copy(c))
+                else
+                    R = String[]
+                    for B in a
+                        for I in V
+                            push!(R, B * "(" * string(I) * ")")
+                        end
                     end
+                    return R
                 end
-                return R
-            else
-                push!(r, rt_copy(c))
             end
         end
+        return length(r) == 1 ? r[1] : Tuple(r)
+    else
+        r = Any[]
+        for b in a
+            for i in V
+                c = rt_make(SName(Symbol(b * "(" * string(i) * ")")), true)
+                if isa(c, SName)
+                    rt_error("bad indexed variable construction")
+                else
+                    push!(r, rt_copy(c))
+                end
+            end
+        end
+        return length(r) == 1 ? r[1] : Tuple(r)
     end
-
-    return length(r) == 1 ? r[1] : Tuple(r)
 end
 
 ########### declarers and default constructors ################################
