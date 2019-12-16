@@ -175,6 +175,7 @@ jl_value_t * singular_parse(const char * s)
 
     JL_GC_PUSH1(&mjl_make_fxn);
 
+    yylineno = 1;
     astree * retv = NULL;
     yy_scan_string(s);
     yyparse(&retv);
