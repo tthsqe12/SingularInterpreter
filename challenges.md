@@ -72,6 +72,74 @@ proc g(A, B)
 }
 ```
 
+The following behaviour with `l[2][2]=l;` can only be considered a bug:
+```
+> list l = 1,2,3;
+> l = list(l,l,l);
+> l;
+[1]:
+   [1]:
+      1
+   [2]:
+      2
+   [3]:
+      3
+[2]:
+   [1]:
+      1
+   [2]:
+      2
+   [3]:
+      3
+[3]:
+   [1]:
+      1
+   [2]:
+      2
+   [3]:
+      3
+> l[2][2]=l;
+> l;
+[1]:
+   [1]:
+      1
+   [2]:
+      2
+   [3]:
+      3
+[2]:
+   [1]:
+      1
+   [2]:
+      [1]:
+         [1]:
+            1
+         [2]:
+            2
+         [3]:
+            3
+      [2]:
+         2
+      [3]:
+         [1]:
+            1
+         [2]:
+            2
+         [3]:
+            3
+   [3]:
+      3
+[3]:
+   [1]:
+      1
+   [2]:
+      2
+   [3]:
+      3
+```
+
+
+
 (5) Singular allows local variables to be declared with different types.
 ```
 proc f()
@@ -422,7 +490,7 @@ Here is a parse tree following the same grammar.y and ending with `list(a, b);` 
 
 (18) (executes compilation hope) `execute`
 
-**`execute` and backticks do not need to be agressively removed from libraries**
+**`execute`, backticks, and indexed variable constructions do not need to be agressively removed from libraries**
 
 `execute` is usually used to get around the limited syntax for constructing rings.
 If you are constructing a ring, you are probably changing the current ring.
@@ -787,6 +855,8 @@ New session:
 > 1+2(quit;
 Auf Wiedersehen.
 ```
+
+(25) `quote` and `eval` look scary. https://www.singular.uni-kl.de/Manual/4-0-3/sing_286.htm#SEC325
 
 -------------------------------
 
