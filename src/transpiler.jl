@@ -1129,10 +1129,10 @@ end
 function rt_declare_assign_ring(a::SName, b::SRing)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, SRing)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, b))
+        rt_check_declaration(a.name, SRing)
+        push!(rtGlobal.local_vars, Pair(a.name, b))
     else
-        d = rt_check_declaration_global(true, a.name, SRing)
+        d = rt_check_declaration_global_ring_indep(a.name, SRing)
         d[a.name] = b
     end
     rtGlobal.callstack[n].current_ring = b
@@ -2556,10 +2556,10 @@ function execute(s::String; debuglevel::Int = 0)
         end
 
         # these need to be corrected in the case that a previous eval threw
-        empty!(rtGlobal.local_rindep_vars)
-        empty!(rtGlobal.local_rdep_vars)
         @assert length(rtGlobal.callstack) >= 1
         resize!(rtGlobal.callstack, 1)
+        empty!(rtGlobal.local_vars)
+
         eval(expr)
         return nothing
     end

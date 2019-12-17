@@ -233,28 +233,22 @@ function rt_basering()
 end
 
 
-function rt_search_callstack_rindep(a::Symbol)
-    n = length(rtGlobal.callstack)
-    for i in rtGlobal.callstack[n].start_rindep_vars:length(rtGlobal.local_rindep_vars)
-        if rtGlobal.local_rindep_vars[i].first == a
-            return true, i
-        end
-    end
-    return false, 0
-end
-
-function rt_search_callstack_rdep(a::Symbol)
+function rt_search_locals(a::Symbol)
     n = length(rtGlobal.callstack)
     R = rtGlobal.callstack[n].current_ring
-    for i in rtGlobal.callstack[n].start_rdep_vars:length(rtGlobal.local_rdep_vars)
-        if rtGlobal.local_rdep_vars[i].first == a &&
-           rtGlobal.local_rdep_vars[i].second.parent === R
-            return true, i
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if rtGlobal.local_vars[i].first == a
+            if isa(a, SingularRingType)
+                if a.parent === R
+                    return true, i
+                end
+            else
+                return true, i
+            end
         end
     end
     return false, 0
 end
-
 
 
 ########################## make and friends ###################################
@@ -272,16 +266,10 @@ end
 # this function is named make in the c singular interpreter code
 function rt_make(a::SName, allow_unknown::Bool = false)
 
-    # local ring independent
-    b, i = rt_search_callstack_rindep(a.name)
+    # local
+    b, i = rt_search_locals(a.name)
     if b
-        return rt_ref(rtGlobal.local_rindep_vars[i].second)
-    end
-
-    # local ring dependent
-    b, i = rt_search_callstack_rdep(a.name)
-    if b
-        return rt_ref(rtGlobal.local_rdep_vars[i].second)
+        return rt_ref(rtGlobal.local_vars[i].second)
     end
 
     # global ring independent
@@ -314,13 +302,7 @@ end
 function rtdefined(a::SName)
 
     # local ring independent
-    b, i = rt_search_callstack_rindep(a.name)
-    if b
-        return size(rtGlobal.callstack)
-    end
-
-    # local ring dependent
-    b, i = rt_search_callstack_rdep(a.name)
+    b, i = rt_search_locals(a.name)
     if b
         return size(rtGlobal.callstack)
     end
@@ -358,18 +340,10 @@ end
 function rtkill(a::SName)
 
     # local ring independent
-    b, i = rt_search_callstack_rindep(a.name)
+    b, i = rt_search_locals(a.name)
     if b
-        rtGlobal.local_rindep_vars[i] = rtGlobal.local_rindep_vars[end]
-        pop!(rtGlobal.local_rindep_vars)
-        return
-    end
-
-    # local ring dependent
-    b, i = rt_search_callstack_rdep(a.name)
-    if b
-        rtGlobal.local_rdep_vars[i] = rtGlobal.local_rdep_vars[end]
-        pop!(rtGlobal.local_rdep_vars)
+        rtGlobal.local_vars[i] = rtGlobal.local_vars[end]
+        pop!(rtGlobal.local_vars)
         return
     end
 
@@ -406,21 +380,17 @@ end
 
 
 function rt_enterfunction(package::Symbol)
-    i1 = length(rtGlobal.local_rindep_vars) + 1
-    i2 = length(rtGlobal.local_rdep_vars) + 1
+    i = length(rtGlobal.local_vars) + 1
     n = length(rtGlobal.callstack)
-    push!(rtGlobal.callstack, rtCallStackEntry(i1, i2, rtGlobal.callstack[n].current_ring, package))
+    push!(rtGlobal.callstack, rtCallStackEntry(i, rtGlobal.callstack[n].current_ring, package))
 end
 
 function rt_leavefunction()
     n = length(rtGlobal.callstack)
     @assert n > 1
-    i1 = rtGlobal.callstack[n].start_rindep_vars - 1
-    i2 = rtGlobal.callstack[n].start_rdep_vars - 1
-    @assert length(rtGlobal.local_rindep_vars) >= i1
-    @assert length(rtGlobal.local_rdep_vars) >= i2
-    resize!(rtGlobal.local_rindep_vars, i1)
-    resize!(rtGlobal.local_rdep_vars, i2)
+    i = rtGlobal.callstack[n].start_local_vars - 1
+    @assert length(rtGlobal.local_vars) >= i
+    resize!(rtGlobal.local_vars, i)
     pop!(rtGlobal.callstack)
 end
 
@@ -432,16 +402,10 @@ end
 
 function rtcall(allow_name_ret::Bool, a::SName, v...)
 
-    # local ring independent - unlikely proc
-    b, i = rt_search_callstack_rindep(a.name)
+    # local
+    b, i = rt_search_locals(a.name)
     if b
-        return rtcall(false, rtGlobal.local_rindep_vars[i].second, v...)
-    end
-
-    # local ring dependent - probably map
-    b, i = rt_search_callstack_rdep(a.name)
-    if b
-        return rtcall(false, rtGlobal.local_rdep_vars[i].second, v...)
+        return rtcall(false, rtGlobal.local_vars[i].second, v...)
     end
 
     # global ring independent - proc
@@ -525,61 +489,78 @@ end
 #   rt_declare_T:            may print a warning/error on redeclaration
 #   rt_defaultconstructor_T: can only fail for ringdep types when there is no basering
 
-function rt_declare_warnerror(allow_warn::Bool, old_value::Any, x::Symbol, t)
+function rt_declare_warnerror(old_value::Any, x::Symbol, t)
     if old_value isa t
-        if allow_warn
-            rt_warn("redeclaration of " * rt_typestring(old_value) * " " * string(x))
-        else
-            rt_error("redeclaration of " * rt_typestring(old_value) * " " * string(x))
-        end
+        rt_warn("redeclaration of " * rt_typestring(old_value) * " " * string(x))
     else
         rt_error("identifier " * string(x) * " in use as a " * rt_typestring(old_value))
     end
 end
 
-function rt_check_declaration_local(rindep::Bool, a::Symbol, typ)
-    found, i = rt_search_callstack_rindep(a)
-    !found || rt_declare_warnerror(rindep, rtGlobal.local_rindep_vars[i].second, a, typ)
-    found, i = rt_search_callstack_rdep(a)
-    !found || rt_declare_warnerror(!rindep, rtGlobal.local_rdep_vars[i].second, a, typ)
+# return does not matter, new variable symbol => value will be simply pushed onto rtGlobal.
+function rt_check_declaration_local(a::Symbol, typ)
+    found, i = rt_search_locals(a)
+    if found
+        rt_declare_warnerror(rtGlobal.local_vars[i].second, a, typ)
+    end
 end
 
 # supposed to return a Dict{Symbol, Any} where we can store the variable
-function rt_check_declaration_global(rindep::Bool, a::Symbol, typ)
+function rt_check_declaration_global_ring_indep(a::Symbol, typ)
     n = length(rtGlobal.callstack)
     p = rtGlobal.callstack[n].current_package
-    if rindep
-        if haskey(rtGlobal.vars, p)
-            d = rtGlobal.vars[p]
-            if haskey(d, a)
-                rt_declare_warnerror(rindep, d[a], a, typ)
-            end
-            return d
-        else
-            # uncommon (impossible?) case where the current package does not have an entry in rtGlobal.vars
-            d = Dict{Symbol, Any}()
-            rtGlobal.vars[p] = d
-            return d
-        end
-    else
-        if haskey(rtGlobal.vars, p)
-            d = rtGlobal.vars[p]
-            if haskey(d, a)
-                rt_declare_warnerror(rindep, d[a], a, typ)
-            end
-        end
-        d = rtGlobal.callstack[n].current_ring.vars
+    R = rtGlobal.callstack[n].current_ring
+
+    # first make sure that current ring does not have this entry
+    if R.valid && haskey(R.vars, a)
+        rt_declare_warnerror(R.vars[a], a, typ)
+    end
+
+    # make sure the current package does not have this entry
+    if haskey(rtGlobal.vars, p)
+        d = rtGlobal.vars[p]
         if haskey(d, a)
-            rt_declare_warnerror(!rindep, d, a, typ)
+            rt_declare_warnerror(d[a], a, typ)
         end
+        return d
+    else
+        # uncommon (impossible?) case where the current package does not have an entry in rtGlobal.vars
+        d = Dict{Symbol, Any}()
+        rtGlobal.vars[p] = d
         return d
     end
 end
 
+# supposed to return a Dict{Symbol, Any} where we can store the variable
+function rt_check_declaration_global_ring_dep(a::Symbol, typ)
+    n = length(rtGlobal.callstack)
+    p = rtGlobal.callstack[n].current_package
+    R = rtGlobal.callstack[n].current_ring
+
+    # first make sure the current package does not have this entry
+    if haskey(rtGlobal.vars, p)
+        d = rtGlobal.vars[p]
+        if haskey(d, a)
+            rt_declare_warnerror(d[a], a, typ)
+        end
+    else
+        # uncommon (impossible?) case where the current package does not have an entry in rtGlobal.vars
+    end
+
+    # make sure that current ring does not have this entry
+    if R.valid
+        if haskey(R.vars, a)
+            rt_declare_warnerror(R.vars[a], a, typ)
+        end
+    else
+        rt_error("cannot declare a ring-dependent type when no basering is active")
+    end
+
+    return R.vars
+end
+
 function rt_local_identifier_does_not_exist(a::Symbol)
-    return length(rtGlobal.callstack) > 1 &&
-            !(rt_search_callstack_rindep(a)[1]) &&
-            !(rt_search_callstack_rdep(a)[1])
+    return length(rtGlobal.callstack) > 1 && !(rt_search_locals(a)[1])
 end
 
 #### def
@@ -591,17 +572,17 @@ end
 function rt_declare_def(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, Any)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_def()))
+        rt_check_declaration_local(a.name, Any)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_def()))
     else
-        d = rt_check_declaration_global(true, a.name, Any)
+        d = rt_check_declaration_global_ring_indep(a.name, Any)
         d[a.name] = rt_defaultconstructor_def()
     end
 end
 
 function rt_parameter_def(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2def(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2def(b)))
 end
 
 #### proc
@@ -616,17 +597,17 @@ end
 function rt_declare_proc(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, SProc)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_proc()))
+        rt_check_declaration_local(a.name, SProc)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_proc()))
     else
-        d = rt_check_declaration_global(true, a.name, SProc)
+        d = rt_check_declaration_global_ring_indep(a.name, SProc)
         d[a.name] = rt_defaultconstructor_proc()
     end
 end
 
 function rt_parameter_proc(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2proc(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2proc(b)))
 end
 
 #### int
@@ -637,17 +618,17 @@ end
 function rt_declare_int(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, Int)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_int()))
+        rt_check_declaration_local(a.name, Int)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_int()))
     else
-        d = rt_check_declaration_global(true, a.name, Int)
+        d = rt_check_declaration_global_ring_indep(a.name, Int)
         d[a.name] = rt_defaultconstructor_int()
     end
 end
 
 function rt_parameter_int(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2int(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2int(b)))
 end
 
 #### bigint
@@ -658,17 +639,17 @@ end
 function rt_declare_bigint(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, BigInt)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigint()))
+        rt_check_declaration_local(a.name, BigInt)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_bigint()))
     else
-        d = rt_check_declaration_global(true, a.name, BigInt)
+        d = rt_check_declaration_global_ring_indep(a.name, BigInt)
         d[a.name] = rt_defaultconstructor_bigint()
     end
 end
 
 function rt_parameter_bigint(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2bigint(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2bigint(b)))
 end
 
 #### string
@@ -679,17 +660,17 @@ end
 function rt_declare_string(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, SString)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_string()))
+        rt_check_declaration_local(a.name, SString)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_string()))
     else
-        d = rt_check_declaration_global(true, a.name, SString)
+        d = rt_check_declaration_global_ring_indep(a.name, SString)
         d[a.name] = rt_defaultconstructor_string()
     end
 end
 
 function rt_parameter_string(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2string(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2string(b)))
 end
 
 #### intvec
@@ -700,17 +681,17 @@ end
 function rt_declare_intvec(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, SIntVec)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intvec()))
+        rt_check_declaration_local(a.name, SIntVec)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_intvec()))
     else
-        d = rt_check_declaration_global(true, a.name, SIntVec)
+        d = rt_check_declaration_global_ring_indep(a.name, SIntVec)
         d[a.name] = rt_defaultconstructor_intvec()
     end
 end
 
 function rt_parameter_intvec(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2intvec(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2intvec(b)))
 end
 
 #### intmat
@@ -721,17 +702,17 @@ end
 function rt_declare_intmat(a::SName, nrows::Int = 1, ncols::Int = 1)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, SIntMat)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_intmat(nrows, ncols)))
+        rt_check_declaration_local(a.name, SIntMat)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_intmat(nrows, ncols)))
     else
-        d = rt_check_declaration_global(true, a.name, SIntMat)
+        d = rt_check_declaration_global_ring_indep(a.name, SIntMat)
         d[a.name] = rt_defaultconstructor_intmat(nrows, ncols)
     end
 end
 
 function rt_parameter_intmat(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2intmat(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2intmat(b)))
 end
 
 #### bigintmat
@@ -742,10 +723,10 @@ end
 function rt_declare_bigintmat(a::SName, nrows::Int = 1, ncols::Int = 1)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, SBigIntMat)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_bigintmat(nrows, ncols)))
+        rt_check_declaration_local(a.name, SBigIntMat)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_bigintmat(nrows, ncols)))
     else
-        d = rt_check_declaration_global(true, a.name, SBigIntMat)
+        d = rt_check_declaration_global_ring_indep(a.name, SBigIntMat)
         d[a.name] = rt_defaultconstructor_bigintmat(nrows, ncols)
     end
     return nothing
@@ -753,7 +734,7 @@ end
 
 function rt_parameter_bigintmat(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2bigintmat(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2bigintmat(b)))
 end
 
 #### list
@@ -764,10 +745,10 @@ end
 function rt_declare_list(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(true, a.name, SList)
-        push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_defaultconstructor_list()))
+        rt_check_declaration_local(a.name, SList)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_list()))
     else
-        d = rt_check_declaration_global(true, a.name, SList)
+        d = rt_check_declaration_global_ring_indep(a.name, SList)
         d[a.name] = rt_defaultconstructor_list()
     end
     return nothing
@@ -775,7 +756,7 @@ end
 
 function rt_parameter_list(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2list(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2list(b)))
 end
 
 #### number
@@ -789,10 +770,10 @@ end
 function rt_declare_number(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(false, a.name, SNumber)
-        push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_number()))
+        rt_check_declaration_local(a.name, SNumber)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_number()))
     else
-        d = rt_check_declaration_global(false, a.name, SNumber)
+        d = rt_check_declaration_global_ring_dep(a.name, SNumber)
         d[a.name] = rt_defaultconstructor_number()
     end
     return nothing
@@ -800,7 +781,7 @@ end
 
 function rt_parameter_number(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_convert2number(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2number(b)))
 end
 
 #### poly
@@ -814,10 +795,10 @@ end
 function rt_declare_poly(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(false, a.name, SPoly)
-        push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_poly()))
+        rt_check_declaration_local(a.name, SPoly)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_poly()))
     else
-        d = rt_check_declaration_global(false, a.name, SPoly)
+        d = rt_check_declaration_global_ring_dep(a.name, SPoly)
         d[a.name] = rt_defaultconstructor_poly()
     end
     return nothing
@@ -825,7 +806,7 @@ end
 
 function rt_parameter_poly(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_convert2poly(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2poly(b)))
 end
 
 #### ideal
@@ -840,10 +821,10 @@ end
 function rt_declare_ideal(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(false, a.name, SIdeal)
-        push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_defaultconstructor_ideal()))
+        rt_check_declaration_local(a.name, SIdeal)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_ideal()))
     else
-        d = rt_check_declaration_global(false, a.name, SIdeal)
+        d = rt_check_declaration_global_ring_dep(a.name, SIdeal)
         d[a.name] = rt_defaultconstructor_ideal()
     end
     return nothing
@@ -851,7 +832,7 @@ end
 
 function rt_parameter_ideal(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rdep_vars, Pair(a.name, rt_convert2ideal(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ideal(b)))
 end
 
 ########### type conversions ##################################################
@@ -1402,17 +1383,9 @@ rt_typestring(a) = rt_typedata_to_string(rt_typedata(a))
 function rtassign(a::SName, b)
 
     # local ring independent
-    ok, i = rt_search_callstack_rindep(a.name)
+    ok, i = rt_search_locals(a.name)
     if ok
-        l = rtGlobal.local_rindep_vars
-        l[i] = Pair(l[i].first, rt_assign(l[i].second, b))
-        return
-    end
-
-    # local ring dependent
-    ok, i = rt_search_callstack_rdep(a.name)
-    if ok
-        l = rtGlobal.local_rdep_vars
+        l = rtGlobal.local_vars
         l[i] = Pair(l[i].first, rt_assign(l[i].second, b))
         return
     end
@@ -1441,17 +1414,9 @@ end
 function rt_incrementby(a::SName, b::Int)
 
     # local ring independent
-    ok, i = rt_search_callstack_rindep(a.name)
+    ok, i = rt_search_locals(a.name)
     if ok
-        l = rtGlobal.local_rindep_vars
-        l[i] = Pair(l[i].first, rt_assign(l[i].second, rtplus(l[i].second, b)))
-        return
-    end
-
-    # local ring dependent
-    ok, i = rt_search_callstack_rdep(a.name)
-    if ok
-        l = rtGlobal.local_rdep_vars
+        l = rtGlobal.local_vars
         l[i] = Pair(l[i].first, rt_assign(l[i].second, rtplus(l[i].second, b)))
         return
     end
@@ -1715,10 +1680,10 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
         filter_lineno(quote
             n = length(rtGlobal.callstack)
             if n > 1
-                rt_check_declaration_local(true, a.name, $(newtype))
-                push!(rtGlobal.local_rindep_vars, Pair(a.name, $(Symbol("rt_defaultconstructor_"*newtypename))()))
+                rt_check_declaration_local(a.name, $(newtype))
+                push!(rtGlobal.local_vars, Pair(a.name, $(Symbol("rt_defaultconstructor_"*newtypename))()))
             else
-                d = rt_check_declaration_global(true, a.name, $(newtype))
+                d = rt_check_declaration_global_ring_indep(true, a.name, $(newtype))
                 d[a.name] = $(Symbol("rt_defaultconstructor_"*newtypename))()
             end
         end)
@@ -1727,7 +1692,7 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     # rt_parameter_T
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_parameter_"*newtypename), Expr(:(::), :a, :SName), :b),
         filter_lineno(quote
-            push!(rtGlobal.local_rindep_vars, Pair(a.name, $(Symbol("rt_convert2"*newtypename))(b)))
+            push!(rtGlobal.local_vars, Pair(a.name, $(Symbol("rt_convert2"*newtypename))(b)))
         end)
     ))
 
