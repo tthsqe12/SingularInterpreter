@@ -69,7 +69,7 @@ function Base.deepcopy_internal(a::SBigIntMat, dict::IdDict)
 end
 
 function Base.deepcopy_internal(a::SListData, dict::IdDict)
-    return SListData(deepcopy(a.data))
+    return SListData(deepcopy(a.data), a.parent, a.ring_dep_count, nothing)
 end
 
 function Base.deepcopy_internal(a::SList, dict::IdDict)
@@ -218,15 +218,26 @@ rt_ref(a::SIdealData) = a
 rt_ref(a::SIdeal) = a.ideal
 
 
-function rt_ringof(a::SingularRingType)
-    return rt_ref(a).parent
-end
-
 function rt_ringof(a)
-    rt_error("type " * rt_typestring(a) * " does not have a basering")
-    return rtInvalidRing
+    if isa(a, _List)
+        r = rt_ref(a).parent
+        r.valid || rt_error("sorry, this list does not have a basering")
+        return r
+    elseif isa(a, _SingularRingType)
+        return rt_ref(a).parent
+    else
+        rt_error("type " * rt_typestring(a) * " does not have a basering")
+        return rtInvalidRing
+    end
 end
 
+function rt_is_ring_dep(a)
+    if isa(a, _List)
+        return rt_ref(a).parent.valid
+    else
+        return isa(a, _SingularRingType)
+    end
+end
 
 function rt_basering()
     return rtGlobal.callstack[end].current_ring
@@ -269,6 +280,7 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     # local
     b, i = rt_search_locals(a.name)
     if b
+        # local lists are not expected to know their names after rt_make
         return rt_ref(rtGlobal.local_vars[i].second)
     end
 
@@ -277,7 +289,13 @@ function rt_make(a::SName, allow_unknown::Bool = false)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                return rt_ref(d[a.name])
+                b = d[a.name]
+                if isa(b, SList)
+                    b.list.back = a.name  # the value of a now knows its name. TODO: might need to give the package as well
+                    return b.list
+                else
+                    return rt_ref(b)
+                end
             end
         end
     end
@@ -285,7 +303,13 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     # global ring dependent
     R = rtGlobal.callstack[end].current_ring
     if haskey(R.vars, a.name)
-        return rt_ref(R.vars[a.name])
+        b = R.vars[a.name]
+        if isa(b, SList)
+            b.list.back = a.name  # ditto comment
+            return b.list
+        else
+            return rt_ref(b)
+        end
     end
 
     # monomials
@@ -739,7 +763,7 @@ end
 
 #### list
 function rt_defaultconstructor_list()
-    return SList(SListData(Any[]))
+    return SList(SListData(Any[], rtInvalidRing, 0, nothing))
 end
 
 function rt_declare_list(a::SName)
@@ -849,6 +873,7 @@ function rt_asbool(a)
     rt_error("expected int for boolean expression")
     return false
 end
+
 
 #### def
 
@@ -1076,16 +1101,26 @@ function rt_convert2list(a::SListData)
 end
 
 function rt_convert2list(a::Tuple{Vararg{Any}})
-    return SList(SListData(collect(a)))
+    data::Vector{Any} = collect(a)
+    count = 0
+    for i in data
+        count += rt_is_ring_dep(i)
+    end
+    return SList(SListData(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
 end
 
 function rt_convert2list(a)
     rt_error("cannot convert $a to a list")
-    return SList(SListData(Any[]))
+    return rt_defaultconstructor_list()
 end
 
 function rt_cast2list(a...)
-    return SList(SListData([rt_copy(i) for i in a]))
+    data::Vector{Any} = [rt_copy(j) for j in a]
+    count = 0
+    for i in data
+        count += rt_is_ring_dep(i)
+    end
+    return SList(SListData(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
 end
 
 #### number
@@ -1395,21 +1430,78 @@ function rtassign(a::SName, b)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                d[a.name] = rt_assign(d[a.name], b)
+                if isa(d[a.name], SList)
+                    rt_assign_global_list_ring_indep(d, a.name, rt_convert2list(b))
+                else
+                    d[a.name] = rt_assign(d[a.name], b)
+                end
                 return
             end
         end
     end
 
     # global ring dependent
-    d = rtGlobal.callstack[end].current_ring.vars
-    if haskey(d, a.name)
-        d[a.name] = rt_assign(d[a.name], b)
+    R = rtGlobal.callstack[end].current_ring    # same as rt_basering()
+    if haskey(R.vars, a.name)
+        if isa(R.vars[a.name], SList)
+           rt_assign_global_list_ring_dep(R, a.name, rt_convert2list(b))
+        else
+            R.vars[a.name] = rt_assign(R.vars[a.name], b)
+        end
         return
     end
 
     rt_error("cannot assign to " * String(a.name))
 end
+
+# a = b, a lives in a ring independent table d
+function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, b::SList)
+    @assert haskey(d, a)
+    if rt_is_ring_dep(b)
+        # move the name to the current ring
+        R = rt_basering()
+        if R.valid
+            if !(R === rt_ring_of(b))
+                rt_warn("the list " * string(a.name) * " might now contain ring dependent data from a ring other than basering")
+            end
+            delete!(d, a)
+            if haskey(R.vars[a])
+                rt_warn("overwriting name " * string(a.name) * " when moving list to basering")
+            end
+            R.vars[a] = b
+        else
+            rt_error("the list " * string(a.name) * " contains ring dependent data, but there is no basering")
+        end
+    else
+        # no need to move the name
+        d[a] = b
+    end
+end
+
+# a = b, a lives in ring r
+function rt_assign_global_list_ring_indep(r::SRing, a::Symbol, b::SList)
+    @assert haskey(d, a)
+    if rt_is_ring_dep(b)
+        # no need to move the name
+        if !(r === rt_ring_of(b))
+            rt_warn("the list " * string(a.name) * " might now contain ring dependent data from a ring other than basering")
+        end
+        r.vars[a] = b
+    else
+        # move the name to the current package
+        p = rtGlobal.callstack[end].current_package
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a)
+                rt_warn("overwriting name " * string(a.name) * " when moving list out of ring")
+            end
+            d[a] = p
+        else
+            rtGlobal.vars[p] = Dict{Symbol, Any}[a => b]
+        end
+    end
+end
+
 
 function rt_incrementby(a::SName, b::Int)
 

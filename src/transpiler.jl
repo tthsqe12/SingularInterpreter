@@ -1607,7 +1607,7 @@ function rt_blocksize_weights(w::Array{Int, 1})
 end
 
 function rt_parse_ord(ord)
-    isa(ord[1], String) || rt_error("bad order specification")
+    !is_empty(ord) && isa(ord[1], String) || rt_error("bad order specification")
     order = libSingular.ringorder_no
     blocksize = 0
     weights = Int[]

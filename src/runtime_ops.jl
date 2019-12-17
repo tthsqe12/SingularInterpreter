@@ -51,8 +51,21 @@ function rt_setindex(a::_BigIntMat, i::Int, j::Int, b)
 end
 
 
-function rt_getindex(a::_List, i::Int)
-    return rt_ref(rt_ref(a).data[i])
+function rt_getindex(a::SListData, i::Int)
+    b = a.data[i]
+    if isa(b, SList)
+        r = b.list
+        r.back = a
+        return r
+    elseif isa(b, SDataList)
+        error("internal error: lists should own their elements!")
+    else
+        return rt_ref(b)
+    end
+end
+
+function rt_getindex(a::SList, i::Int)
+    return rt_getindex(a.list, i)
 end
 
 function rt_getindex(a::SIdeal, i::Int)
@@ -83,9 +96,14 @@ function rt_setindex(a::SIdealData, i::Int, b)
     return nothing
 end
 
+function rt_setindex(a::SListData, i::Int, b::Tuple{Vararg{Any}})
+    rt_error("cannot put a tuple inside a list")
+    return nothing
+end
 
 function rt_setindex(a::SListData, i::Int, b)
     bcopy = rt_copy(b) # copy before the possible resize
+    # TODO: ring indep/dep moving
     r = a.data
     if bcopy == nothing
         if i < length(r)
