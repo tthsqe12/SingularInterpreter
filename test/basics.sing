@@ -3,3 +3,12 @@ list l = list(typeof(x(intvec(1))(intvec(2,4))));
 ASSUME(0, size(l) == 2);
 ASSUME(0, l[1] == "poly");
 ASSUME(0, l[2] == "poly");
+
+
+// intvec
+
+intvec v = 1, 2, 3;
+
+ASSUME(0, v == v);
+ASSUME(0, v == intvec(1, 2, 3));
+ASSUME(0, intvec(1, 2, 3) == v);
