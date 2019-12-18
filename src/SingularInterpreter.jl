@@ -24,12 +24,14 @@ function __init__()
     ENV["SINGULAR_EXECUTABLE"] = binSingular
     libSingular.siInit(binSingular)
 
-    initrepl(SingularInterpreter.execute,
-            prompt_text  = "Sing> ",
-            prompt_color = :blue,
-            start_key    = '}',
-            mode_name    = :singular_mode,
-            startup_text = false)
+    if isinteractive() # Base.active_repl not defined otherwise
+        initrepl(SingularInterpreter.execute,
+                 prompt_text  = "Sing> ",
+                 prompt_color = :blue,
+                 start_key    = '}',
+                 mode_name    = :singular_mode,
+                 startup_text = false)
+    end
 end
 
 include("LibSingular.jl")
