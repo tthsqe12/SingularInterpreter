@@ -101,15 +101,19 @@ function rt_setindex(a::SListData, i::Int, b::Tuple{Vararg{Any}})
     return nothing
 end
 
+# we should be able to put anything into a list for which rt_copy is defined
 function rt_setindex(a::SListData, i::Int, b)
     bcopy = rt_copy(b) # copy before the possible resize
-    # TODO: ring indep/dep moving
     r = a.data
+    count_change = 0
     if bcopy == nothing
-        if i < length(r)
-            r[i] = nothing
+        if i > length(r)
+            return
+        end
+        count_change = -rt_is_ring_dep(r[i])
+        r[i] = nothing
         # putting nothing at the end pops the list
-        elseif i == length(r)
+        if i == length(r)
             pop!(r)
         end
     else
@@ -121,10 +125,63 @@ function rt_setindex(a::SListData, i::Int, b)
                 r[org_len + 1] = nothing
                 org_len += 1
             end
+            count_change = rt_is_ring_dep(bcopy)
+        else
+            count_change = Int(rt_is_ring_dep(bcopy)) - Int(rt_is_ring_dep(r[i]))
         end
-        r[i] = bcopy
+        org_entry = r[i]
+    end
+    if count_change != 0
+        rt_fix_setindex(a, count_change)
     end
     return nothing
+end
+
+# we should at least maintain the integrity of the list data structure
+function rt_fix_setindex(a::SListData, count_change::Int)
+    new_parent = a.parent
+    a.ring_dep_count += count_change
+    if a.ring_dep_count > 0
+        if !new_parent.valid
+            new_parent = rt_basering()  # try to get a valid ring from somewhere :(
+            new_parent.valid || rt_warn("list has ring dependent elements but no basering")
+        end
+    else
+        new_parent = rtInvalidRing
+    end
+    new_count_change = Int(new_parent) - Int(a.parent.valid)
+    a.parent = new_parent
+    if new_count_change != 0
+        rt_fix_setindex(a.back, new_count_change)
+    end    
+end
+
+function rt_fix_setindex(a::Symbol, count_change::Int)
+    if count_change > 0
+        # name became ring dependent
+        @assert count_change == 1
+
+
+    elseif count_change < 0
+        # name became ring independent
+        @assert count_change == -1
+        R = rt_basering()
+        if R.valid && haskey(R.vars, a) && isa(R.vars[a], SList)
+            v = R.vars[a]
+
+
+        else
+            rt_error("list became ring independent but it is not in the basering")
+        end
+    end
+end
+
+function rt_fix_setindex(a::Nothing, count_change::Int)
+    return
+end
+
+function rt_fix_setindex(a, count_change::Int)
+    error("internal error in rt_fix_setindex: back member probably was not Nothing|Symbol|SListData")
 end
 
 

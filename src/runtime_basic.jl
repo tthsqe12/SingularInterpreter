@@ -217,7 +217,7 @@ rt_ref(a::SPoly) = a
 rt_ref(a::SIdealData) = a
 rt_ref(a::SIdeal) = a.ideal
 
-
+# rt_ringof has to be used for .r_... read-only members of newstruct
 function rt_ringof(a)
     if isa(a, _List)
         r = rt_ref(a).parent
@@ -280,8 +280,13 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     # local
     b, i = rt_search_locals(a.name)
     if b
-        # local lists are not expected to know their names after rt_make
-        return rt_ref(rtGlobal.local_vars[i].second)
+        # local lists are expected to not know their names after make
+        # TODO: make another function rt_ref_local that does all of this in one function
+        v = rt_ref(rtGlobal.local_vars[i].second)
+        if isa(v, SListData)
+            v.list.back = nothing
+        end
+        return v
     end
 
     # global ring independent
@@ -289,10 +294,11 @@ function rt_make(a::SName, allow_unknown::Bool = false)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                b = d[a.name]
-                if isa(b, SList)
-                    b.list.back = a.name  # the value of a now knows its name. TODO: might need to give the package as well
-                    return b.list
+                # global lists are expected to known their names after make
+                v = d[a.name]
+                if isa(v, SList)
+                    v.list.back = v.name
+                    return v.list
                 else
                     return rt_ref(b)
                 end
@@ -303,12 +309,13 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     # global ring dependent
     R = rtGlobal.callstack[end].current_ring
     if haskey(R.vars, a.name)
-        b = R.vars[a.name]
+        # ditto comment
+        v = R.vars[a.name]
         if isa(b, SList)
-            b.list.back = a.name  # ditto comment
-            return b.list
+            v.list.back = a.name
+            return v.list
         else
-            return rt_ref(b)
+            return rt_ref(v)
         end
     end
 
@@ -1457,21 +1464,15 @@ end
 # a = b, a lives in a ring independent table d
 function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, b::SList)
     @assert haskey(d, a)
-    if rt_is_ring_dep(b)
-        # move the name to the current ring
-        R = rt_basering()
-        if R.valid
-            if !(R === rt_ring_of(b))
-                rt_warn("the list " * string(a.name) * " might now contain ring dependent data from a ring other than basering")
-            end
-            delete!(d, a)
-            if haskey(R.vars[a])
-                rt_warn("overwriting name " * string(a.name) * " when moving list to basering")
-            end
-            R.vars[a] = b
-        else
-            rt_error("the list " * string(a.name) * " contains ring dependent data, but there is no basering")
+    @assert isa(d[a], SList)
+    if b.parent.valid
+        # move the name to the ring of b, which is hopefully the current ring
+        b.parent === rt_basering() || rt_error("moving a list with name " * string(a.name) * " to a ring other than the basering")
+        if haskey(b.parent.vars, a)
+            rt_warn("overwriting name " * string(a.name) * " when moving list to a ring")
         end
+        b.parent.vars[a] = b
+        delete!(d, a)
     else
         # no need to move the name
         d[a] = b
@@ -1480,7 +1481,8 @@ end
 
 # a = b, a lives in ring r
 function rt_assign_global_list_ring_indep(r::SRing, a::Symbol, b::SList)
-    @assert haskey(d, a)
+    @assert haskey(r.vars, a)
+    @assert isa(r.vars[a], SList)
     if rt_is_ring_dep(b)
         # no need to move the name
         if !(r === rt_ring_of(b))
@@ -1495,10 +1497,11 @@ function rt_assign_global_list_ring_indep(r::SRing, a::Symbol, b::SList)
             if haskey(d, a)
                 rt_warn("overwriting name " * string(a.name) * " when moving list out of ring")
             end
-            d[a] = p
+            d[a] = b
         else
             rtGlobal.vars[p] = Dict{Symbol, Any}[a => b]
         end
+        delete!(r.vars, a)
     end
 end
 
