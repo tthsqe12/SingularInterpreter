@@ -902,8 +902,8 @@ function rt_convert2int(a::BigInt)
     return Int(a)   # will throw if BigInt -> Int conversion fails
 end
 
-function rt_convert2int(a...)
-    rt_error("cannot convert $a to an int")
+function rt_convert2int(a)
+    rt_error("cannot convert a $(rt_typestring(a)) to an int")
     return Int(0)
 end
 
@@ -1377,10 +1377,10 @@ rt_typedata(::_Ideal)      = "ideal"
 rt_typedata(a::Tuple{Vararg{Any}}) = String[rt_typedata(i) for i in a]
 
 rt_typedata_to_singular(a::String) = SString(a)
-rt_typedata_to_singular(a::Array{String}) = Tuple([SString(i) for i in a])
+rt_typedata_to_singular(a::Vector{String}) = Tuple([SString(i) for i in a])
 
 rt_typedata_to_string(a::String) = a
-rt_typedata_to_string(a::Array{String}) = join(a, ", ")
+rt_typedata_to_string(a::Vector{String}) = string('(', join(a, ", "), ')')
 
 rttypeof(a) = rt_typedata_to_singular(rt_typedata(a))
 
@@ -1532,7 +1532,7 @@ function rt_assign(a::_IntMat, b::Tuple{Vararg{Any}})
 end
 
 function rt_assign(a::_IntMat, b)
-    rt_error("cannot assign $b to intmat")
+    rt_error("cannot assign $(rt_typestring(b)) to intmat")
 end
 
 #### assignment to bigintmat
