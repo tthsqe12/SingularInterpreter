@@ -1014,26 +1014,6 @@ function rt_convert2intmat(a::Tuple{Vararg{Any}}, nrows::Int, ncols::Int)
     return SIntMat(mat)
 end
 
-function rt_convert2intmat(a::_List, nrows::Int, ncols::Int)
-    if nrows <= 0 || ncols <= 0
-        rt_error("nrows and ncols must be positive")
-    end
-    mat = zeros(Int, nrows, ncols)
-    row_idx = col_idx = 1
-    for i in rtef(a).list.data
-        mat[row_idx, col_idx] = rt_convert2int(i)
-        col_idx += 1
-        if col_idx > ncols
-            col_idx = 1
-            row_idx += 1
-            if row_idx > nrows
-                break
-            end
-        end
-    end
-    return SIntMat(mat)
-end
-
 #### bigintmat
 
 function rt_convert2bigintmat(a::SBigIntMat)
@@ -1052,26 +1032,6 @@ function rt_convert2bigintmat(a::Tuple{Vararg{Any}}, nrows::Int, ncols::Int)
     row_idx = col_idx = 1
     for i in a
         mat[row_idx, col_idx] = rt_convert2bigint(i)
-        col_idx += 1
-        if col_idx > ncols
-            col_idx = 1
-            row_idx += 1
-            if row_idx > nrows
-                break
-            end
-        end
-    end
-    return SBigIntMat(mat)
-end
-
-function rt_convert2bigintmat(a::_List, nrows::Int, ncols::Int)
-    if nrows <= 0 || ncols <= 0
-        rt_error("nrows and ncols must be positive")
-    end
-    mat = zeros(BigInt, nrows, ncols)
-    row_idx = col_idx = 1
-    for i in rtef(a).data
-        mat[row_idx, col_idx] = i
         col_idx += 1
         if col_idx > ncols
             col_idx = 1
