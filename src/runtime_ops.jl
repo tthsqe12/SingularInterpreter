@@ -612,6 +612,7 @@ rtequalequal(a::BigInt, b::BigInt) = Int(a == b)
 rtequalequal(a::SString, b::SString) = Int(a == b)
 rtequalequal(a::_IntVec, b::_IntVec) = Int(rt_ref(a) == rt_ref(b))
 
+rtnotequal(a, b) = rtequalequal(a, b) == 0 ? 1 : 0
 
 rtless(a::Int, b::Int) = Int(a < b)
 rtless(a::Int, b::BigInt) = Int(a < b)

@@ -4,6 +4,14 @@ ASSUME(0, size(l) == 2);
 ASSUME(0, l[1] == "poly");
 ASSUME(0, l[2] == "poly");
 
+// int
+
+int i = 1;
+
+ASSUME(0, i == 1);
+ASSUME(0, 1 == i);
+ASSUME(0, i != 2);
+ASSUME(0, 2 != i);
 
 // intvec
 
@@ -12,3 +20,5 @@ intvec v = 1, 2, 3;
 ASSUME(0, v == v);
 ASSUME(0, v == intvec(1, 2, 3));
 ASSUME(0, intvec(1, 2, 3) == v);
+ASSUME(0, v != intvec(1, 2));
+ASSUME(0, v != intvec(1, 2, 4));
