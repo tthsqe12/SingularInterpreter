@@ -633,3 +633,5 @@ rtgreaterequal(a::Int, b::Int) = Int(a >= b)
 rtgreaterequal(a::Int, b::BigInt) = Int(a >= b)
 rtgreaterequal(a::BigInt, b::Int) = Int(a >= b)
 rtgreaterequal(a::BigInt, b::BigInt) = Int(a >= b)
+
+rtdotdot(a::Int, b::Int) = SIntVec(a <= b ? (a:1:b) : (a:-1:b))
