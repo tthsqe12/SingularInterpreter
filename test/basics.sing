@@ -41,3 +41,8 @@ ASSUME(0, v0 + 1 == 1 + v0);
 ASSUME(0, v0 + 1 == intvec(1));
 ASSUME(0, v + 1 == 1 + v);
 ASSUME(0, v + 1 == intvec(2, 3, 4));
+
+
+// intmat
+
+intmat m[2][2] = 1, 2, 3, 4;
