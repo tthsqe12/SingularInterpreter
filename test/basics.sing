@@ -15,10 +15,15 @@ ASSUME(0, 2 != i);
 
 // intvec
 
+intvec v0;
 intvec v = 1, 2, 3;
 intvec v2 = 1..3;
 intvec v3 = 3..1;
 intvec v4 = 3..3;
+
+ASSUME(0, size(v0) == 1);
+// ASSUME(0, v0 == 0);
+ASSUME(0, v0[1] == 0);
 
 ASSUME(0, v == v);
 ASSUME(0, v == intvec(1, 2, 3));

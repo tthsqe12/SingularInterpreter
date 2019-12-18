@@ -694,7 +694,7 @@ end
 
 #### intvec
 function rt_defaultconstructor_intvec()
-    return SIntVec(Int[])
+    return SIntVec(Int[0])
 end
 
 function rt_declare_intvec(a::SName)
@@ -1785,4 +1785,3 @@ function rt_checktuplelength(a::Tuple{Vararg{Any}}, n::Int)
         rt_error("expected " * string(n) * " arguments in expression list; got " * string(length(a)))
     end
 end
-
