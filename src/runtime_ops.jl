@@ -458,14 +458,11 @@ function rtplus(a::_IntVec, b::_IntVec)
 end
 
 function rtplus(a::_IntVec, b::Int)
-    A = rtef(a)
+    A = rt_ref(a)
     return SIntVec([rtplus(A[i], b) for i in 1:length(A)])
 end
 
-function rtplus(a::Int, b::_IntVec)
-    B = rt_ref(b)
-    return SIntVec([rtplus(a, B[i]) for i in 1:length(B)])
-end
+rtplus(a::Int, b::_IntVec) = rtplus(b, a)
 
 function rtplus(a::_IntMat, b::Int)
     A = rt_edit(a)
