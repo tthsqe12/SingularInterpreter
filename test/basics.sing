@@ -4,6 +4,17 @@ ASSUME(0, size(l) == 2);
 ASSUME(0, l[1] == "poly");
 ASSUME(0, l[2] == "poly");
 
+// tuple
+
+ASSUME(0, (1, 2) == (1, 2));
+ASSUME(0, (1, 2) == (1, 2, 3));
+ASSUME(0, (1, 2, 3) == (1, 2));
+ASSUME(0, (1, 2) == 1);
+ASSUME(0, 1 == (1, 2));
+ASSUME(0, (1, 2) != (2, 1));
+ASSUME(0, 1 != (2, 1));
+ASSUME(0, (2, 1) != 1);
+
 // int
 
 int i = 1;

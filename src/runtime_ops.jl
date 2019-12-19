@@ -609,6 +609,10 @@ rtequalequal(a::BigInt, b::BigInt) = Int(a == b)
 rtequalequal(a::SString, b::SString) = Int(a == b)
 rtequalequal(a::_IntVec, b::_IntVec) = Int(rt_ref(a) == rt_ref(b))
 
+rtequalequal(a::Tuple, b::Tuple) = Int(all(x == y for (x, y) in zip(a, b)))
+rtequalequal(a::Tuple, b) = Int(a[1] == b)
+rtequalequal(a, b::Tuple) = rtequalequal(b, a)
+
 rtnotequal(a, b) = rtequalequal(a, b) == 0 ? 1 : 0
 
 rtless(a::Int, b::Int) = Int(a < b)
