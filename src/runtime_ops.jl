@@ -631,17 +631,23 @@ rtgreaterequal(a::Int, b::BigInt) = Int(a >= b)
 rtgreaterequal(a::BigInt, b::Int) = Int(a >= b)
 rtgreaterequal(a::BigInt, b::BigInt) = Int(a >= b)
 
+# int only functions
+
+rtor(a::Int, b::Int) = a == b == 0 ? 0 : 1
+rtand(a::Int, b::Int) = a == 0 || b == 0 ? 0 : 1
+
 rtnot(a::Int) = a == 0 ? 1 : 0
 rtnot(a) = rt_error("not `$(rt_typestring(a))` failed, expected ! `int`")
 
 rtdotdot(a::Int, b::Int) = SIntVec(a <= b ? (a:1:b) : (a:-1:b))
-rtdotdot(a, b) = rt_error("`$(rt_typestring(a))` .. `$(rt_typestring(b))` failed, " *
-                          "expected `int` .. `int`")
 
 function rtcolon(a::Int, b::Int)
     b < 0 && rt_error("`$a .. $b` failed, second argument must be >= 0")
     SIntVec(collect(Iterators.repeated(a, b)))
 end
 
-rtcolon(a, b) = rt_error("`$(rt_typestring(a))` : `$(rt_typestring(b))` failed, " *
-                          "expected `int` : `int`")
+for (fun, name) in [:rtor => "||", :rtand => "&&", :rtdotdot => "..", :rtcolon => ":"]
+    @eval $fun(a, b) =
+        rt_error(string("`$(rt_typestring(a))` ", $name, "`$(rt_typestring(b))` failed, ",
+                        "expected `int` ", $name, " `int`"))
+end
