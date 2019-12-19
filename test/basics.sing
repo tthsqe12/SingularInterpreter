@@ -13,6 +13,16 @@ ASSUME(0, 1 == i);
 ASSUME(0, i != 2);
 ASSUME(0, 2 != i);
 
+ASSUME(0, !0 == 1);
+ASSUME(0, !1 == 0);
+ASSUME(0, !2 == 0);
+ASSUME(0, ! 0 == 1);
+ASSUME(0, ! 1 == 0);
+ASSUME(0, ! 2 == 0);
+ASSUME(0, not 0 == 1);
+ASSUME(0, not 1 == 0);
+ASSUME(0, not 2 == 0);
+
 // intvec
 
 intvec v0;

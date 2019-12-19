@@ -631,6 +631,9 @@ rtgreaterequal(a::Int, b::BigInt) = Int(a >= b)
 rtgreaterequal(a::BigInt, b::Int) = Int(a >= b)
 rtgreaterequal(a::BigInt, b::BigInt) = Int(a >= b)
 
+rtnot(a::Int) = a == 0 ? 1 : 0
+rtnot(a) = rt_error("not `$(rt_typestring(a))` failed, expected ! `int`")
+
 rtdotdot(a::Int, b::Int) = SIntVec(a <= b ? (a:1:b) : (a:-1:b))
 rtdotdot(a, b) = rt_error("`$(rt_typestring(a))` .. `$(rt_typestring(b))` failed, " *
                           "expected `int` .. `int`")
