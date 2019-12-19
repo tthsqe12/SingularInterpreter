@@ -1,4 +1,4 @@
 using SingularInterpreter
 
 include("basics.jl")
-execute(read("basics.sing", String))
+execute(read(joinpath(dirname(@__FILE__), "basics.sing"), String))
