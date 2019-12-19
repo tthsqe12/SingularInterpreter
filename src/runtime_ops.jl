@@ -852,27 +852,11 @@ rtmod(a::BigInt, b::Int) = mod(a, b)
 rtmod(a::BigInt, b::BigInt) = mod(a, b)
 
 
+rtequalequal(a::STuple, b) = rtequalequal(a.list[1], b)
+rtequalequal(a, b::STuple) = rtequalequal(b, a)
 
-
-function rtequalequal(a::STuple, b)
-    @assert !isa(b, STuple)
-    return rtequalequal(a.list[1], b)
-end
-
-function rtequalequal(a, b::STuple)
-    @assert !isa(a, STuple)
-    return rtequalequal(a, b.list[1])
-end
-
-function rtequalequal(a::STuple, b::STuple)
-    for i in 1:min(length(a.list), length(b.list))
-        if rtequalequal(a.list[i], b.list[i]) == 0
-            return 0
-        end
-    end
-    return 1
-end
-
+rtequalequal(a::STuple, b::STuple) =
+    Int(all(rtequalequal(x, y) != 0 for (x, y) in zip(a, b)))
 
 rtequalequal(a::Int, b::Int) = Int(a == b)
 rtequalequal(a::Int, b::BigInt) = Int(a == b)
