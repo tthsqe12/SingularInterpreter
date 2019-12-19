@@ -632,5 +632,13 @@ rtgreaterequal(a::BigInt, b::Int) = Int(a >= b)
 rtgreaterequal(a::BigInt, b::BigInt) = Int(a >= b)
 
 rtdotdot(a::Int, b::Int) = SIntVec(a <= b ? (a:1:b) : (a:-1:b))
-rtdotdot(a, b) = rt_error("`$(rt_typestring(a))` .. `$(rt_typestring(b))` failed," *
+rtdotdot(a, b) = rt_error("`$(rt_typestring(a))` .. `$(rt_typestring(b))` failed, " *
                           "expected `int` .. `int`")
+
+function rtcolon(a::Int, b::Int)
+    b < 0 && rt_error("`$a .. $b` failed, second argument must be >= 0")
+    SIntVec(collect(Iterators.repeated(a, b)))
+end
+
+rtcolon(a, b) = rt_error("`$(rt_typestring(a))` : `$(rt_typestring(b))` failed, " *
+                          "expected `int` : `int`")
