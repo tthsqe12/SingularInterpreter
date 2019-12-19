@@ -1,3 +1,4 @@
 using SingularInterpreter
 
-execute(read("./basics.sing", String))
+include("basics.jl")
+execute(read("basics.sing", String))
