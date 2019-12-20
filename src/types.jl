@@ -154,6 +154,7 @@ end
 #       rings. The parent, ring_dep_count, and back members are for maintaining
 #       compatibility with backwards singular, where the content of a list can
 #       change the location of its name.
+#       The integrity of this structure can be checked with object_is_ok
 mutable struct SListData
     data::Vector{Any}
     parent::SRing           # parent.valid <=> list is considered ring dependent

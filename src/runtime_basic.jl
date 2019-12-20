@@ -239,6 +239,52 @@ function rt_is_ring_dep(a)
     end
 end
 
+
+function object_is_ok(a::SListData)
+    count = 0
+    for i in a.data
+        count += rt_is_ring_dep(i)
+        if isa(i, SListData)
+            println("list does not own one of its sublists")
+            return false
+        elseif isa(i, SName)
+            println("list contains a name")
+            return false
+        elseif isa(i, Tuple)
+            println("list contains a tuple")
+            return false
+        end
+        if !object_is_ok(i)
+            println("list contains a bad element")
+            return false
+        end
+    end
+    if count != a.ring_dep_count
+        println("list has incorrect count $(a.ring_dep_count); correct is $(count)")
+        return false
+    end
+    if count > 0
+        if !a.parent.valid
+            println("list has ring dependent elements but parent is not valid")
+        end
+    else
+        if a.parent.valid
+            println("list has no ring dependent elements but parent is valid")
+        end
+    end
+    return true
+end
+
+function object_is_ok(a::SList)
+    object_is_ok(a.list)
+end
+
+function object_is_ok(a)
+    return true
+end
+
+
+
 function rt_basering()
     return rtGlobal.callstack[end].current_ring
 end
@@ -297,10 +343,10 @@ function rt_make(a::SName, allow_unknown::Bool = false)
                 # global lists are expected to known their names after make
                 v = d[a.name]
                 if isa(v, SList)
-                    v.list.back = v.name
+                    v.list.back = a.name
                     return v.list
                 else
-                    return rt_ref(b)
+                    return rt_ref(v)
                 end
             end
         end
@@ -370,9 +416,9 @@ end
 
 function rtkill(a::SName)
 
-    # local ring independent
-    b, i = rt_search_locals(a.name)
-    if b
+    # local
+    found, i = rt_search_locals(a.name)
+    if found
         rtGlobal.local_vars[i] = rtGlobal.local_vars[end]
         pop!(rtGlobal.local_vars)
         return
@@ -393,6 +439,11 @@ function rtkill(a::SName)
     R = rt_basering()
     if haskey(R.vars, a.name)
         delete!(R.vars, a.name)
+        return
+    end
+
+    if string(a.name) == "basering"
+        rtGlobal.callstack[end].current_ring = rtInvalidRing
         return
     end
 
@@ -867,8 +918,9 @@ function rt_parameter_ideal(a::SName, b)
 end
 
 ########### type conversions ##################################################
-# each rt_convert2T returns an object of type T, usually for an assignment
-# each rt_cast2T is used when the type name T is used as a function, i.e. string(1)
+# each rt_convert2T(a) returns an object of type T, usually for an assignment
+# each rt_convert2T(a) is a UNIARY function with no known exceptions
+# each rt_cast2T(a...) is used when the type name T is used as a function, i.e. string(1), or list(1,2,3)
 
 # Singular maintains bools as ints, julia needs real bools for control flow
 
@@ -1462,33 +1514,33 @@ function rtassign(a::SName, b)
 end
 
 # a = b, a lives in a ring independent table d
-function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, b::SList)
+function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, B::SList)
     @assert haskey(d, a)
     @assert isa(d[a], SList)
+    b = B.list
     if b.parent.valid
         # move the name to the ring of b, which is hopefully the current ring
-        b.parent === rt_basering() || rt_error("moving a list with name " * string(a.name) * " to a ring other than the basering")
+        b.parent === rt_basering() || rt_warn("moving a list with name " * string(a.name) * " to a ring other than the basering")
         if haskey(b.parent.vars, a)
             rt_warn("overwriting name " * string(a.name) * " when moving list to a ring")
         end
-        b.parent.vars[a] = b
+        b.parent.vars[a] = B
         delete!(d, a)
     else
         # no need to move the name
-        d[a] = b
+        d[a] = B
     end
 end
 
 # a = b, a lives in ring r
-function rt_assign_global_list_ring_indep(r::SRing, a::Symbol, b::SList)
+function rt_assign_global_list_ring_indep(r::SRing, a::Symbol, B::SList)
     @assert haskey(r.vars, a)
     @assert isa(r.vars[a], SList)
-    if rt_is_ring_dep(b)
+    b = B.list
+    if b.parent.valid
         # no need to move the name
-        if !(r === rt_ring_of(b))
-            rt_warn("the list " * string(a.name) * " might now contain ring dependent data from a ring other than basering")
-        end
-        r.vars[a] = b
+        r === rt_ring_of(b) || rt_warn("the list " * string(a.name) * " might now contain ring dependent data from a ring other than basering")
+        r.vars[a] = B
     else
         # move the name to the current package
         p = rtGlobal.callstack[end].current_package
@@ -1497,7 +1549,7 @@ function rt_assign_global_list_ring_indep(r::SRing, a::Symbol, b::SList)
             if haskey(d, a)
                 rt_warn("overwriting name " * string(a.name) * " when moving list out of ring")
             end
-            d[a] = b
+            d[a] = B
         else
             rtGlobal.vars[p] = Dict{Symbol, Any}[a => b]
         end

@@ -1,0 +1,18 @@
+
+list l = 1, 2, 3;
+ring r = 0, (a, b, c), lp;
+l[1] = a + b + c;
+
+ring s = 0, (x, y, z), lp;
+ASSUME(0, defined(l) == 0);
+list l = 4, 5, 6, 7;
+l[1] = x + y + z;
+
+setring r;
+
+ASSUME(0, defined(l) == 1);
+ASSUME(0, size(l) == 3);
+
+kill basering;
+ASSUME(0, defined(l) == 0);
+
