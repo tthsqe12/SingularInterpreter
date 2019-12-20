@@ -1,0 +1,63 @@
+proc fib1(int n)
+{
+    if (n <= 1)
+    {
+        return(n);
+    }
+    else
+    {
+        return(fib1(n - 1) + fib1(n - 2));
+    }
+};
+
+proc fib2(int n)
+{
+    bigint a = 0;
+    bigint b = 1;
+    for (int i = n; i > 0; i--)
+    {
+        (a, b) = (b + 0, a + b);
+    }
+    return(a);
+};
+
+proc fib2m(int n)
+{
+    int a = 0;
+    int b = 1;
+    for (int i = n; i > 0; i--)
+    {
+        (a, b) = (b mod 1000, (a + b) mod 1000);
+    }
+    return(a);
+};
+
+proc fib3(int n)
+{
+    if (n <= 1)
+    {
+        return(bigint(n), bigint(1));
+    }
+    bigint a, b = fib3(n div 2);
+    if (n mod 2)
+    {
+        return(a*a + b*b, b*(2*a + b));
+    }
+    else
+    {
+        return(a*(2*b - a), a*a + b*b);
+    }
+};
+
+ASSUME(0, fib1(1) == 1);
+ASSUME(0, fib1(2) == 1);
+ASSUME(0, fib1(3) == 2);
+ASSUME(0, fib1(5) == 5);
+ASSUME(0, fib1(10) == 55);
+
+ASSUME(0, fib1(1) == fib2m(1));
+ASSUME(0, fib1(2) == fib2m(2));
+ASSUME(0, fib1(5) == fib2m(5));
+ASSUME(0, fib1(10) == fib2m(10));
+
+kill fib1, fib2, fib2m, fib3;
