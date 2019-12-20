@@ -299,8 +299,7 @@ end
 # This could be passed around as a first argument to _every_ rt function, but
 # we take the simpler approach for now and manually manage a call stack in rtGlobal.callstack.
 mutable struct rtCallStackEntry
-    start_rindep_vars::Int      # index into rtGlobal.local_rindep_vars
-    start_rdep_vars::Int        # index into rtGlobal.local_rdep_vars
+    start_local_vars::Int       # index into rtGlobal.local_vars
     current_ring::SRing
     current_package::Symbol
 end
@@ -312,8 +311,7 @@ mutable struct rtGlobalState
     rtimer_scale::UInt64
     vars::Dict{Symbol, Dict{Symbol, Any}}     # global ring indep vars
     callstack::Array{rtCallStackEntry}
-    local_rindep_vars::Array{Pair{Symbol, Any}}
-    local_rdep_vars::Array{Pair{Symbol, SingularRingType}}
+    local_vars::Array{Pair{Symbol, Any}}
     newstruct_casts::Dict{String, Function}   # available newstruct's and their cast operators
 end
 
@@ -325,9 +323,8 @@ const rtGlobal = rtGlobalState(false,
                                time_ns(),
                                1000000000,
                                Dict(:Top => Dict{Symbol, Any}()),
-                               rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)],
+                               rtCallStackEntry[rtCallStackEntry(1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
-                               Pair{Symbol, SingularRingType}[],
                                Dict{String, Function}())
 
 
