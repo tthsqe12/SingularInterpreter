@@ -125,16 +125,6 @@ struct SBigIntMat
 end
 
 
-#### singular type "list"       mutable in the singular language
-mutable struct SListData # special type to wrap Vector{Any} to avoid exploding type inference
-    data::Vector{Any}
-end
-
-struct SList
-    list::SListData
-end
-
-
 #### singular type "ring"       immutable in the singular language, but also holds identifiers of ring-dependent types
 mutable struct SRing
     ring_ptr::libSingular.ring
@@ -157,6 +147,25 @@ function rt_ring_finalizer(a::SRing)
         libSingular.rDelete(a.ring_ptr)
     end
 end
+
+
+#### singular type "list"       mutable in the singular language
+# note: Lists can have anything in them - including polynomials from different
+#       rings. The parent, ring_dep_count, and back members are for maintaining
+#       compatibility with backwards singular, where the content of a list can
+#       change the location of its name.
+#       The integrity of this structure can be checked with object_is_ok
+mutable struct SListData
+    data::Vector{Any}
+    parent::SRing           # parent.valid <=> list is considered ring dependent
+    ring_dep_count::Int     # count of ring dependent elements
+    back::Any               # pointer to data that possibly needs changing when ring dependence changes
+end
+
+struct SList
+    list::SListData
+end
+
 
 ############################ ring dependent types ############################
 # The constructor for T takes ownership of a raw pointer and stores in the member T_ptr
@@ -245,8 +254,13 @@ const _Ideal     = Union{SIdeal, SIdealData}
 #                           SRing, SNumber, SPoly, SIdeal}
 
 # the set of possible ring dependent types is finite because newstruct creates ring indep types
-const SingularRingType = Union{SNumber, SPoly, SIdeal}
+# all ring dependent types have a .parent member for the ring
+const SingularRingType = Union{SList, SNumber, SPoly, SIdeal}
 
+# the types that are always ring dependent
+const _SingularRingType = Union{SNumber, SPoly, SIdeal, SIdealData}
+
+# this function is broken now
 function type_is_ring_dependent(t::String)
     return t == "number" || t == "poly" || t == "ideal" || t == "matrix"
 end

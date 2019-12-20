@@ -69,7 +69,7 @@ function Base.deepcopy_internal(a::SBigIntMat, dict::IdDict)
 end
 
 function Base.deepcopy_internal(a::SListData, dict::IdDict)
-    return SListData(deepcopy(a.data))
+    return SListData(deepcopy(a.data), a.parent, a.ring_dep_count, nothing)
 end
 
 function Base.deepcopy_internal(a::SList, dict::IdDict)
@@ -218,14 +218,73 @@ rt_ref(a::SIdealData) = a
 rt_ref(a::SIdeal) = a.ideal
 
 
-function rt_ringof(a::SingularRingType)
-    return rt_ref(a).parent
+# rt_ringof has to be used for .r_... members of newstruct, which are read-only
+function rt_ringof(a)
+    if isa(a, _List)
+        r = rt_ref(a).parent
+        r.valid || rt_error("sorry, this list does not have a basering")
+        return r
+    elseif isa(a, _SingularRingType)
+        return rt_ref(a).parent
+    else
+        rt_error("type " * rt_typestring(a) * " does not have a basering")
+        return rtInvalidRing
+    end
 end
 
-function rt_ringof(a)
-    rt_error("type " * rt_typestring(a) * " does not have a basering")
-    return rtInvalidRing
+
+function rt_is_ring_dep(a)
+    if isa(a, _List)
+        return rt_ref(a).parent.valid
+    else
+        return isa(a, _SingularRingType)
+    end
 end
+
+
+function object_is_ok(a::SListData)
+    count = 0
+    for i in a.data
+        count += rt_is_ring_dep(i)
+        if isa(i, SListData)
+            println("list does not own one of its sublists")
+            return false
+        elseif isa(i, SName)
+            println("list contains a name")
+            return false
+        elseif isa(i, Tuple)
+            println("list contains a tuple")
+            return false
+        end
+        if !object_is_ok(i)
+            println("list contains a bad element")
+            return false
+        end
+    end
+    if count != a.ring_dep_count
+        println("list has incorrect count $(a.ring_dep_count); correct is $(count)")
+        return false
+    end
+    if count > 0
+        if !a.parent.valid
+            println("list has ring dependent elements but parent is not valid")
+        end
+    else
+        if a.parent.valid
+            println("list has no ring dependent elements but parent is valid")
+        end
+    end
+    return true
+end
+
+function object_is_ok(a::SList)
+    object_is_ok(a.list)
+end
+
+function object_is_ok(a)
+    return true
+end
+
 
 
 function rt_basering()
@@ -269,7 +328,13 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     # local
     b, i = rt_search_locals(a.name)
     if b
-        return rt_ref(rtGlobal.local_vars[i].second)
+        # local lists are expected to not know their names after make
+        # TODO: make another function rt_ref_local that does all of this in one function
+        v = rt_ref(rtGlobal.local_vars[i].second)
+        if isa(v, SListData)
+            v.list.back = nothing
+        end
+        return v
     end
 
     # global ring independent
@@ -277,7 +342,14 @@ function rt_make(a::SName, allow_unknown::Bool = false)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                return rt_ref(d[a.name])
+                # global lists are expected to known their names after make
+                v = d[a.name]
+                if isa(v, SList)
+                    v.list.back = a.name
+                    return v.list
+                else
+                    return rt_ref(v)
+                end
             end
         end
     end
@@ -285,7 +357,14 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     # global ring dependent
     R = rtGlobal.callstack[end].current_ring
     if haskey(R.vars, a.name)
-        return rt_ref(R.vars[a.name])
+        # ditto comment
+        v = R.vars[a.name]
+        if isa(b, SList)
+            v.list.back = a.name
+            return v.list
+        else
+            return rt_ref(v)
+        end
     end
 
     # monomials
@@ -340,8 +419,8 @@ end
 function rtkill(a::SName)
 
     # local
-    b, i = rt_search_locals(a.name)
-    if b
+    found, i = rt_search_locals(a.name)
+    if found
         rtGlobal.local_vars[i] = rtGlobal.local_vars[end]
         pop!(rtGlobal.local_vars)
         return
@@ -362,6 +441,12 @@ function rtkill(a::SName)
     R = rt_basering()
     if haskey(R.vars, a.name)
         delete!(R.vars, a.name)
+        return
+    end
+
+    # hmm, where does this go
+    if string(a.name) == "basering"
+        rtGlobal.callstack[end].current_ring = rtInvalidRing
         return
     end
 
@@ -739,7 +824,7 @@ end
 
 #### list
 function rt_defaultconstructor_list()
-    return SList(SListData(Any[]))
+    return SList(SListData(Any[], rtInvalidRing, 0, nothing))
 end
 
 function rt_declare_list(a::SName)
@@ -836,8 +921,9 @@ function rt_parameter_ideal(a::SName, b)
 end
 
 ########### type conversions ##################################################
-# each rt_convert2T returns an object of type T, usually for an assignment
-# each rt_cast2T is used when the type name T is used as a function, i.e. string(1)
+# each rt_convert2T(a) returns an object of type T, usually for an assignment
+# each rt_convert2T(a) is a UNIARY function with no known exceptions
+# each rt_cast2T(a...) is used when the type name T is used as a function, i.e. string(1), or list(1,2,3)
 
 # Singular maintains bools as ints, julia needs real bools for control flow
 
@@ -1036,16 +1122,26 @@ function rt_convert2list(a::SListData)
 end
 
 function rt_convert2list(a::Tuple{Vararg{Any}})
-    return SList(SListData(collect(a)))
+    data::Vector{Any} = collect(a)
+    count = 0
+    for i in data
+        count += rt_is_ring_dep(i)
+    end
+    return SList(SListData(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
 end
 
 function rt_convert2list(a)
-    rt_error("cannot convert $a to a list")
-    return SList(SListData(Any[]))
+    rt_error("cannot convert a $(rt_typestring(a)) to an int")
+    return rt_defaultconstructor_list()
 end
 
 function rt_cast2list(a...)
-    return SList(SListData([rt_copy(i) for i in a]))
+    data::Vector{Any} = [rt_copy(j) for j in a]
+    count = 0
+    for i in data
+        count += rt_is_ring_dep(i)
+    end
+    return SList(SListData(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
 end
 
 #### number
@@ -1355,21 +1451,74 @@ function rtassign(a::SName, b)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                d[a.name] = rt_assign(d[a.name], b)
+                if isa(d[a.name], SList)
+                    rt_assign_global_list_ring_indep(d, a.name, rt_convert2list(b))
+                else
+                    d[a.name] = rt_assign(d[a.name], b)
+                end
                 return
             end
         end
     end
 
     # global ring dependent
-    d = rtGlobal.callstack[end].current_ring.vars
-    if haskey(d, a.name)
-        d[a.name] = rt_assign(d[a.name], b)
+    R = rtGlobal.callstack[end].current_ring    # same as rt_basering()
+    if haskey(R.vars, a.name)
+        if isa(R.vars[a.name], SList)
+           rt_assign_global_list_ring_dep(R, a.name, rt_convert2list(b))
+        else
+            R.vars[a.name] = rt_assign(R.vars[a.name], b)
+        end
         return
     end
 
     rt_error("cannot assign to " * String(a.name))
 end
+
+# a = b, a lives in a ring independent table d
+function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, B::SList)
+    @assert haskey(d, a)
+    @assert isa(d[a], SList)
+    b = B.list
+    if b.parent.valid
+        # move the name to the ring of b, which is hopefully the current ring
+        b.parent === rt_basering() || rt_warn("moving a list with name " * string(a.name) * " to a ring other than the basering")
+        if haskey(b.parent.vars, a)
+            rt_warn("overwriting name " * string(a.name) * " when moving list to a ring")
+        end
+        b.parent.vars[a] = B
+        delete!(d, a)
+    else
+        # no need to move the name
+        d[a] = B
+    end
+end
+
+# a = b, a lives in ring r
+function rt_assign_global_list_ring_dep(r::SRing, a::Symbol, b::SList)
+    @assert haskey(r.vars, a)
+    @assert isa(r.vars[a], SList)
+    b = B.list
+    if b.parent.valid
+        # no need to move the name
+        r === rt_ring_of(b) || rt_warn("the list " * string(a.name) * " might now contain ring dependent data from a ring other than basering")
+        r.vars[a] = B
+    else
+        # move the name to the current package
+        p = rtGlobal.callstack[end].current_package
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a)
+                rt_warn("overwriting name " * string(a.name) * " when moving list out of ring")
+            end
+            d[a] = B
+        else
+            rtGlobal.vars[p] = Dict{Symbol, Any}[a => b]
+        end
+        delete!(r.vars, a)
+    end
+end
+
 
 function rt_incrementby(a::SName, b::Int)
 

@@ -51,8 +51,20 @@ function rt_setindex(a::_BigIntMat, i::Int, j::Int, b)
 end
 
 
-function rt_getindex(a::_List, i::Int)
-    return rt_ref(rt_ref(a).data[i])
+function rt_getindex(a::SList, i::Int)
+    return rt_getindex(a.list, i)
+end
+
+function rt_getindex(a::SListData, i::Int)
+    @assert object_is_ok(a)
+    b = a.data[i]
+    if isa(b, SList)
+        r = b.list
+        r.back = a
+        return r
+    else
+        return rt_ref(b)
+    end
 end
 
 function rt_getindex(a::SIdeal, i::Int)
@@ -84,14 +96,28 @@ function rt_setindex(a::SIdealData, i::Int, b)
 end
 
 
+function rt_setindex(a::SList, i::Int, b)
+    return rt_setindex(rt_ref(a), i, b)
+end
+
+function rt_setindex(a::SListData, i::Int, b::Tuple{Vararg{Any}})
+    rt_error("cannot put a tuple inside a list")
+    return nothing
+end
+
 function rt_setindex(a::SListData, i::Int, b)
+    @assert object_is_ok(a)
     bcopy = rt_copy(b) # copy before the possible resize
     r = a.data
-    if bcopy == nothing
-        if i < length(r)
-            r[i] = nothing
+    count_change = 0
+    if isa(bcopy, Nothing)
+        if i > length(r)
+            return
+        end
+        count_change = -rt_is_ring_dep(r[i])
+        r[i] = nothing
         # putting nothing at the end pops the list
-        elseif i == length(r)
+        while !isempty(r) && isa(r[end], Nothing)
             pop!(r)
         end
     else
@@ -103,17 +129,105 @@ function rt_setindex(a::SListData, i::Int, b)
                 r[org_len + 1] = nothing
                 org_len += 1
             end
+            count_change = rt_is_ring_dep(bcopy)
+        else
+            count_change = Int(rt_is_ring_dep(bcopy)) - Int(rt_is_ring_dep(r[i]))
         end
         r[i] = bcopy
     end
+    if count_change != 0
+        rt_fix_setindex(a, count_change)
+    end
+    @assert object_is_ok(a)
     return nothing
 end
 
-
-function rt_setindex(a::SList, i::Int, b)
-    return rt_setindex(rt_ref(a), i, b)
+# we should at least maintain the integrity of the list data structure
+function rt_fix_setindex(a::SListData, count_change::Int)
+    new_parent = a.parent
+    a.ring_dep_count += count_change
+    if a.ring_dep_count > 0
+        if !new_parent.valid
+            new_parent = rt_basering()  # try to get a valid ring from somewhere
+            new_parent.valid || rt_warn("list has ring dependent elements but no basering")
+        end
+    else
+        new_parent = rtInvalidRing
+    end
+    new_count_change = Int(new_parent.valid) - Int(a.parent.valid)
+    a.parent = new_parent
+    if new_count_change != 0
+        rt_fix_setindex(a.back, new_count_change)
+    end
 end
 
+# move a name of a global list when its ring independence status has changed
+function rt_fix_setindex(a::Symbol, count_change::Int)
+    if count_change > 0
+        # name became ring dependent
+        # move the name from the current package to the current ring
+        # TODO: might get the package data from somewhere else
+        @assert count_change == 1
+        first = true
+        for p in (rtGlobal.callstack[end].current_package, :Top)
+            if haskey(rtGlobal.vars, p) && haskey(rtGlobal.vars[p], a)
+                b = rtGlobal.vars[p][a]
+                if isa(b, SList)
+                    R = rt_basering()
+                    if R.valid
+                        if haskey(R.vars, a)
+                            rt_warn("overwriting name " * string(a.name) * " when moving global list into basering")
+                        end
+                        R.vars[a] = b
+                        delete!(rtGlobal.vars[p], a)
+                        return
+                    else
+                        rt_error("global list became ring dependent but there is no basering")
+                    end
+                else
+                    rt_error("global list became ring dependent but its name no longer points to a list")
+                end
+            else
+                first || rt_error("global list became ring dependent but its name is not in the package " * string(p))
+            end
+            first = false
+        end
+    elseif count_change < 0
+        # name became ring independent
+        # move the name from the current ring to the current package
+        @assert count_change == -1
+        R = rt_basering()
+        if R.valid && haskey(R.vars, a)
+            b = R.vars[a]
+            if isa(b, SList)
+                p = rtGlobal.callstack[end].current_package
+                if haskey(rtGlobal.vars, p)
+                    d = rtGlobal.vars[p]
+                    if haskey(d, a)
+                        rt_warn("overwriting name " * string(a.name) * " when moving global list out of basering")
+                    end
+                    d[a] = b
+                else
+                    rtGlobal.vars[p] = Dict{Symbol, Any}[a => b]
+                end
+                delete!(R.vars, a)
+                return
+            else
+                rt_error("global list became ring independent but its name in basering no longer points to a list")
+            end
+        else
+            rt_error("global list became ring independent but its name is not in basering")
+        end
+    end
+end
+
+function rt_fix_setindex(a::Nothing, count_change::Int)
+    return
+end
+
+function rt_fix_setindex(a, count_change::Int)
+    error("internal error in rt_fix_setindex: back member needs to be Nothing|Symbol|SListData")
+end
 
 function rtplus(a::_List, b::_List)
     return SList(SListData(vcat(rt_edit(a).data, rt_edit(b).data)))
