@@ -47,118 +47,6 @@ macro RULE_returncmd(i)           ;return(4400 + i); end
 macro RULE_procarglist(i)         ;return(4500 + i); end
 macro RULE_procarg(i)             ;return(4600 + i); end
 
-function astprint(a::Int, indent::Int)
-    print(" "^indent)
-    println(a)
-end
-
-function astprint(a::String, indent::Int)
-    print(" "^indent)
-    println(a)
-end
-
-function astprint(a::AstNode, indent::Int)
-    print(" "^indent)
-    if 100 < a.rule < 200
-        print("RULE_top_lines ")
-    elseif 200 < a.rule < 300
-        print("RULE_top_pprompt ")
-    elseif 300 < a.rule < 400
-        print("RULE_lines ")
-    elseif 400 < a.rule < 500
-        print("RULE_pprompt ")
-    elseif 500 < a.rule < 600
-        print("RULE_npprompt ")
-    elseif 600 < a.rule < 700
-        print("RULE_flowctrl ")
-    elseif 700 < a.rule < 800
-        print("RULE_example_dummy ")
-    elseif 800 < a.rule < 900
-        print("RULE_command ")
-    elseif 900 < a.rule < 1000
-        print("RULE_assign ")
-    elseif 1000 < a.rule < 1100
-        print("RULE_elemexpr ")
-    elseif 1100 < a.rule < 1200
-        print("RULE_exprlist ")
-    elseif 1200 < a.rule < 1300
-        print("RULE_expr ")
-    elseif 1300 < a.rule < 1400
-        print("RULE_quote_start ")
-    elseif 1400 < a.rule < 1500
-        print("RULE_assume_start ")
-    elseif 1500 < a.rule < 1600
-        print("RULE_quote_end ")
-    elseif 1600 < a.rule < 1700
-        print("RULE_expr_arithmetic ")
-    elseif 1700 < a.rule < 1800
-        print("RULE_left_value ")
-    elseif 1800 < a.rule < 1900
-        print("RULE_extendedid ")
-    elseif 1900 < a.rule < 2000
-        print("RULE_declare_ip_variable ")
-    elseif 2000 < a.rule < 2100
-        print("RULE_stringexpr ")
-    elseif 2100 < a.rule < 2200
-        print("RULE_rlist ")
-    elseif 2200 < a.rule < 2300
-        print("RULE_ordername ")
-    elseif 2300 < a.rule < 2400
-        print("RULE_orderelem ")
-    elseif 2400 < a.rule < 2500
-        print("RULE_OrderingList ")
-    elseif 2500 < a.rule < 2600
-        print("RULE_ordering ")
-    elseif 2600 < a.rule < 2700
-        print("RULE_mat_cmd ")
-    elseif 2700 < a.rule < 2800
-        print("RULE_filecmd ")
-    elseif 2800 < a.rule < 2900
-        print("RULE_helpcmd ")
-    elseif 2900 < a.rule < 3000
-        print("RULE_examplecmd ")
-    elseif 3000 < a.rule < 3100
-        print("RULE_exportcmd ")
-    elseif 3100 < a.rule < 3200
-        print("RULE_killcmd ")
-    elseif 3200 < a.rule < 3300
-        print("RULE_listcmd ")
-    elseif 3300 < a.rule < 3400
-        print("RULE_ringcmd1 ")
-    elseif 3400 < a.rule < 3500
-        print("RULE_ringcmd ")
-    elseif 3500 < a.rule < 3600
-        print("RULE_scriptcmd ")
-    elseif 3600 < a.rule < 3700
-        print("RULE_setrings ")
-    elseif 3700 < a.rule < 3800
-        print("RULE_setringcmd ")
-    elseif 3800 < a.rule < 3900
-        print("RULE_typecmd ")
-    elseif 3900 < a.rule < 4000
-        print("RULE_ifcmd ")
-    elseif 4000 < a.rule < 4100
-        print("RULE_whilecmd ")
-    elseif 4100 < a.rule < 4200
-        print("RULE_forcmd ")
-    elseif 4200 < a.rule < 4300
-        print("RULE_proccmd ")
-    elseif 4300 < a.rule < 4400
-        print("RULE_parametercmd ")
-    elseif 4400 < a.rule < 4500
-        print("RULE_returncmd ")
-    elseif 4500 < a.rule < 4600
-        print("RULE_procarglist ")
-    elseif 4600 < a.rule < 4700
-        print("RULE_procarg ")
-    else
-        print("unknown ")
-    end
-    println(a.rule)
-    for i in 1:length(a.child)
-        astprint(a.child[i], indent + 4)
-    end
-end
 
 function is_valid_newstruct_member(s::String)
     if match(r"^[a-zA-Z][a-zA-Z0-9]*$", s) == nothing
@@ -770,7 +658,8 @@ function convert_expr(a::AstNode, env::AstEnv)
         else
             cond = Expr(:call, :rt_assume_level_ok, level)
         end
-        return Expr(:if, cond, Expr(:call, :rt_assume, make_nocopy(convert_expr(a.child[2], env)), "TODO: string message for ASSUME failure"))
+        return Expr(:if, cond, Expr(:call, :rt_assume, make_nocopy(convert_expr(a.child[2], env)),
+                                                       "assumption "*astprint_pretty(a.child[2], env)*" failed"))
     else
         throw(TranspileError("internal error in convert_expr"))
     end
@@ -1607,7 +1496,7 @@ function rt_blocksize_weights(w::Array{Int, 1})
 end
 
 function rt_parse_ord(ord)
-    isa(ord[1], String) || rt_error("bad order specification")
+    !isempty(ord) && isa(ord[1], String) || rt_error("bad order specification")
     order = libSingular.ringorder_no
     blocksize = 0
     weights = Int[]
@@ -2713,4 +2602,862 @@ function loadconvert_toplines(a::AstNode, env::AstLoadEnv)
         loadconvert_top_pprompt(i, env)
     end
     return
+end
+
+
+
+############### ast printer  ##################################################
+
+
+
+
+function astprint_top_lines(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_top_lines(0) < 100
+    join([astprint_top_pprompt(i, env, indent) for i in a.child])
+end
+
+function astprint_top_pprompt(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_top_pprompt(0) < 100
+    if a.rule == @RULE_top_pprompt(1)
+        return astprint_flowctrl(a.child[1], env, indent)
+    elseif a.rule == @RULE_top_pprompt(2)
+        return astprint_command(a.child[1], env, indent)*";"
+    elseif a.rule == @RULE_top_pprompt(3)
+        return astprint_declare_ip_variable(a.child[1], env, indent)*";"
+    elseif a.rule == @RULE_top_pprompt(99)
+        return astprint_returncmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_top_pprompt(4)
+        return "~"
+    elseif a.rule == @RULE_top_pprompt(5)
+        return ";"
+    else
+        throw(TranspileError("internal error in astprint_top_pprompt"))
+    end
+end
+
+function astprint_lines(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_lines(0) < 100
+    return join([astprint_pprompt(i) for i in a.child], "\n")*"\n"
+end
+
+function astprint_pprompt(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_pprompt(0) < 100
+    if a.rule == @RULE_pprompt(1)
+        return astprint_flowctrl(a.child[1], env, indent)
+    elseif a.rule == @RULE_pprompt(2)
+        return astprint_command(a.child[1], env, indent)*";"
+    elseif a.rule == @RULE_pprompt(3)
+        return astprint_declare_ip_variable(a.child[1], env, indent)*";"
+    elseif a.rule == @RULE_pprompt(4)
+        return astprint_returncmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_pprompt(5)
+        return "~"
+    elseif a.rule == @RULE_pprompt(6)
+        return ";"
+    else
+        throw(TranspileError("internal error in astprint_pprompt"))
+    end
+end
+
+function astprint_npprompt(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_npprompt(0) < 100
+    if a.rule == @RULE_npprompt(1)
+        return astprint_flowctrl(a.child[1], env, indent)
+    elseif a.rule == @RULE_npprompt(2)
+        return astprint_command(a.child[1], env, indent)*";"
+    elseif a.rule == @RULE_npprompt(3)
+        return astprint_declare_ip_variable(a.child[1], env, indent)*";"
+    elseif a.rule == @RULE_npprompt(4)
+        return astprint_returncmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_npprompt(5)
+        return "~"
+    else
+        throw(TranspileError("internal error in astprint_npprompt"))
+    end
+end
+
+function astprint_flowctrl(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_flowctrl(0) < 100
+    if a.rule == @RULE_flowctrl(1)
+        return astprint_ifcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_flowctrl(2)
+        return astprint_whilecmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_flowctrl(3)
+        return astprint_example_dummy(a.child[1], env, indent)
+    elseif a.rule == @RULE_flowctrl(4)
+        return astprint_forcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_flowctrl(5)
+        return astprint_proccmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_flowctrl(6)
+        return astprint_filecmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_flowctrl(7)
+        return astprint_helpcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_flowctrl(8)
+        return astprint_examplecmd(a.child[1], env, indent)
+    else
+        throw(TranspileError("internal error in astprint_flowctrl"))
+    end
+end
+
+function astprint_example_dummy(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_example_dummy(0) < 100
+    if a.rule == @RULE_example_dummy(1)
+        return "example {" * astprint_lines(a.child[1], env, indent) * "}"
+    else
+        throw(TranspileError("internal error in example_dummy"))
+    end
+end
+
+function astprint_command(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_command(0) < 100
+    if a.rule == @RULE_command(1)
+        return astprint_assign(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(2)
+        return astprint_exportcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(3)
+        return astprint_kill(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(4)
+        return astprint_listcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(5)
+        return astprint_parametercmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(6)
+        return astprint_ringcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(7)
+        return astprint_scriptcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(8)
+        return astprint_setringcmd(a.child[1], env, indent)
+    elseif a.rule == @RULE_command(9)
+        return astprint_typecmd(a.child[1], env, indent)
+    else
+        throw(TranspileError("internal error in astprint_command"))
+    end
+end
+
+function astprint_assign(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_assign(0) < 100
+    if a.rule == @RULE_assign(1)
+        return astprint_leftvalue(a.child[1], env, indent) * astprint_exprlist(a.child[1], env, indent)
+    else
+        throw(TranspileError("internal error in astprint_assign"))
+    end
+end
+
+function astprint_elemexpr(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_elemexpr(0) < 100
+    if a.rule == @RULE_elemexpr(1)
+        return a.child[1]
+    elseif a.rule == @RULE_elemexpr(99)
+        return a.child[1]
+    elseif a.rule == @RULE_elemexpr(98)
+        return "`" * astprint_expr(a.child[1]) * "`"
+    elseif a.rule == @RULE_elemexpr(3)
+        return astprint_elemexpr(a.child[1], env, indent) * "::" * astprint_elemexpr(a.child[2], env, 0)
+    elseif a.rule == @RULE_elemexpr(4)
+        return astprint_expr(a.child[1], env, indent) * "." * astprint_elemexpr(a.child[2], env, 0)
+    elseif a.rule == @RULE_elemexpr(5)
+        return astprint_elemexpr(a.child[1], env, indent) * "()"
+    elseif a.rule == @RULE_elemexpr(6)
+        return astprint_elemexpr(a.child[1], env, indent) * "(" * astprint_exprlist(a.child[2], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(7)
+        return "[" * astprint_exprlist(a.child[1], env, indent) * "]"
+    elseif a.rule == @RULE_elemexpr(8)
+        return a.child[1]
+    elseif a.rule == @RULE_elemexpr(9)
+        return cmd_to_string[a.child[1]]
+    elseif a.rule == @RULE_elemexpr(10)
+        return astprint_stringexpr(a.child[1], env, indent)
+    elseif a.rule == @RULE_elemexpr(11)
+        return "proc(" * astprint_expr(a.child[1], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(12)
+        return cmd_to_builtin_type_string[a.child[1]] * "(" * astprint_expr(a.child[2], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(13)
+        return cmd_to_builtin_type_string[a.child[1]] * "(" * astprint_exprlist(a.child[2], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(14)
+        return cmd_to_builtin_type_string[a.child[1]] * "()"
+    elseif a.rule == @RULE_elemexpr(15)
+        return cmd_to_builtin_type_string[a.child[1]] * "(" * astprint_expr(a.child[2], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(16)
+        return cmd_to_builtin_type_string[a.child[1]] * "(" * astprint_exprlist(a.child[2], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(17)
+        return cmd_to_builtin_type_string[a.child[1]] * "()"
+    elseif @RULE_elemexpr(18) <= a.rule <= @RULE_elemexpr(21)
+        return cmd_to_string[a.child[1]] * "(" * astprint_expr(a.child[2], env, indent) * ")"
+    elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
+        return cmd_to_string[a.child[1]] * "(" * astprint_expr(a.child[2], env, indent) * ", " * astprint_expr(a.child[3], env, indent) * ")"
+    elseif @RULE_elemexpr(26) <= a.rule <= @RULE_elemexpr(29)
+        return cmd_to_string[a.child[1]] * "(" * astprint_expr(a.child[2], env, indent) * ", " * astprint_expr(a.child[3], env, indent) * ", " * astprint_expr(a.child[4], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(30)
+        return cmd_to_string[a.child[1]] * "()"
+    elseif a.rule == @RULE_elemexpr(31)
+        return cmd_to_string[a.child[1]] * "(" * astprint_exprlist(a.child[2], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(32)
+        return astprint_mat_cmd(a.child[1], env, indent) * "(" * astprint_expr(a.child[2], env, indent) * ", " * astprint_expr(a.child[3], env, indent) * ", " * astprint_expr(a.child[4], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(33)
+        return astprint_mat_cmd(a.child[1], env, indent) * "(" * astprint_expr(a.child[2], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(34)
+        return "ring(" * astprint_rlist(a.child[1], env, indent) * ", " * astprint_rlist(a.child[2], env, indent) * ", " * astprint_ordering(a.child[3], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(35)
+        return "ring(" * astprint_expr(a.child[1], env, indent) * ")"
+    elseif a.rule == @RULE_elemexpr(36)
+        return astprint_extendedid(a.child[1], env, indent) * " -> {" * astprint_lines(a.child[2], env, indent) * "}"
+    elseif a.rule == @RULE_elemexpr(37)
+        return "(" * astprint_exprlist(a.child[1], env, indent) * ")"
+    else
+        throw(TranspileError("internal error in astprint_elemexpr"))
+    end
+end
+
+function astprint_exprlist(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_exprlist(0) < 100
+    return join([astprint_expr(i, env, 0) for i in a.child], ", ")
+end
+
+function astprint_expr(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_expr(0) < 100
+    if a.rule == @RULE_expr(1)
+        return astprint_expr_arithmetic(a.child[1], env, indent)
+    elseif a.rule == @RULE_expr(2)
+        return astprint_elemexpr(a.child[1], env, indent)
+    elseif a.rule == @RULE_expr(3)
+        return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * ", " * astprint_expr(a.child[1], env, 0) * "]"
+    elseif a.rule == @RULE_expr(4)
+        return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * "]"
+    elseif @RULE_expr(5) <= a.rule <= @RULE_expr(9)
+        return "apply(" * astprint_expr(a.child[1], env, 0) * ", " * cmd_to_string[a.child[2]] * ")"
+    elseif a.rule == @RULE_expr(10)
+        return "apply(" * astprint_expr(a.child[1], env, 0) * ", " * astprint_expr(a.child[2], env, 0) * ")"
+    elseif a.rule == @RULE_expr(11)
+        return "?????????????"
+    elseif a.rule == @RULE_expr(12)
+        return "?????????????"
+    elseif a.rule == @RULE_expr(13)
+        return "ASSUME(" * astprint_expr(a.child[1], env, 0) * ", " * astprint_expr(a.child[2], env, 0) * ")"
+    elseif a.rule == @RULE_expr(14)
+        return "?????????????"
+    else
+        throw(TranspileError("internal error in astprint_expr"))
+    end
+end
+
+function astprint_quote_start(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_quote_start(0) < 100
+    if a.rule == @RULE_quote_start(1)
+        return "quote("
+    else
+        throw(TranspileError("internal error in astprint_quote_start"))
+    end
+end
+
+function astprint_assume_start(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_assume_start(0) < 100
+    if a.rule == @RULE_assume_start(1)
+        return "ASSUME("
+    else
+        throw(TranspileError("internal error in astprint_assume_start"))
+    end
+end
+
+function astprint_quote_end(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_quote_end(0) < 100
+    if a.rule == @RULE_quote_end(1)
+        return ")"
+    else
+        throw(TranspileError("internal error in astprint_quote_end"))
+    end
+end
+
+function astprint_expr_arithmetic(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_expr_arithmetic(0) < 100
+    if a.rule == @RULE_expr_arithmetic(1)
+        return astprint_expr(a.child[1], env, 0) * "++"
+    elseif a.rule == @RULE_expr_arithmetic(2)
+        return astprint_expr(a.child[1], env, 0) * "--"
+    elseif a.rule == @RULE_expr_arithmetic(3)
+        return astprint_expr(a.child[1], env, 0) * " + " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(4)
+        return astprint_expr(a.child[1], env, 0) * " - " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(5)
+        return astprint_expr(a.child[1], env, 0) * "*" * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(6)
+        return astprint_expr(a.child[1], env, 0) * "%" * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(7)
+        return astprint_expr(a.child[1], env, 0) * "/" * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(8)
+        return astprint_expr(a.child[1], env, 0) * "^" * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(9)
+        return astprint_expr(a.child[1], env, 0) * " >= " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(10)
+        return astprint_expr(a.child[1], env, 0) * " <= " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(11)
+        return astprint_expr(a.child[1], env, 0) * " > " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(12)
+        return astprint_expr(a.child[1], env, 0) * " < " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(13)
+        return astprint_expr(a.child[1], env, 0) * " && " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(14)
+        return astprint_expr(a.child[1], env, 0) * " || " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(15)
+        return astprint_expr(a.child[1], env, 0) * " |= " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(16)
+        return astprint_expr(a.child[1], env, 0) * " == " * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(17)
+        return astprint_expr(a.child[1], env, 0) * ".." * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(18)
+        return astprint_expr(a.child[1], env, 0) * ":" * astprint_expr(a.child[2], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(19)
+        return "!" * astprint_expr(a.child[1], env, 0)
+    elseif a.rule == @RULE_expr_arithmetic(20)
+        return "-" * astprint_expr(a.child[1], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_expr_arithmetic"))
+    end
+end
+
+function astprint_left_value(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_left_value(0) < 100
+    if a.rule == @RULE_left_value(1)
+        return astprint_declare_ip_variable(a.child[1], env, 0) * " = "
+    elseif a.rule == @RULE_left_value(2)
+        return astprint_exprlist(a.child[1], env, 0) * " = "
+    else
+        throw(TranspileError("internal error in astprint_command"))
+    end
+end
+
+function astprint_extendedid(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_extendedid(0) < 100
+    if a.rule == @RULE_extendedid(1)
+        return a.child[1]
+    elseif a.rule == @RULE_extendedid(2)
+        return "`" * astprint_expr(a.child[1], env, 0) * "`"
+    elseif a.rule == @RULE_extendedid(3)
+        return astprint_extendedid(a.child[1], env, 0) * "(" * astprint_exprlist(a.child[1]) * ")"
+    else
+        throw(TranspileError("internal error in astprint_extendedid"))
+    end
+end
+
+function astprint_declare_ip_variable(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_declare_ip_variable(0) < 100
+    if @RULE_declare_ip_variable(1) <= a.rule <= @RULE_declare_ip_variable(4)
+        return cmd_to_string[a.child[1]] * " " * astprint_extendedid(a.child[1], env, 0)
+    elseif a.rule == @RULE_declare_ip_variable(99)
+        return a.child[1] * " " * astprint_extendedid(a.child[1], env, 0)
+    elseif a.rule == @RULE_declare_ip_variable(5)
+        return astprint_mat_cmd(a.child[1], env, 0) * " " * astpring_extendedid(a.child[2], env, 0) * "[" * astprint_expr(a.child[3], env, 0) * ", " * astprint_expr(a.child[4], env, 0) * "]"
+    elseif a.rule == @RULE_declare_ip_variable(6)
+        return astprint_mat_cmd(a.child[1], env, 0) * " " * astpring_extendedid(a.child[2], env, 0)
+    elseif a.rule == @RULE_declare_ip_variable(7)
+        return astprint_declare_ip_variable(a.child[1], env, 0) * ", " * astpring_extendedid(a.child[2], env, 0)
+    elseif a.rule == @RULE_declare_ip_variable(8)
+        return "proc " * astpring_extendedid(a.child[2], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_declare_ip_variable"))
+    end
+end
+
+function astprint_stringexpr(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_stringexpr(0) < 100
+    if a.rule == @RULE_stringexpr(1)
+        return a.child[1]
+    else
+        throw(TranspileError("internal error in astprint_stringexpr"))
+    end
+end
+
+function astprint_rlist(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_rlist(0) < 100
+    if a.rule == @RULE_rlist(1)
+        return astprint_expr(a.child[1], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_rlist"))
+    end
+end
+
+function astprint_ordername(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_ordername(0) < 100
+    if a.rule == @RULE_ordername(1)
+        return a.child[1]
+    else
+        throw(TranspileError("internal error in astprint_ordername"))
+    end
+end
+
+function astprint_orderelem(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_orderelem(0) < 100
+    if a.rule == @RULE_orderelem(1)
+        return astprint_ordername(a.child[1], env, 0)
+    elseif a.rule == @RULE_orderelem(2)
+        return astprint_ordername(a.child[1], env, 0) * "(" * astprint_exprlist(a.child[2], env, 0) * ")"
+    else
+        throw(TranspileError("internal error in astprint_ordername"))
+    end
+end
+
+function astprint_OrderingList(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_OrderingList(0) < 100
+    if a.rule == @RULE_OrderingList(1)
+        return astprint_orderelem(a.child[1], env, 0)
+    elseif a.rule == @RULE_OrderingList(1)
+        return astprint_orderelem(a.child[1], env, 0) * ", " * astprint_OrderingList(a.child[2], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_OrderingList"))
+    end
+end
+
+function astprint_ordering(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_ordering(0) < 100
+    if a.rule == @RULE_ordering(1)
+        return astprint_orderelem(a.child[1], env, 0)
+    elseif a.rule == @RULE_ordering(1)
+        return "(" * astprint_OrderingList(a.child[1], env, 0) * ")"
+    else
+        throw(TranspileError("internal error in astprint_ordering"))
+    end
+end
+
+function astprint_mat_cmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_mat_cmd(0) < 100
+    if a.rule == @RULE_mat_cmd(1)
+        return "matrix"
+    elseif a.rule == @RULE_mat_cmd(2)
+        return "intmat"
+    elseif a.rule == @RULE_mat_cmd(3)
+        return "bigintmat"
+    else
+        throw(TranspileError("internal error in astprint_mat_cmd"))
+    end
+end
+
+function astprint_filecmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_filecmd(0) < 100
+    if a.rule == @RULE_filecmd(1)
+        return "<" * astprint_stringexpr(a.child[1], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_filecmd"))
+    end
+end
+
+function astprint_helpcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_helpcmd(0) < 100
+    if a.rule == @RULE_helpcmd(1)
+        return "help " * a.child[1] * ";"
+    elseif a.rule == @RULE_helpcmd(2)
+        return "help;"
+    else
+        throw(TranspileError("internal error in astprint_helpcmd"))
+    end
+end
+
+function astprint_examplecmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_examplecmd(0) < 100
+    if a.rule == @RULE_examplecmd(1)
+        return "example " * a.child[1] * ";"
+    else
+        throw(TranspileError("internal error in astprint_examplecmd"))
+    end
+end
+
+function astprint_exportcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_exportcmd(0) < 100
+    if a.rule == @RULE_exportcmd(1)
+        return "export " * astprint_exprlist(a.child[1])
+    else
+        throw(TranspileError("internal error in astprint_exportcmd"))
+    end
+end
+
+function astprint_killcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_killcmd(0) < 100
+    if a.rule == @RULE_killcmd(1)
+        return "kill " * astprint_elemexpr(a.child[1])
+    elseif a.rule == @RULE_killcmd(2)
+        return astprint_killcmd(a.child[1], env, 0) * ", " * astprint_elemexpr(a.child[1])
+    else
+        throw(TranspileError("internal error in astprint_killcmd"))
+    end
+end
+
+function astprint_listcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_listcmd(0) < 100
+    if @RULE_listcmd(1) <= a.rule <= @RULE_listcmd(5)
+        return "listvar(" * cmd_to_string[a.child[1]] * ")"
+    elseif a.rule == @RULE_listcmd(6)
+        return "listvar(" * astprint_mat_cmd(a.child[1], env, 0) * ")"
+    elseif a.rule == @RULE_listcmd(7)
+        return "listvar(" * "proc" * ")"
+    elseif a.rule == @RULE_listcmd(8)
+        return "listvar(" * astprint_elemexpr(a.child[1], env, 0) * ")"
+    elseif @RULE_listcmd(9) <= a.rule <= @RULE_listcmd(13)
+        return "listvar(" * astprint_elemexpr(a.child[1], env, 0) * ", " * cmd_to_string[a.child[2]] * ")"
+    elseif a.rule == @RULE_listcmd(14)
+        return "listvar(" * astprint_elemexpr(a.child[1], env, 0) * ", " * astprint_mat_cmd(a.child[2], env, 0) * ")"
+    elseif a.rule == @RULE_listcmd(15)
+        return "listvar(" * astprint_elemexpr(a.child[1], env, 0) * ", " * "proc" * ")"
+    elseif a.rule == @RULE_listcmd(16)
+        return "listvar()"
+    else
+        throw(TranspileError("internal error in astprint_listcmd"))
+    end
+end
+
+function astprint_ringcmd1(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_ringcmd1(0) < 100
+    if a.rule == @RULE_ringcmd1(1)
+        return "ring"
+    else
+        throw(TranspileError("internal error in astprint_ringcmd1"))
+    end
+end
+
+function astprint_ringcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_ringcmd(0) < 100
+    if a.rule == @RULE_ringcmd(1)
+        return "ring " * astprint_elemexpr(a.child[1], env, 0) * " = " * astprint_rlist(a.child[2], env, 0) * ", " * astprint_rlist(a.child[3], env, 0) * ", " * astprint_ordering(a.child[4], env, 0)
+    elseif a.rule == @RULE_ringcmd(2)
+        return "ring " * astprint_elemexpr(a.child[1], env, 0)
+    elseif a.rule == @RULE_ringcmd(3)
+        return "ring " * astprint_elemexpr(a.child[1], env, 0) * " = " * astprint_rlist(a.child[2], env, 0)
+    elseif a.rule == @RULE_ringcmd(4)
+        return "ring " * astprint_elemexpr(a.child[1], env, 0) * " = " * astprint_elemexpr(a.child[2], env, 0) * "[" * astpring_exprlist(a.child[3], env, 0) * "]"
+    else
+        throw(TranspileError("internal error in astprint_ringcmd"))
+    end
+end
+
+function astprint_scriptcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_scriptcmd(0) < 100
+    if a.rule == @RULE_scriptcmd(1)
+        return cmd_to_string[a.child[1]] * " " * astprint_stringexpr(a.child[2], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_scriptcmd"))
+    end
+end
+
+function astprint_setrings(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_setrings(0) < 100
+    if a.rule == @RULE_setrings(1)
+        return "setring"
+    elseif a.rule == @RULE_setrings(2)
+        return "keepring"
+    else
+        throw(TranspileError("internal error in astprint_setrings"))
+    end
+end
+
+function astprint_setringcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_setringcmd(0) < 100
+    if a.rule == @RULE_setringcmd(1)
+        return astprint_setrings(a.child[1], env, 0) * " " * astprint_expr(a.child[2], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_setringcmd"))
+    end
+end
+
+function astprint_typecmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_typecmd(0) < 100
+    if a.rule == @RULE_typecmd(1)
+        return "type " * astprint_expr(a.child[1], env, 0)
+    elseif a.rule == @RULE_typecmd(2)
+        return astprint_exprlist(a.child[1], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_typecmd"))
+    end
+end
+
+function astprint_ifcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_ifcmd(0) < 100
+    if a.rule == @RULE_ifcmd(1)
+        return "if (" * astprint_expr(a.child[1], env, 0) * ") {" * astprint_lines(a.child[2], env, 0) * "}"
+    elseif a.rule == @RULE_ifcmd(2)
+        return "else {" * astprint_lines(a.child[1], env, 0) * "}"
+    elseif a.rule == @RULE_ifcmd(3)
+        return "if (" * astprint_expr(a.child[1], env, 0) * ") break"
+    elseif a.rule == @RULE_ifcmd(4)
+        return "break"
+    elseif a.rule == @RULE_ifcmd(5)
+        return "continue"
+    else
+        throw(TranspileError("internal error in astprint_typecmd"))
+    end
+end
+
+function astprint_whilecmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_whilecmd(0) < 100
+    if a.rule == @RULE_whilecmd(1)
+        return "while (" * astprint_expr(a.child[1], env, 0) * ") {" * astprint_lines(a.child[2], env, 0) * "}"
+    else
+        throw(TranspileError("internal error in astprint_whilecmd"))
+    end
+end
+
+function astprint_forcmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_forcmd(0) < 100
+    if a.rule == @RULE_forcmd(1)
+        return "for (" * astprint_npprompt(a.child[1], env, 0) * "; " * astprint_expr(a.child[2], env, 0) * "; " * astprint_expr(a.child[3], env, 0) * ") {" * astprint_lines(a.child[4], env, 0) * "}"
+    else
+        throw(TranspileError("internal error in astprint_forcmd"))
+    end
+end
+
+function astprint_proccmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_proccmd(0) < 100
+    if a.rule == @RULE_proccmd(1)
+        return "proc " * a.child[2] * "() {" * astprint_lines(a.child[3], env, 0) * "}"
+    elseif a.rule == @RULE_proccmd(2)
+        return "proc " * a.child[2] * "(" * procarglist(a.child[3], env, 0) * ") {" * astprint_lines(a.child[4], env, 0) * "}"
+    else
+        throw(TranspileError("internal error in astprint_typecmd"))
+    end
+end
+
+function astprint_parametercmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_parametercmd(0) < 100
+    if a.rule == @RULE_parametercmd(1)
+    elseif a.rule == @RULE_parametercmd(2)
+    else
+        throw(TranspileError("internal error in astprint_parametercmd"))
+    end
+end
+
+function astprint_returncmd(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_returncmd(0) < 100
+    if a.rule == @RULE_returncmd(1)
+    elseif a.rule == @RULE_returncmd(2)
+    else
+        throw(TranspileError("internal error in astprint_returncmd"))
+    end
+end
+
+function astprint_procarglist(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_procarglist(0) < 100
+    return join([astprint_procarg(i) for i in a.child], ",")
+end
+
+function astprint_procarg(a::AstNode, env::AstEnv, indent::Int)::String
+    @assert 0 < a.rule - @RULE_procarg(0) < 100
+    if a.rule == @RULE_procarg(1)
+        return a.child[1] * " " * astprint_extendedid(a.child[2], env, 0)
+    elseif @RULE_procarg(2) <= a.rule <= @RULE_procarg(5)
+        return cmd_to_string(a.child[1]) * " " * astprint_extendedid(a.child[2], env, 0)
+    elseif a.rule == @RULE_procarg(6)
+        return "proc " * astprint_extendedid(a.child[2], env, 0)
+    elseif a.rule == @RULE_procarg(7)
+        return astprint_extendedid(a.child[2], env, 0)
+    else
+        throw(TranspileError("internal error in astprint_procarg"))
+    end
+end
+
+function astprint_pretty(a::AstNode, env::AstEnv)
+    if 100 < a.rule < 200
+        return astprint_top_lines(a, env, 0)
+    elseif 200 < a.rule < 300
+        return astprint_top_pprompt(a, env, 0)
+    elseif 300 < a.rule < 400
+        return astprint_lines(a, env, 0)
+    elseif 400 < a.rule < 500
+        return astprint_pprompt(a, env, 0)
+    elseif 500 < a.rule < 600
+        return astprint_npprompt(a, env, 0)
+    elseif 600 < a.rule < 700
+        return astprint_flowctrl(a, env, 0)
+    elseif 700 < a.rule < 800
+        return astprint_example_dummy(a, env, 0)
+    elseif 800 < a.rule < 900
+        return astprint_command(a, env, 0)
+    elseif 900 < a.rule < 1000
+        return astprint_assign(a, env, 0)
+    elseif 1000 < a.rule < 1100
+        return astprint_elemexpr(a, env, 0)
+    elseif 1100 < a.rule < 1200
+        return astprint_exprlist(a, env, 0)
+    elseif 1200 < a.rule < 1300
+        return astprint_expr(a, env, 0)
+    elseif 1300 < a.rule < 1400
+        return astprint_quote_start(a, env, 0)
+    elseif 1400 < a.rule < 1500
+        return astprint_assume_start(a, env, 0)
+    elseif 1500 < a.rule < 1600
+        return astprint_quote_end(a, env, 0)
+    elseif 1600 < a.rule < 1700
+        return astprint_expr_arithmetic(a, env, 0)
+    elseif 1700 < a.rule < 1800
+        return astprint_left_value(a, env, 0)
+    elseif 1800 < a.rule < 1900
+        return astprint_extendedid(a, env, 0)
+    elseif 1900 < a.rule < 2000
+        return astprint_declare_ip_variable(a, env, 0)
+    elseif 2000 < a.rule < 2100
+        return astprint_stringexpr(a, env, 0)
+    elseif 2100 < a.rule < 2200
+        return astprint_rlist(a, env, 0)
+    elseif 2200 < a.rule < 2300
+        return astprint_ordername(a, env, 0)
+    elseif 2300 < a.rule < 2400
+        return astprint_orderelem(a, env, 0)
+    elseif 2400 < a.rule < 2500
+        return astprint_OrderingList(a, env, 0)
+    elseif 2500 < a.rule < 2600
+        return astprint_ordering(a, env, 0)
+    elseif 2600 < a.rule < 2700
+        return astprint_mat_cmd(a, env, 0)
+    elseif 2700 < a.rule < 2800
+        return astprint_filecmd(a, env, 0)
+    elseif 2800 < a.rule < 2900
+        return astprint_helpcmd(a, env, 0)
+    elseif 2900 < a.rule < 3000
+        return astprint_examplecmd(a, env, 0)
+    elseif 3000 < a.rule < 3100
+        return astprint_exportcmd(a, env, 0)
+    elseif 3100 < a.rule < 3200
+        return astprint_killcmd(a, env, 0)
+    elseif 3200 < a.rule < 3300
+        return astprint_listcmd(a, env, 0)
+    elseif 3300 < a.rule < 3400
+        return astprint_ringcmd1(a, env, 0)
+    elseif 3400 < a.rule < 3500
+        return astprint_ringcmd(a, env, 0)
+    elseif 3500 < a.rule < 3600
+        return astprint_scriptcmd(a, env, 0)
+    elseif 3600 < a.rule < 3700
+        return astprint_setrings(a, env, 0)
+    elseif 3700 < a.rule < 3800
+        return astprint_setringcmd(a, env, 0)
+    elseif 3800 < a.rule < 3900
+        return astprint_typecmd(a, env, 0)
+    elseif 3900 < a.rule < 4000
+        return astprint_ifcmd(a, env, 0)
+    elseif 4000 < a.rule < 4100
+        return astprint_whilecmd(a, env, 0)
+    elseif 4100 < a.rule < 4200
+        return astprint_forcmd(a, env, 0)
+    elseif 4200 < a.rule < 4300
+        return astprint_proccmd(a, env, 0)
+    elseif 4300 < a.rule < 4400
+        return astprint_parametercmd(a, env, 0)
+    elseif 4400 < a.rule < 4500
+        return astprint_returncmd(a, env, 0)
+    elseif 4500 < a.rule < 4600
+        return astprint_procarglist(a, env, 0)
+    elseif 4600 < a.rule < 4700
+        return astprint_procarg(a, env, 0)
+    else
+        return "???????????"
+    end
+end
+
+
+
+function astprint(a::Int, indent::Int)
+    print(" "^indent)
+    println(a)
+end
+
+function astprint(a::String, indent::Int)
+    print(" "^indent)
+    println(a)
+end
+
+function astprint(a::AstNode, indent::Int)
+    print(" "^indent)
+    if 100 < a.rule < 200
+        print("RULE_top_lines ")
+    elseif 200 < a.rule < 300
+        print("RULE_top_pprompt ")
+    elseif 300 < a.rule < 400
+        print("RULE_lines ")
+    elseif 400 < a.rule < 500
+        print("RULE_pprompt ")
+    elseif 500 < a.rule < 600
+        print("RULE_npprompt ")
+    elseif 600 < a.rule < 700
+        print("RULE_flowctrl ")
+    elseif 700 < a.rule < 800
+        print("RULE_example_dummy ")
+    elseif 800 < a.rule < 900
+        print("RULE_command ")
+    elseif 900 < a.rule < 1000
+        print("RULE_assign ")
+    elseif 1000 < a.rule < 1100
+        print("RULE_elemexpr ")
+    elseif 1100 < a.rule < 1200
+        print("RULE_exprlist ")
+    elseif 1200 < a.rule < 1300
+        print("RULE_expr ")
+    elseif 1300 < a.rule < 1400
+        print("RULE_quote_start ")
+    elseif 1400 < a.rule < 1500
+        print("RULE_assume_start ")
+    elseif 1500 < a.rule < 1600
+        print("RULE_quote_end ")
+    elseif 1600 < a.rule < 1700
+        print("RULE_expr_arithmetic ")
+    elseif 1700 < a.rule < 1800
+        print("RULE_left_value ")
+    elseif 1800 < a.rule < 1900
+        print("RULE_extendedid ")
+    elseif 1900 < a.rule < 2000
+        print("RULE_declare_ip_variable ")
+    elseif 2000 < a.rule < 2100
+        print("RULE_stringexpr ")
+    elseif 2100 < a.rule < 2200
+        print("RULE_rlist ")
+    elseif 2200 < a.rule < 2300
+        print("RULE_ordername ")
+    elseif 2300 < a.rule < 2400
+        print("RULE_orderelem ")
+    elseif 2400 < a.rule < 2500
+        print("RULE_OrderingList ")
+    elseif 2500 < a.rule < 2600
+        print("RULE_ordering ")
+    elseif 2600 < a.rule < 2700
+        print("RULE_mat_cmd ")
+    elseif 2700 < a.rule < 2800
+        print("RULE_filecmd ")
+    elseif 2800 < a.rule < 2900
+        print("RULE_helpcmd ")
+    elseif 2900 < a.rule < 3000
+        print("RULE_examplecmd ")
+    elseif 3000 < a.rule < 3100
+        print("RULE_exportcmd ")
+    elseif 3100 < a.rule < 3200
+        print("RULE_killcmd ")
+    elseif 3200 < a.rule < 3300
+        print("RULE_listcmd ")
+    elseif 3300 < a.rule < 3400
+        print("RULE_ringcmd1 ")
+    elseif 3400 < a.rule < 3500
+        print("RULE_ringcmd ")
+    elseif 3500 < a.rule < 3600
+        print("RULE_scriptcmd ")
+    elseif 3600 < a.rule < 3700
+        print("RULE_setrings ")
+    elseif 3700 < a.rule < 3800
+        print("RULE_setringcmd ")
+    elseif 3800 < a.rule < 3900
+        print("RULE_typecmd ")
+    elseif 3900 < a.rule < 4000
+        print("RULE_ifcmd ")
+    elseif 4000 < a.rule < 4100
+        print("RULE_whilecmd ")
+    elseif 4100 < a.rule < 4200
+        print("RULE_forcmd ")
+    elseif 4200 < a.rule < 4300
+        print("RULE_proccmd ")
+    elseif 4300 < a.rule < 4400
+        print("RULE_parametercmd ")
+    elseif 4400 < a.rule < 4500
+        print("RULE_returncmd ")
+    elseif 4500 < a.rule < 4600
+        print("RULE_procarglist ")
+    elseif 4600 < a.rule < 4700
+        print("RULE_procarg ")
+    else
+        print("unknown ")
+    end
+    println(a.rule)
+    for i in 1:length(a.child)
+        astprint(a.child[i], indent + 4)
+    end
 end
