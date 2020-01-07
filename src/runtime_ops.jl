@@ -1,8 +1,8 @@
 #=
 the transpiler DOES NOT produce names for any arguments of these functions
     SINGULAR    JULIA
-    a[i, j]     rt_getindex(a, i, j)
-    a[i, j] = b rt_setindex(a, i, j, b)
+    a[i, j]     rtgetindex(a, i, j)
+    a[i, j] = b rtsetindex(a, i, j, b)
     a + b       rtplus(a, b)
     -a          rtminus(a)
     a - b       rtminus(a, b)
@@ -29,33 +29,11 @@ the transpiler DOES NOT produce names for any arguments of these functions
     a : b       rtcolon(a, b)
 =#
 
+#### list get/setindex ####
 
-function rt_getindex(a::_IntVec, i::Int)
-    return rt_ref(a)[i]
-end
+rtgetindex(a::_List, i::Union{Int, _IntVec}) = rtgetindex(rt_ref(a), rt_ref(i))
 
-function rt_setindex(a::_IntVec, i::Int, b)
-    rt_ref(a)[i] = rt_copy(b)
-    return nothing
-end
-
-
-function rt_getindex(a::_BigIntMat, i::Int, j::Int)
-    return rt_ref(a)[i, j]
-end
-
-
-function rt_setindex(a::_BigIntMat, i::Int, j::Int, b)
-    rt_ref(a)[i, j] = rt_copy(b)
-    return nothing
-end
-
-
-function rt_getindex(a::SList, i::Int)
-    return rt_getindex(a.list, i)
-end
-
-function rt_getindex(a::SListData, i::Int)
+function rtgetindex(a::SListData, i::Int)
     @assert object_is_ok(a)
     b = a.data[i]
     if isa(b, SList)
@@ -67,42 +45,41 @@ function rt_getindex(a::SListData, i::Int)
     end
 end
 
-function rt_getindex(a::SIdeal, i::Int)
-    return rt_getindex(a.ideal, i)
+function rtgetindex(a::SListData, i::Vector{Int})
+    r = Any[rtgetindex(a, j) for j in i]
+    return length(r) == 1 ? r[1] : STuple(r)
 end
 
-function rt_getindex(a::SIdealData, i::Int)
-    n = Int(libSingular.ngens(a.ideal_ptr))
-    1 <= i <= n || rt_error("ideal index out of range")
-    r1 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
-    r2 = libSingular.p_Copy(r1, a.parent.ring_ptr)
-    return SPoly(r2, a.parent)
+
+rtsetindex(a::_List, i::Union{Int, _IntVec}, b)= rtsetindex(rt_ref(a), rt_ref(i), b)
+
+function rtsetindex(a::SListData, i::Int, b)
+    @assert !isa(b, STuple)
+    rt_setindex(a, i, b)
+    return empty_tuple
 end
 
-function rt_setindex(a::SIdeal, i::Int, b)
-    return rt_setindex(a.ideal, i, b)
+function rtsetindex(a::SListData, i::Int, b::STuple)
+    !empty(b.list) || rt_error("too few arguments to assignment")
+    rt_setindex(a, i, popfirst!(b.list))
+    return b
 end
 
-function rt_setindex(a::SIdealData, i::Int, b)
-    n = Int(libSingular.ngens(a.ideal_ptr))
-    1 <= i <= n || rt_error("ideal index out of range")
-    b1 = rt_convert2poly_ptr(b, a.parent)
-    p0 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
-    if p0 != C_NULL
-        libSingular.p_Delete(p0, a.parent.ring_ptr)
+function rtsetindex(a::SListData, i::Vector{Int}, b)
+    @assert !isa(b, STuple)
+    length(i) == 1 || rt_error("length of lists in assignment does not match")
+    rt_setindex(a, i[1], b)
+    return empty_tuple
+end
+
+function rtsetindex(a::SListData, i::Vector{Int}, b::STuple)
+    n = length(i)
+    length(b.data) >= n || rt_error("too few arguments to assignment")
+    for j in 1::n
+        rt_setindex(a, i[j], b.list[j])
     end
-    libSingular.setindex_internal(a.ideal_ptr, b1, Cint(i - 1))
-    return nothing
-end
-
-
-function rt_setindex(a::SList, i::Int, b)
-    return rt_setindex(rt_ref(a), i, b)
-end
-
-function rt_setindex(a::SListData, i::Int, b::STuple)
-    rt_error("cannot put a tuple inside a list")
-    return nothing
+    deleteat!(b.list, 1:n)
+    return b
 end
 
 function rt_setindex(a::SListData, i::Int, b)
@@ -139,7 +116,7 @@ function rt_setindex(a::SListData, i::Int, b)
         rt_fix_setindex(a, count_change)
     end
     @assert object_is_ok(a)
-    return nothing
+    return
 end
 
 # we should at least maintain the integrity of the list data structure
@@ -228,6 +205,60 @@ end
 function rt_fix_setindex(a, count_change::Int)
     error("internal error in rt_fix_setindex: back member needs to be Nothing|Symbol|SListData")
 end
+
+
+#### intvec get/setindex ####
+
+function rtgetindex(a::_IntVec, i::Int)
+    return rt_ref(a)[i]
+end
+
+function rtsetindex(a::_IntVec, i::Int, b)
+    rt_ref(a)[i] = rt_copy(b)
+    return empty_tuple
+end
+
+
+function rtgetindex(a::_BigIntMat, i::Int, j::Int)
+    return rt_ref(a)[i, j]
+end
+
+
+function rtsetindex(a::_BigIntMat, i::Int, j::Int, b)
+    rt_ref(a)[i, j] = rt_copy(b)
+    return empty_tuple
+end
+
+
+#### intvec get/setindex ####
+
+rtgetindex(a::SIdeal, i::Int) = rtgetindex(a.ideal, i)
+
+function rtgetindex(a::SIdealData, i::Int)
+    n = Int(libSingular.ngens(a.ideal_ptr))
+    1 <= i <= n || rt_error("ideal index out of range")
+    r1 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
+    r2 = libSingular.p_Copy(r1, a.parent.ring_ptr)
+    return SPoly(r2, a.parent)
+end
+
+rtsetindex(a::SIdeal, i::Int, b) = rtsetindex(a.ideal, i, b)
+
+function rtsetindex(a::SIdealData, i::Int, b)
+    n = Int(libSingular.ngens(a.ideal_ptr))
+    1 <= i <= n || rt_error("ideal index out of range")
+    b1 = rt_convert2poly_ptr(b, a.parent)
+    p0 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
+    if p0 != C_NULL
+        libSingular.p_Delete(p0, a.parent.ring_ptr)
+    end
+    libSingular.setindex_internal(a.ideal_ptr, b1, Cint(i - 1))
+    return STuple(Any[])
+end
+
+
+
+
 
 function rtplus(a::_List, b::_List)
     return SList(SListData(vcat(rt_edit(a).data, rt_edit(b).data)))

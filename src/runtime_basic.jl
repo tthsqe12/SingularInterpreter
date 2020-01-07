@@ -1030,7 +1030,7 @@ function rt_convert2intvec(a::Array{Int})
     return SIntVec(deepcopy(a))
 end
 
-function rt_convert2intvec(a::Tuple{Vararg{Any}})
+function rt_convert2intvec(a::STuple)
     v = Int[]
     for i in a
         if i isa SIntVec
@@ -1047,11 +1047,11 @@ end
 
 function rt_convert2intvec(a)
     rt_error("cannot convert to intvec")
-    return SIntVec(Int[])
+    return rt_defaultconstructor_intvec()
 end
 
 function rt_cast2intvec(a...)
-    return rt_convert2intvec(a)
+    return rt_convert2intvec(STuple([a...]))
 end
 
 #### intmat
@@ -1124,17 +1124,16 @@ function rt_convert2list(a::SListData)
     return SList(deepcopy(a))
 end
 
-function rt_convert2list(a::Tuple{Vararg{Any}})
-    data::Vector{Any} = collect(a)
+function rt_convert2list(a::STuple)
     count = 0
-    for i in data
+    for i in a.list
         count += rt_is_ring_dep(i)
     end
-    return SList(SListData(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
+    return SList(SListData(a.list, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
 end
 
 function rt_convert2list(a)
-    rt_error("cannot convert a $(rt_typestring(a)) to an int")
+    rt_error("cannot convert a $(rt_typestring(a)) to a list")
     return rt_defaultconstructor_list()
 end
 
@@ -1441,8 +1440,9 @@ function rtassign(a::SName, b)
     ok, i = rt_search_locals(a.name)
     if ok
         l = rtGlobal.local_vars
-        l[i] = Pair(l[i].first, rt_assign(l[i].second, b))
-        return
+        newvalue, rest = rt_assign(l[i].second, b)
+        l[i] = Pair(l[i].first, newvalue)
+        return rest
     end
 
     # global ring independent
@@ -1452,8 +1452,10 @@ function rtassign(a::SName, b)
             if haskey(d, a.name)
                 if isa(d[a.name], SList)
                     rt_assign_global_list_ring_indep(d, a.name, rt_convert2list(b))
+                    return empty_tuple
                 else
-                    d[a.name] = rt_assign(d[a.name], b)
+                    d[a.name], rest = rt_assign(d[a.name], b)
+                    return rest
                 end
                 return
             end
@@ -1464,11 +1466,12 @@ function rtassign(a::SName, b)
     R = rtGlobal.callstack[end].current_ring    # same as rt_basering()
     if haskey(R.vars, a.name)
         if isa(R.vars[a.name], SList)
-           rt_assign_global_list_ring_dep(R, a.name, rt_convert2list(b))
+            rt_assign_global_list_ring_dep(R, a.name, rt_convert2list(b))
+            return empty_tuple
         else
-            R.vars[a.name] = rt_assign(R.vars[a.name], b)
+            R.vars[a.name], rest = rt_assign(R.vars[a.name], b)
+            return rest
         end
-        return
     end
 
     rt_error("cannot assign to " * String(a.name))
@@ -1525,7 +1528,8 @@ function rt_incrementby(a::SName, b::Int)
     ok, i = rt_search_locals(a.name)
     if ok
         l = rtGlobal.local_vars
-        l[i] = Pair(l[i].first, rt_assign(l[i].second, rtplus(l[i].second, b)))
+        newvalue, rest = rt_assign(l[i].second, rtplus(l[i].second, b))
+        l[i] = Pair(l[i].first, newvalue)
         return
     end
 
@@ -1534,7 +1538,7 @@ function rt_incrementby(a::SName, b::Int)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                d[a.name] = rt_assign(d[a.name], rtplus(d[a.name], b))
+                d[a.name], rest = rt_assign(d[a.name], rtplus(d[a.name], b))
                 return
             end
         end
@@ -1543,7 +1547,7 @@ function rt_incrementby(a::SName, b::Int)
     # global ring dependent
     d = rtGlobal.callstack[end].current_ring.vars
     if haskey(d, a.name)
-        d[a.name] = rt_assign(d[a.name], rtplus(d[a.name], b))
+        d[a.name], rest = rt_assign(d[a.name], rtplus(d[a.name], b))
         return
     end
 
@@ -1551,34 +1555,64 @@ function rt_incrementby(a::SName, b::Int)
 end
 
 
-#### assignment to nothing - used for the first set of a variable of type def
+#### assignment to nothing - used at least for the first set of a variable of type def
 function rt_assign(a::Nothing, b)
-    return rt_copy(b)
+    @assert !isa(b, STuple)
+    return rt_copy(b), empty_tuple
+end
+
+function rt_assign(a::Nothing, b::STuple)
+    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+    return popfirst!(b.list), b
 end
 
 #### assignment to proc
 function rt_assign(a::SProc, b)
-    return rt_convert2proc(b)
+    @assert !isa(b, STuple)
+    return rt_convert2proc(b), empty_tuple
+end
+
+function rt_assign(a::SProc, b::STuple)
+    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+    return rt_convert2proc(popfirst!(b.list)), b
 end
 
 #### assignment to int
 function rt_assign(a::Int, b)
-    return rt_convert2int(b)
+    @assert !isa(b, STuple)
+    return rt_convert2int(b), empty_tuple
+end
+
+function rt_assign(a::Int, b::STuple)
+    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+    return rt_convert2int(popfirst!(b.list)), b
 end
 
 #### assignment to bigint
 function rt_assign(a::BigInt, b)
-    return rt_convert2bigint(b)
+    @assert !isa(b, STuple)
+    return rt_convert2bigint(b), empty_tuple
+end
+
+function rt_assign(a::BigInt, b::STuple)
+    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+    return rt_convert2bigint(popfirst!(b.list)), b
 end
 
 #### assignment to string
 function rt_assign(a::SString, b)
-    return rt_convert2string(b)
+    @assert !isa(b, STuple)
+    return rt_convert2string(b), empty_tuple
+end
+
+function rt_assign(a::SString, b::STuple)
+    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+    return rt_convert2string(popfirst!(b.list)), b
 end
 
 #### assignment to intvec
 function rt_assign(a::SIntVec, b)
-    return rt_convert2intvec(b)
+    return rt_convert2intvec(b), empty_tuple
 end
 
 #### assignment to intmat
@@ -1586,12 +1620,12 @@ function rt_assign(a::_IntMat, b::_IntMat)
     return rt_copy(b)
 end
 
-function rt_assign(a::_IntMat, b::Tuple{Vararg{Any}})
+function rt_assign(a::_IntMat, b::STuple)
     A = rt_edit(a)
     nrows, ncols = size(A)
     row_idx = col_idx = 1
-    for i in b
-        A[row_idx, col_idx] = rt_convert2int(i)
+    while !isempty(b.list)
+        A[row_idx, col_idx] = rt_convert2int(popfirst!(b.list))
         col_idx += 1
         if col_idx > ncols
             col_idx = 1
@@ -1601,7 +1635,7 @@ function rt_assign(a::_IntMat, b::Tuple{Vararg{Any}})
             end
         end
     end
-    return SIntMat(A)
+    return SIntMat(A), b
 end
 
 function rt_assign(a::_IntMat, b)
@@ -1613,12 +1647,12 @@ function rt_assign(a::_BigIntMat, b::_BigIntMat)
     return rt_copy(b)
 end
 
-function rt_assign(a::_BigIntMat, b::Tuple{Vararg{Any}})
+function rt_assign(a::_BigIntMat, b::STuple)
     A = rt_edit(a)
     nrows, ncols = size(A)
     row_idx = col_idx = 1
-    for i in b
-        A[row_idx, col_idx] = rt_convert2bigint(i)
+    while !isempty(b.list)
+        A[row_idx, col_idx] = rt_convert2bigint(popfirst!(b.list))
         col_idx += 1
         if col_idx > ncols
             col_idx = 1
@@ -1628,7 +1662,7 @@ function rt_assign(a::_BigIntMat, b::Tuple{Vararg{Any}})
             end
         end
     end
-    return SBigIntMat(A)
+    return SBigIntMat(A), b
 end
 
 function rt_assign(a::_BigIntMat, b)
@@ -1637,21 +1671,33 @@ end
 
 #### assignment to list
 function rt_assign(a::_List, b::_List)
-    return rt_copy(b)
+    return rt_copy(b), empty_tuple
 end
 
 function rt_assign(a::_List, b)
-    return rt_convert2list(b)
+    return rt_convert2list(b), empty_tuple
 end
 
 #### assignment to poly
 function rt_assign(a::SPoly, b)
-    return rt_convert2poly(b)
+    @assert !isa(b, STuple)
+    return rt_convert2poly(b), empty_tuple
+end
+
+function rt_assign(a::SPoly, b::STuple)
+    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+    return rt_convert2poly(popfirst!(b.list)), b
 end
 
 #### assignment to ideal
 function rt_assign(a::SIdeal, b)
-    return rt_convert2ideal(b)
+    @assert !isa(b, SIdeal)
+    return rt_convert2ideal(b), empty_tuple
+end
+
+function rt_assign(a::SIdeal, b::STuple)
+    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+    return rt_convert2ideal(popfirst!(b.list)), b
 end
 
 
@@ -1804,11 +1850,17 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
         end)
     ))
 
-    # rt_assign  - all errors should be handled by rt_convert2something
+    # rt_assign - all errors should be handled by rt_convert2T
     push!(r.args, Expr(:function, Expr(:call, :rt_assign,
                                         Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
                                         :b),
-        Expr(:return, Expr(:call, Symbol("rt_convert2"*newtypename), :b))
+        Expr(:return, Expr(:tuple, Expr(:call, Symbol("rt_convert2"*newtypename), :b), :empty_tuple))
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, :rt_assign,
+                                        Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
+                                        Expr(:(::), :b, :STuple)),
+        Expr(:return, Expr(:tuple, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:call, :popfirst!, b)), :b))
     ))
 
     # print
@@ -1870,4 +1922,8 @@ function rt_checktuplelength(a::Tuple{Vararg{Any}}, n::Int)
     if length(a) != n
         rt_error("expected " * string(n) * " arguments in expression list; got " * string(length(a)))
     end
+end
+
+function rt_check_empty_tuple(a::STuple)
+    @error_check(isempty(a.list), "too many arguments to assignment on right hand side")
 end

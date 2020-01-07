@@ -342,6 +342,8 @@ const rtGlobal = rtGlobalState(false,
                                Pair{Symbol, Any}[],
                                Dict{String, Function}())
 
+const empty_tuple = STuple(Any[])
+
 function reset_runtime()
     rtGlobal.optimize_locals = false
     rtGlobal.last_printed = false
