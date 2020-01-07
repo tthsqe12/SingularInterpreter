@@ -727,6 +727,21 @@ rtequalequal(a::BigInt, b::BigInt) = Int(a == b)
 rtequalequal(a::SString, b::SString) = Int(a == b)
 rtequalequal(a::_IntVec, b::_IntVec) = Int(rt_ref(a) == rt_ref(b))
 
+
+rtequalequal(a::_List, b::_List) = rtequalequal(rt_ref(a), rt_ref(b))
+function rtequalequal(a::SListData, b::SListData)
+    n = length(a.data)
+    if n != length(b.data)
+        return 0
+    end
+    for i in 1:n
+        if rtequalequal(a.data[i], b.data[i]) == 0
+            return 0
+        end
+    end
+    return 1
+end
+
 rtnotequal(a, b) = rtequalequal(a, b) == 0 ? 1 : 0
 
 rtless(a::Int, b::Int) = Int(a < b)

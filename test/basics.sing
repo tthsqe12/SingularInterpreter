@@ -3,6 +3,7 @@ list l = list(typeof(x(intvec(1))(intvec(2,4))));
 ASSUME(0, size(l) == 2);
 ASSUME(0, l[1] == "poly");
 ASSUME(0, l[2] == "poly");
+ASSUME(0, l == list("poly", "poly"));
 
 // int
 
