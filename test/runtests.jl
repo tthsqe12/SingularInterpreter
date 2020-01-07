@@ -1,6 +1,9 @@
 using SingularInterpreter
 
-include("basics.jl")
-execute(read("basics.sing", String))
-execute(read("proc.sing", String))
-execute(read("list.sing", String))
+#include("basics.jl")
+
+for a in ("basics", "proc", "list")
+    SingularInterpreter.reset_runtime()
+    println("running ", a, ".sing")
+    execute(read(a*".sing", String))
+end

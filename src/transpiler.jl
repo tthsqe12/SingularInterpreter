@@ -92,15 +92,15 @@ end
 # return is Array{Any}
 function make_tuple_array_nocopy(a::Array{Any})
     r = Any[]
-    for i in 1:length(a)
-        if isa(a[i], Expr) && a[i].head == :tuple
-            append!(r, a[i].args)   # each of a[i].args should already be copied and splatted
-        elseif is_a_name(a[i])
-            push!(r, Expr(:call, :rt_make, a[i]))
-        elseif we_know_splat_is_trivial(a[i])
-            push!(r, a[i])
+    for b in a
+        if isa(b, Expr) && b.head == :call && !isempty(b.args) && b.args[1] == :rt_maketuple
+            append!(r, b.args[2::end])
+        elseif is_a_name(b)
+            push!(r, Expr(:call, :rt_make, b))
+        elseif we_know_splat_is_trivial(b)
+            push!(r, b)
         else
-            push!(r, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, a[i])))
+            push!(r, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, b)))
         end
     end
     return r
@@ -121,15 +121,15 @@ end
 # return is Array{Any}
 function make_tuple_array_copy(a::Array{Any})
     r = Any[]
-    for i in 1:length(a)
-        if isa(a[i], Expr) && a[i].head == :tuple
-            append!(r, a[i].args)   # each of a[i].args should already be copied and splatted
-        elseif is_a_name(a[i])
-            push!(r, Expr(:call, :rt_copy, Expr(:call, :rt_make, a[i])))
-        elseif we_know_splat_is_trivial(a[i])
-            push!(r, Expr(:call, :rt_copy, a[i]))
+    for b in a
+        if isa(b, Expr) && b.head == :call && !isempty(b.args) && b.args[1] == :rt_maketuple
+            append!(r, b.args[2:end])
+        elseif is_a_name(b)
+            push!(r, Expr(:call, :rt_copy, Expr(:call, :rt_make, b)))
+        elseif we_know_splat_is_trivial(b)
+            push!(r, Expr(:call, :rt_copy, b))
         else
-            push!(r, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, a[i]))) # TODO opt: splat can be avoided somtimes
+            push!(r, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, b)))
         end
     end
     return r
@@ -463,15 +463,15 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         else
             # like make_tuple_array_nocopy but we have the possibility of emitting names
             r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
-            for i in 1:length(b)
-                if isa(b[i], Expr) && b[i].head == :tuple
-                    append!(r.args, b[i].args)   # each of b[i].args should already be copied and splatted
-                elseif is_a_name(b[i])
-                    push!(r.args, in(t, cmds_that_accept_names) ? b[i] : Expr(:call, :rt_make, b[i]))
-                elseif we_know_splat_is_trivial(b[i])
-                    push!(r.args, b[i])
+            for c in b
+                if isa(c, Expr) && c.head == :call && !isempty(c.args) && c.args[1] == :rt_maketuple
+                    append!(r.args, c.args[2:end])
+                elseif is_a_name(c)
+                    push!(r.args, in(t, cmds_that_accept_names) ? c : Expr(:call, :rt_make, c))
+                elseif we_know_splat_is_trivial(c)
+                    push!(r.args, c)
                 else
-                    push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, b[i])))
+                    push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, c)))
                 end
             end
             return  r
@@ -495,7 +495,7 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         if length(b) == 1
             return make_copy(b[1])
         else
-            return Expr(:tuple, make_tuple_array_copy(b)...)
+            return Expr(:call, :rt_maketuple, make_tuple_array_copy(b)...)
         end
     else
         throw(TranspileError("internal error in convert_elemexpr"*string(a.rule)))
@@ -701,7 +701,7 @@ function convert_returncmd(a::AstNode, env::AstEnv)
         if length(b) == 1
             push!(r.args, Expr(:(=), t, make_copy(b[1])))
         else
-            push!(r.args, Expr(:(=), t, Expr(:tuple, make_tuple_array_copy(b)...)))
+            push!(r.args, Expr(:(=), t, Expr(:call, :rt_maketuple, make_tuple_array_copy(b)...)))
         end
         push!(r.args, Expr(:call, :rt_leavefunction))
         push!(r.args, Expr(:return, t))

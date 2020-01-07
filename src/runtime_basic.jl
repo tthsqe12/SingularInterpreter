@@ -20,7 +20,6 @@ rt_ prefix generally means it used internally and/or does not correspond to a cm
     p + minpoly     rtplus(p, rt_get_minpoly())
 =#
 
-
 # all of the singular types have trivial iterators - will be used because all arguments to functions are automatically splatted
 # TODO: more meta, less typing
 Base.iterate(a::SName) = iterate(a, 0)
@@ -47,6 +46,10 @@ Base.iterate(a::SIdeal) = iterate(a, 0)
 Base.iterate(a::SIdeal, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::SMatrix) = iterate(a, 0)
 Base.iterate(a::SMatrix, state) = (state == 0 ? (a, 1) : nothing)
+# special case for STuple, which iterates over its elements
+Base.iterate(a::STuple) = iterate(a.list)
+Base.iterate(a::STuple, state) = iterate(a.list, state)
+
 
 
 ########################## copying, ect. ######################################
@@ -101,7 +104,7 @@ end
 # we have to copy stuff, and usually the stuff to copy is allowed to be a tuple
 # rt_copy_allow_tuple will be called on stuff inside (), i.e. if the object (a,f(b),c)
 # needs to be constructed, it might be constructed in julia as
-# tuple(a, rt_copy_allow_tuple(f(b))..., c)
+# rt_maketuple(a, rt_copy_allow_tuple(f(b))..., c)
 
 # if f(b) returns a tuple t, then rt_copy_allow_tuple(t) will simply return t
 # if f(b) returns a SBigIntMat m, then rt_copy_allow_tuple(m) will simply return m and the iterator is trivial
@@ -164,8 +167,8 @@ rt_copy(a::SIdeal) = a
 rt_copy_allow_tuple(a::SIdealData) = SIdeal(deepcopy(a))
 rt_copy_allow_tuple(a::SIdeal) = a
 
-rt_copy(a::Tuple{Vararg{Any}}) = error("internal error: The tuple $a leaked through. Please report this.")
-rt_copy_allow_tuple(a::Tuple{Vararg{Any}}) = a
+rt_copy(a::STuple) = error("internal error: The tuple $a leaked through. Please report this.")
+rt_copy_allow_tuple(a::STuple) = a
 
 
 # copiers returning non SingularType, usually so that we can mutate it
@@ -551,7 +554,7 @@ function rtcall(allow_name_ret::Bool, a::Array{String}, v...)
                 end
             end
         end
-        return length(r) == 1 ? r[1] : Tuple(r)
+        return length(r) == 1 ? r[1] : STuple(r)
     else
         r = Any[]
         for b in a
@@ -564,7 +567,7 @@ function rtcall(allow_name_ret::Bool, a::Array{String}, v...)
                 end
             end
         end
-        return length(r) == 1 ? r[1] : Tuple(r)
+        return length(r) == 1 ? r[1] : STuple(r)
     end
 end
 
@@ -1231,11 +1234,11 @@ function rt_convert2ideal(a::Union{SNumber, SPoly})
     return SIdeal(SIdealData(r2, a.parent))
 end
 
-function rt_convert2ideal(a::Tuple{Vararg{Any}})
+function rt_convert2ideal(a::STuple)
     # just convert everything to an ideal and add them up
     # answer must be wrapped in SIdeal at all times because we might throw
     r::SIdeal = rt_defaultconstructor_ideal()
-    for i in a
+    for i in a.list
         @error_check(isa(i, Union{Int, BigInt, SNumber, SPoly, SIdeal}), "cannot convert $i to an ideal")
         r = rtplus(r, i)
     end
@@ -1360,12 +1363,8 @@ function rt_indenting_print(a::SIdealData, indent::Int)
     return s
 end
 
-function rt_indenting_print(a::Tuple{Vararg{Any}}, indent::Int)
-    s = ""
-    for b in a
-        s *= rt_indenting_print(b, indent) * "\n"
-    end
-    return s
+function rt_indenting_print(a::STuple, indent::Int)
+    return join([rt_indenting_print(i, indent) for i in a.list], "\n")
 end
 
 # the "print" function in Singular returns a string and does not print
@@ -1411,10 +1410,10 @@ rt_typedata(::SRing)       = "ring"
 rt_typedata(::SNumber)     = "number"
 rt_typedata(::SPoly)       = "poly"
 rt_typedata(::_Ideal)      = "ideal"
-rt_typedata(a::Tuple{Vararg{Any}}) = String[rt_typedata(i) for i in a]
+rt_typedata(a::STuple) = String[rt_typedata(i) for i in a.list]
 
 rt_typedata_to_singular(a::String) = SString(a)
-rt_typedata_to_singular(a::Vector{String}) = Tuple([SString(i) for i in a])
+rt_typedata_to_singular(a::Vector{String}) = STuple([SString(i) for i in a])
 
 rt_typedata_to_string(a::String) = a
 rt_typedata_to_string(a::Vector{String}) = string('(', join(a, ", "), ')')
@@ -1840,19 +1839,32 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
         Expr(:return, newtypename)
     ))
 
+    # trivial iterator
+    bit = Expr(:(.), :Base, QuoteNode(:iterate))
+    push!(r.args, Expr(:function, Expr(:call, bit, Expr(:(::), :a, newtype)),
+        Expr(:block, Expr(:call, :iterate, :a, 0))
+    ))
+    push!(r.args, Expr(:function, Expr(:call, bit, Expr(:(::), :a, newtype), :state),
+        Expr(:block, Expr(:if, Expr(:call, :(==), :state, 0), Expr(:tuple, :a, 1), :nothing))
+    ))
+
     push!(r.args, :nothing)
     return r
 end
 
 
 ################ tuples ########################################################
-#
-# all splatting is done (hopefully!) at transpile time
-#function rt_maketuple(v...)
-#    g = (x isa Tuple ? x : (x,) for x in v)
-#    r = tuple(Iterators.flatten(g)...)
-#    return r
-#end
+
+# all splatting is done at transpile time, we just need to put the arguments
+# into an array and then wrap it in STuple
+function rt_maketuple(v...)
+    a = Any[v...]
+    if length(a) == 1
+        return a[1]
+    else
+        return STuple(a)
+    end
+end
 
 function rt_checktuplelength(a::Tuple{Vararg{Any}}, n::Int)
     if length(a) != n

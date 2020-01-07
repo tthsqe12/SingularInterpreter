@@ -61,12 +61,13 @@ There are no variables of type name.
 ####################### types unavailable to the user ###########################
 
 #### singular type expression list
-# Tuple same
 # note: expression lists cannot have expression lists as elements: everything is
-#       always auto splatted. For this reason, we almost always operate under the
-#       assumption that the elements of tuples own their data when the tuple
-#       represents a singular expression list, hence, for example, no such
-#       element should have type Array{Int, 2}, but rather SIntMat.
+#       always auto splatted. Like the list type SListData below, elements
+#       of an STuple must own their data. Hence, for example, no element should
+#       have type Array{Int, 2}, but rather SIntMat.
+struct STuple
+    list::Vector{Any}
+end
 
 #### singular type nothing
 # Nothing same
@@ -340,6 +341,17 @@ const rtGlobal = rtGlobalState(false,
                                rtCallStackEntry[rtCallStackEntry(1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
                                Dict{String, Function}())
+
+function reset_runtime()
+    rtGlobal.optimize_locals = false
+    rtGlobal.last_printed = false
+    rtGlobal.rtimer_base = time_ns()
+    rtGlobal.rtimer_scale = 1000000000
+    rtGlobal.vars = Dict(:Top => Dict{Symbol, Any}())
+    rtGlobal.callstack = rtCallStackEntry[rtCallStackEntry(1, rtInvalidRing, :Top)]
+    rtGlobal.local_vars = Pair{Symbol, Any}[]
+    rtGlobal.newstruct_casts = Dict{String, Function}()
+end
 
 
 ###### these macros do not work without esc !!!!

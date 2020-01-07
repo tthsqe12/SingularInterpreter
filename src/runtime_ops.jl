@@ -100,7 +100,7 @@ function rt_setindex(a::SList, i::Int, b)
     return rt_setindex(rt_ref(a), i, b)
 end
 
-function rt_setindex(a::SListData, i::Int, b::Tuple{Vararg{Any}})
+function rt_setindex(a::SListData, i::Int, b::STuple)
     rt_error("cannot put a tuple inside a list")
     return nothing
 end
@@ -551,16 +551,20 @@ end
 
 
 
-function rtplus(a::Tuple{Vararg{Any}}, b)
-    return Tuple(i == 1 ? rtplus(a[i], b) : a[i] for i in 1:length(a));
+function rtplus(a::STuple, b)
+    @assert !isa(b, STuple)
+    a.list[1] = rt_copy(rtplus(a.list[1], b))
+    return a
 end
 
-function rtplus(a, b::Tuple{Vararg{Any}})
-    return Tuple(i == 1 ? rtplus(a, b[i]) : b[i] for i in 1:length(b));
+function rtplus(a, b::STuple)
+    @assert !isa(a, STuple)
+    b.list[1] = rt_copy(rtplus(a, b.list[1]))
+    return b
 end
 
-function rtplus(a::Tuple{Vararg{Any}}, b::Tuple{Vararg{Any}})
-    return Tuple(rtplus(a[i], b[i]) for i in 1:min(length(a), length(b)));
+function rtplus(a::STuple, b::STuple)
+    return STuple(Any[rt_copy(rtplus(a.list[i], b.list[i])) for i in 1:min(length(a.list), length(b.list))])
 end
 
 function rtplus(a::_IntVec, b::_IntVec)
