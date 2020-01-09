@@ -415,9 +415,21 @@ function rtdefined(a::SName)
     return 0
 end
 
+function rtdefined(a::Vector{SName})
+    r = map(rtdefined, a)
+    return length(r) == 1 ? r[1] : STuple(r)
+end
+
+function rtdefined(a::STuple)
+    n = length(a.list)
+    return n == 1 ? -1 : STuple(collect(Iterators.repeated(-1, n)))
+end
+
 function rtdefined(a)
+    @assert !isa(a, STuple)
     return -1
 end
+
 
 function rtkill(a::SName)
 
@@ -455,6 +467,12 @@ function rtkill(a::SName)
 
     rt_error("cannot kill " * String(a.name))
     return
+end
+
+function rtkill(a::Vector{SName})
+    for i in a
+        rtkill(i)
+    end
 end
 
 
@@ -517,59 +535,59 @@ function rtcall(allow_name_ret::Bool, a::SName, v...)
     end
 
     # indexed variable constructor
-    return rtcall(allow_name_ret, [String(a.name)], v...)
+    return rtcall(allow_name_ret, SName[a], v...)
 end
 
-function rtcall(allow_name_ret::Bool, a::Array{String}, v...)
-    # will take the cross product of a and V
-    V = Int[]
-    for i in v
-        if isa(i, Int)
-            push!(V, i)
-        elseif isa(i, _IntVec)
-            append!(V, rt_ref(i))
-        else
-            rt_error("bad indexed variable construction")
-        end
-    end
-
-    isempty(a) && rt_error("bad indexed variable construction")
-    isempty(V) && rt_error("bad indexed variable construction")
-
+function rtcall(allow_name_ret::Bool, a::Vector{SName}, v...)
+    av = rt_name_cross(a, v...)
+    !isempty(av) || rt_error("bad indexed variable construction")
     if allow_name_ret
         r = Any[]
-        for b in a
-            for i in V
-                c = rt_make(SName(Symbol(b * "(" * string(i) * ")")), true)
-                if isa(c, SProc)    # TODO extend this to a list of "callable" types
-                    push!(r, rt_copy(c))
-                else
-                    R = String[]
-                    for B in a
-                        for I in V
-                            push!(R, B * "(" * string(I) * ")")
-                        end
-                    end
-                    return R
-                end
+        for s in av
+            c = rt_make(s, true)
+            if isa(c, SProc)    # TODO extend this to a list of "callable" types
+                push!(r, rt_copy(c))
+            else
+                return av
             end
         end
         return length(r) == 1 ? r[1] : STuple(r)
     else
         r = Any[]
-        for b in a
-            for i in V
-                c = rt_make(SName(Symbol(b * "(" * string(i) * ")")), true)
-                if isa(c, SName)
-                    rt_error("bad indexed variable construction")
-                else
-                    push!(r, rt_copy(c))
-                end
+        for s in av
+            c = rt_make(s, true)
+            if isa(c, SName)
+                rt_error("bad indexed variable construction")
+            else
+                push!(r, rt_copy(c))
             end
         end
         return length(r) == 1 ? r[1] : STuple(r)
     end
 end
+
+function rt_name_cross(a::Vector{SName}, v...)
+    r = SName[]
+    for b in a
+        for i in v
+            if isa(i, Int)
+                push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
+            elseif isa(i, _IntVec)
+                for j in rt_ref(i)
+                    push!(r, makeunknown(String(b.name)*"("*string(j)*")"))
+                end
+            else
+                rt_error("bad indexed variable construction")
+            end
+        end
+    end
+    return r
+end
+
+function rt_name_cross(a::SName, v...)
+    return rt_name_cross(SName[a], v...)
+end
+
 
 ########### declarers and default constructors ################################
 # each type T has a
@@ -657,6 +675,12 @@ function rt_defaultconstructor_def()
     return nothing
 end
 
+function rt_declare_def(a::Vector{SName})
+    for i in a
+        rt_declare_def(i)
+    end
+end
+
 function rt_declare_def(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
@@ -682,6 +706,12 @@ function rt_defaultconstructor_proc()
     return SProc(rt_empty_proc, "empty proc", :Top)
 end
 
+function rt_declare_proc(a::Vector{SName})
+    for i in a
+        rt_declare_proc(i)
+    end
+end
+
 function rt_declare_proc(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
@@ -701,6 +731,12 @@ end
 #### int
 function rt_defaultconstructor_int()
     return Int(0)
+end
+
+function rt_declare_int(a::Vector{SName})
+    for i in a
+        rt_declare_int(i)
+    end
 end
 
 function rt_declare_int(a::SName)
@@ -724,6 +760,12 @@ function rt_defaultconstructor_bigint()
     return BigInt(0)
 end
 
+function rt_declare_bigint(a::Vector{SName})
+    for i in a
+        rt_declare_bigint(i)
+    end
+end
+
 function rt_declare_bigint(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
@@ -743,6 +785,12 @@ end
 #### string
 function rt_defaultconstructor_string()
     return SString("")
+end
+
+function rt_declare_string(a::Vector{SName})
+    for i in a
+        rt_declare_string(i)
+    end
 end
 
 function rt_declare_string(a::SName)
@@ -766,6 +814,12 @@ function rt_defaultconstructor_intvec()
     return SIntVec(Int[0])
 end
 
+function rt_declare_intvec(a::Vector{SName})
+    for i in a
+        rt_declare_intvec(i)
+    end
+end
+
 function rt_declare_intvec(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
@@ -785,6 +839,12 @@ end
 #### intmat
 function rt_defaultconstructor_intmat(nrows::Int = 1, ncols::Int = 1)
     return SIntMat(zeros(Int, nrows, ncols))
+end
+
+function rt_declare_intmat(a::Vector{SName}, nrows::Int = 1, ncols::Int = 1)
+    for i in a
+        rt_declare_intmat(i, nrows, ncols)
+    end
 end
 
 function rt_declare_intmat(a::SName, nrows::Int = 1, ncols::Int = 1)
@@ -808,6 +868,12 @@ function rt_defaultconstructor_bigintmat(nrows::Int = 1, ncols::Int = 1)
     return SBigIntMat(zeros(BigInt, nrows, ncols))
 end
 
+function rt_declare_bigintmat(a::Vector{SName}, nrows::Int = 1, ncols::Int = 1)
+    for i in a
+        rt_declare_bigintmat(i, nrows, ncols)
+    end
+end
+
 function rt_declare_bigintmat(a::SName, nrows::Int = 1, ncols::Int = 1)
     n = length(rtGlobal.callstack)
     if n > 1
@@ -828,6 +894,12 @@ end
 #### list
 function rt_defaultconstructor_list()
     return SList(SListData(Any[], rtInvalidRing, 0, nothing))
+end
+
+function rt_declare_list(a::Vector{SName})
+    for i in a
+        rt_declare_list(i)
+    end
 end
 
 function rt_declare_list(a::SName)
@@ -855,6 +927,12 @@ function rt_defaultconstructor_number()
     return SNumber(r1, R)
 end
 
+function rt_declare_number(a::Vector{SName})
+    for i in a
+        rt_declare_number(i)
+    end
+end
+
 function rt_declare_number(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
@@ -878,6 +956,12 @@ function rt_defaultconstructor_poly()
     @error_check(R.valid, "cannot construct a polynomial when no basering is active")
     r1 = libSingular.p_null_helper()
     return SPoly(r1, R)
+end
+
+function rt_declare_poly(a::Vector{SName})
+    for i in a
+        rt_declare_poly(i)
+    end
 end
 
 function rt_declare_poly(a::SName)
@@ -904,6 +988,12 @@ function rt_defaultconstructor_ideal()
     id = libSingular.idInit(1,1)
     libSingular.setindex_internal(id, libSingular.p_null_helper(), 0)
     return SIdeal(SIdealData(id, R))
+end
+
+function rt_declare_ideal(a::Vector{SName})
+    for i in a
+        rt_declare_ideal(i)
+    end
 end
 
 function rt_declare_ideal(a::SName)
@@ -1475,6 +1565,13 @@ function rtassign(a::SName, b)
     end
 
     rt_error("cannot assign to " * String(a.name))
+end
+
+function rtassign_names(a::Vector{SName}, b)
+    for i in a
+        b = rtassign(i, b)
+    end
+    return b
 end
 
 # a = b, a lives in a ring independent table d

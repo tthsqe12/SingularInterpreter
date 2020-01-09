@@ -189,28 +189,52 @@ end
 # commands in convert_elemexpr that require special constructs
 
 function convert_DEFINED_CMD(arg1, env::AstEnv)
+    arg1 = convert_expr(arg1, env)
     if isa(arg1, SName) && haskey(env.declared_identifiers, String(arg1.name))
         @warn "transpilation warning: variable "*String(arg1.name)*" is trivially defined"
-        return Expr(:call, :rt_get_voice())
+        return Expr(:call, :rt_get_voice)
     else
+        if isa(arg1, Expr) && arg1.head == :call
+            if length(arg1.args) >= 2 && arg1.args[1] == :rtcall
+                # the argument is a call; allow the call to return a name
+                arg1.args[2] = true
+            elseif isa(arg1, Expr) && arg1.head == :call && !is_empty(arg1.args) && args1.args[1] == :rt_maketuple
+                # the argument is a tuple
+                for i in 2:length(arg1.args)
+                    b = arg1.args[i]
+                    # allow calls inside to return names
+                    if isa(b, Expr) && b.head == :call &&
+                            length(b.args) >= 2 && b.args[1] == :rtcall
+                        b.args[2] = true
+                    end
+                    # thread rtdefined over the tuple
+                    arg1.args[i] = Expr(:call, :rtdefined, b)
+                end
+                return arg1
+            end
+        end
         return Expr(:call, :rtdefined, arg1)
     end
 end
 
+
 function convert_ERROR_CMD(arg1, env::AstEnv)
+    arg1 = convert_expr(arg1, env)
+    arg1 = make_nocopy(arg1)
     return Expr(:call, :rtERROR, arg1, String(env.package) * "::" * env.fxn_name)
 end
 
 function convert_EXECUTE_CMD(arg1, env::AstEnv)
+    arg1 = convert_expr(arg1, env)
+    arg1 = make_nocopy(arg1)
     t1 = gensym()
     t2 = gensym()
     return Expr(:block,
                 Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, arg1)),
-                Expr(:if, t2, Expr(:return, t1))
-           )
+                Expr(:if, t2, Expr(:return, t1)))
 end
 
-function convert_BRANCHTO_CMD(args, env::AstEnv)
+function convert_BRANCHTO_CMD(args, env::AstEnv)    # args has already been converted
     @assert env.branchto_appeared
     env.ok_to_branchto || throw(TranspileError("branchTo not allowed in this context"))
     t_array = gensym()
@@ -413,19 +437,17 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
             return Expr(:call, Symbol("rt_cast2"*t), make_nocopy(b))
         end
     elseif @RULE_elemexpr(18) <= a.rule <= @RULE_elemexpr(21)
-        arg1 = convert_expr(a.child[2], env)
         t = a.child[1]::Int
-        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
-        if !in(t, cmds_that_accept_names)
-            arg1 = make_nocopy(arg1)
-        end
         if t == Int(DEFINED_CMD)
-            return convert_DEFINED_CMD(arg1, env)
+            return convert_DEFINED_CMD(a.child[2], env)
         elseif t == Int(ERROR_CMD)
-            return convert_ERROR_CMD(arg1, env)
+            return convert_ERROR_CMD(a.child[2], env)
         elseif t == Int(EXECUTE_CMD)
-            return convert_EXECUTE_CMD(arg1, env)
+            return convert_EXECUTE_CMD(a.child[2], env)
         else
+            haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
+            arg1 = convert_expr(a.child[2], env)
+            arg1 = make_nocopy(arg1)
             return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1)
         end
     elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
@@ -433,10 +455,8 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         arg2 = convert_expr(a.child[3], env)
         t = a.child[1]::Int
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 22|23|24|25"))
-        if !in(t, cmds_that_accept_names)
-            arg1 = make_nocopy(arg1)
-            arg2 = make_nocopy(arg2)
-        end
+        arg1 = make_nocopy(arg1)
+        arg2 = make_nocopy(arg2)
         return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2)
     elseif @RULE_elemexpr(26) <= a.rule <= @RULE_elemexpr(29)
         arg1 = convert_expr(a.child[2], env)
@@ -444,37 +464,23 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         arg3 = convert_expr(a.child[4], env)
         t = a.child[1]::Int
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 26|27|28|29"))
-        if !in(t, cmds_that_accept_names)
-            arg1 = make_nocopy(arg1)
-            arg2 = make_nocopy(arg2)
-            arg3 = make_nocopy(arg3)
-        end
+        arg1 = make_nocopy(arg1)
+        arg2 = make_nocopy(arg2)
+        arg3 = make_nocopy(arg3)
         return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2, arg3)
     elseif a.rule == @RULE_elemexpr(30) || a.rule == @RULE_elemexpr(31)
         if a.rule == @RULE_elemexpr(31)
-            b = convert_exprlist(a.child[2], env)::Array{Any}
+            args = convert_exprlist(a.child[2], env)::Array{Any}
         else
-            b = Any[]
+            args = Any[]
         end
         t = a.child[1]::Int
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 30|31"))
         if t == Int(BRANCHTO_CMD)
-            return convert_BRANCHTO_CMD(b, env)
+            return convert_BRANCHTO_CMD(args, env)
         else
-            # like make_tuple_array_nocopy but we have the possibility of emitting names
-            r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
-            for c in b
-                if isa(c, Expr) && c.head == :call && !isempty(c.args) && c.args[1] == :rt_maketuple
-                    append!(r.args, c.args[2:end])
-                elseif is_a_name(c)
-                    push!(r.args, in(t, cmds_that_accept_names) ? c : Expr(:call, :rt_make, c))
-                elseif we_know_splat_is_trivial(c)
-                    push!(r.args, c)
-                else
-                    push!(r.args, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, c)))
-                end
-            end
-            return  r
+            args = make_tuple_array_nocopy(args)
+            return Expr(:call, Symbol("rt" * cmd_to_string[t]), args...)
         end
     elseif a.rule == @RULE_elemexpr(32)
         typ = cmd_to_builtin_type_string[a.child[1].child[1]::Int]
@@ -757,7 +763,7 @@ function convert_elemexpr_name_call(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_elemexpr(6)
         head = convert_elemexpr_name_call(a.child[1]::AstNode, env)
         arg = convert_exprlist(a.child[2]::AstNode, env)
-        return Expr(:call, :rt_name_compose, head, make_tuple_array_nocopy(arg)...)
+        return Expr(:call, :rt_name_cross, head, make_tuple_array_nocopy(arg)...)
     else
         throw(TranspileError("bad name construction"))
     end
@@ -790,7 +796,7 @@ function convert_extendedid_name_call(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_extendedid(3)
         head = convert_extendedid_name_call(a.child[1]::AstNode, env)
         arg = convert_exprlist(a.child[2]::AstNode, env)
-        return Expr(:call, :rt_name_compose, head, make_tuple_array_nocopy(arg)...)
+        return Expr(:call, :rt_name_cross, head, make_tuple_array_nocopy(arg)...)
     else
         throw(TranspileError("bad name construction"))
     end
@@ -943,7 +949,7 @@ function push_assignment!(rest::Symbol, out::Expr, left::AstNode, right, env::As
         elseif a.rule == @RULE_elemexpr(6)
             @assert isempty(env.declared_identifiers)
             s = make_nocopy(convert_elemexpr_name_call(a, env))
-            push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign, s, right)))
+            push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_names, s, right)))
         else
             throw(TranspileError("cannot assign to lhs"))
         end
@@ -961,7 +967,7 @@ function push_assignment!(rest::Symbol, out::Expr, left::AstNode, right, env::As
     elseif left.rule == @RULE_extendedid(3)
         @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_extendedid_name_call(left, env))
-        push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign, s, right)))
+        push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_names, s, right)))
     elseif left.rule == @RULE_expr(3)
         push!(out.args, Expr(:(=), rest, Expr(:call, :rtsetindex, make_nocopy(convert_expr(left.child[1], env)),
                                                                   make_nocopy(convert_expr(left.child[2], env)),
@@ -1201,30 +1207,6 @@ like this, your code is probably already screwed anyways.
 
 =#
 
-
-function rt_name_cross(a::Vector{SName}, v...)
-    r = SName[]
-    for b in a
-        for i in v
-            if isa(i, Int)
-                push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
-            elseif isa(i, _IntVec)
-                for j in rt_ref(i)
-                    push!(r, makeunknown(String(b.name)*"("*string(j)*")"))
-                end
-            else
-                rt_error("bad indexed variable construction")
-            end
-        end
-    end
-    return r
-end
-
-# like rt_name_cross, but we are only allowed to return one name
-function rt_name_compose(a::SName, i::Int)
-    return makeunknown(String(a.name)*"("*string(i)*")")
-end
-
 function scan_rlist_expr_head(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
     if a.rule == @RULE_elemexpr(99)
@@ -1324,16 +1306,16 @@ function scan_rlist(a::AstNode, env::AstEnv)
     end
 end
 
+function convert_expr_names(a::AstNode, env::AstEnv)
+    r = Expr(:vect)
+    push_rlist_expr!(r, a.child[1], env)
+    return r
+end
+
 function convert_rlist(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_rlist(0) < 100
-    r = Expr(:vect)
     if a.rule == @RULE_rlist(1)
-        push_rlist_expr!(r, a.child[1], env)
-    elseif a.rule == @RULE_rlist(2)
-        push_rlist_expr!(r, a.child[1], env::AstEnv)
-        for b in a.child[2].child
-            push_rlist_expr!(r, b, env::AstEnv)
-        end
+        return convert_expr_names(a::AstNode, env::AstEnv)
     else
         throw(TranspileError("internal error in convert_rlist"))
     end

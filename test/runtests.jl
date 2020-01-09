@@ -2,7 +2,7 @@ using SingularInterpreter
 
 #include("basics.jl")
 
-for a in ("basics", "proc", "list")
+for a in ("assign", "int", "intvec", "intmat", "list", "proc")
     SingularInterpreter.reset_runtime()
     println("running ", a, ".sing")
     execute(read(a*".sing", String))

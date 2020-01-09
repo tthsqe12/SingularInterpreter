@@ -1,0 +1,6 @@
+int i = 1;
+
+ASSUME(0, i == 1);
+ASSUME(0, 1 == i);
+ASSUME(0, i != 2);
+ASSUME(0, 2 != i);

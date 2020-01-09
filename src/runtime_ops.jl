@@ -60,22 +60,22 @@ function rtsetindex(a::SListData, i::Int, b)
 end
 
 function rtsetindex(a::SListData, i::Int, b::STuple)
-    !empty(b.list) || rt_error("too few arguments to assignment")
+    @error_check(!isempty(b.list), "too few arguments to assignment")
     rt_setindex(a, i, popfirst!(b.list))
     return b
 end
 
 function rtsetindex(a::SListData, i::Vector{Int}, b)
     @assert !isa(b, STuple)
-    length(i) == 1 || rt_error("length of lists in assignment does not match")
+    @error_check(length(i) == 1, "too few arguments to assignment")
     rt_setindex(a, i[1], b)
     return empty_tuple
 end
 
 function rtsetindex(a::SListData, i::Vector{Int}, b::STuple)
     n = length(i)
-    length(b.data) >= n || rt_error("too few arguments to assignment")
-    for j in 1::n
+    @error_check(length(b.list) >= n, "too few arguments to assignment")
+    for j in 1:n
         rt_setindex(a, i[j], b.list[j])
     end
     deleteat!(b.list, 1:n)
@@ -209,15 +209,53 @@ end
 
 #### intvec get/setindex ####
 
-function rtgetindex(a::_IntVec, i::Int)
-    return rt_ref(a)[i]
+rtgetindex(a::_IntVec, i::Union{Int, _IntVec}) = rtgetindex(rt_ref(a), rt_ref(i))
+
+function rtgetindex(a::Vector{Int}, i::Int)
+    return a[i]
 end
 
-function rtsetindex(a::_IntVec, i::Int, b)
-    rt_ref(a)[i] = rt_copy(b)
+function rtgetindex(a::Vector{Int}, i::Vector{Int})
+    r = Any[a[j] for j in i]
+    return length(r) == 1 ? r[1] : STuple(r)
+end
+
+rtsetindex(a::_IntVec, i::Union{Int, _IntVec}, b) = rtgetindex(rt_ref(a), rt_ref(i), b)
+
+function rtsetindex(a::Vector{Int}, i::Int, b)
+    @assert !isa(b, STuple)
+    a[i] = rt_convert2int(b)
     return empty_tuple
 end
 
+function rtsetindex(a::Vector{Int}, i::Int, b::STuple)
+    @error_check(!isempty(b.list), "too few arguments to assignment")
+    a[i] = rt_convert2int(popfirst!(b))
+    return b
+end
+
+function rtsetindex(a::Vector{Int}, i::Vector{Int}, b)
+    @assert !isa(b, STuple)
+    @error_check(length(i) == 1, "too few arguments to assignment")
+    a[i[1]] = rt_convert2int(b)
+    return empty_tuple
+end
+
+function rtsetindex(a::Vector{Int}, i::Vector{Int}, b::STuple)
+    n = length(i)
+    @error_check(length(b.data) >= n, "too few arguments to assignment")
+    if a === i
+        i = deepcopy(i)
+    end
+    for j in 1:n
+        a[i[j]] = rt_convert2int(b.list[j])
+    end
+    deleteat!(b.list, 1:n)
+    return b
+end
+
+
+#### bigintmat get/setindex ####
 
 function rtgetindex(a::_BigIntMat, i::Int, j::Int)
     return rt_ref(a)[i, j]
@@ -230,13 +268,13 @@ function rtsetindex(a::_BigIntMat, i::Int, j::Int, b)
 end
 
 
-#### intvec get/setindex ####
+#### ideal get/setindex ####
 
 rtgetindex(a::SIdeal, i::Int) = rtgetindex(a.ideal, i)
 
 function rtgetindex(a::SIdealData, i::Int)
     n = Int(libSingular.ngens(a.ideal_ptr))
-    1 <= i <= n || rt_error("ideal index out of range")
+    @error_check(1 <= i <= n, "ideal index out of range")
     r1 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
     r2 = libSingular.p_Copy(r1, a.parent.ring_ptr)
     return SPoly(r2, a.parent)
@@ -246,7 +284,7 @@ rtsetindex(a::SIdeal, i::Int, b) = rtsetindex(a.ideal, i, b)
 
 function rtsetindex(a::SIdealData, i::Int, b)
     n = Int(libSingular.ngens(a.ideal_ptr))
-    1 <= i <= n || rt_error("ideal index out of range")
+    @error_check(1 <= i <= n, "ideal index out of range for assignment")
     b1 = rt_convert2poly_ptr(b, a.parent)
     p0 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
     if p0 != C_NULL
@@ -750,6 +788,29 @@ rtmod(a::Int, b::Int) = Base.checked_mod(a, b)
 rtmod(a::Int, b::BigInt) = mod(a, b)
 rtmod(a::BigInt, b::Int) = mod(a, b)
 rtmod(a::BigInt, b::BigInt) = mod(a, b)
+
+
+
+
+function rtequalequal(a::STuple, b)
+    @assert !isa(b, STuple)
+    return rtequalequal(a.list[1], b)
+end
+
+function rtequalequal(a, b::STuple)
+    @assert !isa(a, STuple)
+    return rtequalequal(a, b.list[1])
+end
+
+function rtequalequal(a::STuple, b::STuple)
+    for i in 1:min(length(a.list), length(b.list))
+        if rtequalequal(a.list[i], b.list[i]) == 0
+            return 0
+        end
+    end
+    return 1
+end
+
 
 rtequalequal(a::Int, b::Int) = Int(a == b)
 rtequalequal(a::Int, b::BigInt) = Int(a == b)
