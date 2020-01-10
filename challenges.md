@@ -858,6 +858,41 @@ Auf Wiedersehen.
 
 (25) `quote` and `eval` look scary. https://www.singular.uni-kl.de/Manual/4-0-3/sing_286.htm#SEC325
 
+(26) The following behaviour of lists contradicts the documented identifier resolution rules.
+```
+> ring r = 0,(x,y,z),lp;
+> list l = x,y,z;
+> ring s = 0,(a,b,c),lp;
+> list l = 1,2,3;
+> l;
+[1]:
+   1
+[2]:
+   2
+[3]:
+   3
+> setring r;
+> l;
+[1]:
+   x
+[2]:
+   y
+[3]:
+   z
+> kill l;
+> l;
+[1]:
+   1
+[2]:
+   2
+[3]:
+   3
+> kill l;
+> l;
+   ? `l` is undefined
+   ? error occurred in or before STDIN line 11: `l;
+```
+
 -------------------------------
 
 Conclusion: The Singular language is completely different from C or Julia.

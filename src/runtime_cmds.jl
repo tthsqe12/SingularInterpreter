@@ -1,6 +1,10 @@
-function rtinsert(a::_List, b, i::Int)
+
+rtinsert(a::_List, b, i::Int) = rtinsert(rt_ref(a), b, i)
+
+function rtinsert(a::SListData, b, i::Int)
+    @assert !isa(b, STuple)
     bcopy = rt_copy(b)
-    r = rt_edit(a);
+    r = rt_edit(a)
     if i > length(r.data)
         resize!(r.data, i + 1)
         r.data[i + 1] = bcopy
@@ -11,17 +15,42 @@ function rtinsert(a::_List, b, i::Int)
     while !isempty(r.data) && r.data[end] == nothing
         pop!(r.data)
     end
+    if rt_is_ring_dep(bcopy)
+        r.ring_dep_count += 1
+        if !r.parent.valid
+            r.parent = rt_basering()  # try to get a valid ring from somewhere
+            @warn_check(r.parent.valid, "list has ring dependent elements but no basering")
+        end
+    end
+    @assert object_is_ok(r)
     return SList(r)
 end
 
+function rtinsert(a::_List, b::STuple, i::Int)
+    if length(b.list == 1)
+        return rtinsert(a, b.list[1], i)
+    else
+        rt_error("cannot insert a tuple into a list")
+        return rt_defaultconstructor_list()
+    end
+end
 
-function rtdelete(a::_List, i::Int)
+
+rtdelete(a::_List, b, i::Int) = rtinsert(rt_ref(a), b, i)
+
+function rtdelete(a::SListData, i::Int)
     r = rt_edit(a)
+    change = Int(rt_is_ring_dep(r.data[i]))
     deleteat!(r.data, i)
     # remove nothings on the end
     while !isempty(r.data) && r.data[end] == nothing
         pop!(r.data)
     end
+    r.ring_dep_count -= change
+    if r.ring_dep_count <= 0
+        r.parent = rtInvalidRing
+    end
+    @assert object_is_ok(r)
     return SList(r)
 end
 

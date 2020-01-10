@@ -24,4 +24,30 @@ ASSUME(0, size(l) == 3);
 kill basering;
 ASSUME(0, defined(l) == 0);
 
+setring s;
+kill l;
+
+setring r;
+l = 1, 2, 3;
+
+setring s;
+ASSUME(0, defined(l) == 1);
+
+setring r;
+l = insert(l, a + b^2 + c^3, 2); // inserts at position 3 :-(
+ASSUME(0, l[3] == a + b^2 + c^3);
+
+setring s;
+ASSUME(0, defined(l) == 0);
+
+setring r;
+l = delete(l, 3); // deletes at position 3 :-)
+
+setring s;
+ASSUME(0, defined(l) == 1);
+l[4] = x + y^2 + z^3;
+ASSUME(0, l[4] == x + y^2 + z^3);
+
+setring r;
+ASSUME(0, defined(l) == 0);
 

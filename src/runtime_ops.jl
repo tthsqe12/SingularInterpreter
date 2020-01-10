@@ -46,7 +46,7 @@ function rtgetindex(a::SListData, i::Int)
 end
 
 function rtgetindex(a::SListData, i::Vector{Int})
-    r = Any[rtgetindex(a, j) for j in i]
+    r = Any[rtgetindex(a, t) for t in i]
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
@@ -60,23 +60,27 @@ function rtsetindex(a::SListData, i::Int, b)
 end
 
 function rtsetindex(a::SListData, i::Int, b::STuple)
-    @error_check(!isempty(b.list), "too few arguments to assignment")
+    @error_check(!isempty(b.list), "argument mismatch in assignment")
     rt_setindex(a, i, popfirst!(b.list))
     return b
 end
 
 function rtsetindex(a::SListData, i::Vector{Int}, b)
     @assert !isa(b, STuple)
-    @error_check(length(i) == 1, "too few arguments to assignment")
-    rt_setindex(a, i[1], b)
-    return empty_tuple
+    if length(i) == 1
+        rt_setindex(a, i[1], b)
+        return empty_tuple
+    else
+        @error_check(!isempty(i), "argument mismatch in assignment")
+        return b
+    end
 end
 
 function rtsetindex(a::SListData, i::Vector{Int}, b::STuple)
     n = length(i)
-    @error_check(length(b.list) >= n, "too few arguments to assignment")
-    for j in 1:n
-        rt_setindex(a, i[j], b.list[j])
+    @error_check(length(b.list) >= n, "argument mismatch in assignment")
+    for t in 1:n
+        rt_setindex(a, i[t], b.list[t])
     end
     deleteat!(b.list, 1:n)
     return b
@@ -91,7 +95,7 @@ function rt_setindex(a::SListData, i::Int, b)
         if i > length(r)
             return
         end
-        count_change = -rt_is_ring_dep(r[i])
+        count_change = -Int(rt_is_ring_dep(r[i]))
         r[i] = nothing
         # putting nothing at the end pops the list
         while !isempty(r) && isa(r[end], Nothing)
@@ -106,7 +110,7 @@ function rt_setindex(a::SListData, i::Int, b)
                 r[org_len + 1] = nothing
                 org_len += 1
             end
-            count_change = rt_is_ring_dep(bcopy)
+            count_change = Int(rt_is_ring_dep(bcopy))
         else
             count_change = Int(rt_is_ring_dep(bcopy)) - Int(rt_is_ring_dep(r[i]))
         end
@@ -216,7 +220,7 @@ function rtgetindex(a::Vector{Int}, i::Int)
 end
 
 function rtgetindex(a::Vector{Int}, i::Vector{Int})
-    r = Any[a[j] for j in i]
+    r = Any[a[t] for t in i]
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
@@ -229,43 +233,99 @@ function rtsetindex(a::Vector{Int}, i::Int, b)
 end
 
 function rtsetindex(a::Vector{Int}, i::Int, b::STuple)
-    @error_check(!isempty(b.list), "too few arguments to assignment")
+    @error_check(!isempty(b.list), "argument mismatch in assignment")
     a[i] = rt_convert2int(popfirst!(b))
     return b
 end
 
 function rtsetindex(a::Vector{Int}, i::Vector{Int}, b)
     @assert !isa(b, STuple)
-    @error_check(length(i) == 1, "too few arguments to assignment")
-    a[i[1]] = rt_convert2int(b)
-    return empty_tuple
+    if length(i) == 1
+        a[i[1]] = rt_convert2int(b)
+        return empty_tuple
+    else
+        @error_check(!isempty(i), "argument mismatch in assignment")
+        return b
+    end
 end
 
 function rtsetindex(a::Vector{Int}, i::Vector{Int}, b::STuple)
     n = length(i)
-    @error_check(length(b.data) >= n, "too few arguments to assignment")
+    @error_check(length(b.data) >= n, "argument mismatch in assignment")
     if a === i
         i = deepcopy(i)
     end
-    for j in 1:n
-        a[i[j]] = rt_convert2int(b.list[j])
+    for t in 1:n
+        a[i[t]] = rt_convert2int(b.list[t])
     end
     deleteat!(b.list, 1:n)
     return b
 end
 
 
-#### bigintmat get/setindex ####
+#### intmat/bigintmat get/setindex ####
 
-function rtgetindex(a::_BigIntMat, i::Int, j::Int)
-    return rt_ref(a)[i, j]
+rtgetindex(a::Union{_IntMat, _BigIntMat},
+           i::Union{Int, _IntVec},
+           j::Union{Int, _IntVec}) =
+    rtgetindex(rt_ref(a), rt_ref(i), rt_ref(j))
+
+function rtgetindex(a::Union{Array{Int, 2}, Array{BigInt, 2}},
+                    i::Union{Int, Vector{Int}},
+                    j::Union{Int, Vector{Int}})
+    r = Any[]
+    for s in i
+        for t in j
+            push!(r, a[s, t])
+        end
+    end
+    return length(r) == 1 ? r[1] : STuple(r)
 end
 
 
-function rtsetindex(a::_BigIntMat, i::Int, j::Int, b)
-    rt_ref(a)[i, j] = rt_copy(b)
-    return empty_tuple
+rtsetindex(a::Union{_IntMat, _BigIntMat},
+           i::Union{Int, _IntVec},
+           j::Union{Int, _IntVec},
+           b) =
+    rtsetindex(rt_ref(a), rt_ref(i), rt_ref(j), b)
+
+function rtsetindex(a::Union{Array{Int, 2}, Array{BigInt, 2}},
+                    i::Union{Int, Vector{Int}},
+                    j::Union{Int, Vector{Int}},
+                    b)
+    @assert !isa(b, STuple)
+    first = true
+    for s in i
+        for t in j
+            @error_check(first, "argument mismatch in assignment")
+            if isa(a, Array{Int, 2})
+                a[s, t] = rt_convert2int(b)
+            else
+                a[s, t] = rt_convert2bigint(b)
+            end
+            first = false
+        end
+    end
+    return first ? b : empty_tuple
 end
+
+function rtsetindex(a::Union{Array{Int, 2}, Array{BigInt, 2}},
+                    i::Union{Int, Vector{Int}},
+                    j::Union{Int, Vector{Int}},
+                    b::STuple)
+    for s in i
+        for t in j
+            @error_check(!isempty(b.list), "argument mismatch in assignment")
+            if isa(a, Array{Int, 2})
+                a[s, t] = rt_convert2int(popfirst!(b.list))
+            else
+                a[s, t] = rt_convert2bigint(popfirst!(b.list))
+            end
+        end
+    end
+    return b
+end
+
 
 
 #### ideal get/setindex ####
@@ -816,11 +876,20 @@ rtequalequal(a::Int, b::Int) = Int(a == b)
 rtequalequal(a::Int, b::BigInt) = Int(a == b)
 rtequalequal(a::BigInt, b::Int) = Int(a == b)
 rtequalequal(a::BigInt, b::BigInt) = Int(a == b)
-rtequalequal(a::SString, b::SString) = Int(a == b)
+
+rtequalequal(a::SString, b::SString) = Int(a.string == b.string)
+
 rtequalequal(a::_IntVec, b::_IntVec) = Int(rt_ref(a) == rt_ref(b))
+
+function rtequalequal(a::SPoly, b::SPoly)
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot compare from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
+    return Int(libSingular.p_EqualPolys(a.poly_ptr, b.poly_ptr, a.parent.ring_ptr))
+end
 
 
 rtequalequal(a::_List, b::_List) = rtequalequal(rt_ref(a), rt_ref(b))
+
 function rtequalequal(a::SListData, b::SListData)
     n = length(a.data)
     if n != length(b.data)

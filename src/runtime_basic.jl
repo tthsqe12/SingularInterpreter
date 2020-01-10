@@ -1594,7 +1594,7 @@ function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, B::SL
 end
 
 # a = b, a lives in ring r
-function rt_assign_global_list_ring_dep(r::SRing, a::Symbol, b::SList)
+function rt_assign_global_list_ring_dep(r::SRing, a::Symbol, B::SList)
     @assert haskey(r.vars, a)
     @assert isa(r.vars[a], SList)
     b = B.list
@@ -2023,4 +2023,8 @@ end
 
 function rt_check_empty_tuple(a::STuple)
     @error_check(isempty(a.list), "too many arguments to assignment on right hand side")
+end
+
+function rt_check_empty_tuple(a)
+    @error_check(!isa(a, STuple) || isempty(a.list), "too many arguments to assignment on right hand side")
 end
