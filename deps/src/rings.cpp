@@ -325,6 +325,23 @@ void singular_define_rings(jlcxx::Module & Singular)
         }
         return res;
     });
+    Singular.method("p_DegW", [](spolyrec * a, jlcxx::ArrayRef<ssize_t> iv, ip_sring * r) {
+        long res;
+        int  dummy;
+        if (a != NULL) {
+            short * s = (short *)omAlloc0((rVar(r)+1)*sizeof(short));
+            int len=0;
+            len=si_min(int(iv.size()),rVar(r)); // usually: rVar(r)==length()
+            for (int i=len;i>0;i--)
+                s[i]=iv[i-1];
+            res = p_DegW(a, s, r);
+            omFreeSize( (ADDRESS)s, (rVar(r)+1)*sizeof(short) );
+        }
+        else {
+            res = -1;
+        }
+        return res;
+    });
     Singular.method("p_Add_q", [](spolyrec * p, spolyrec * q, ip_sring * r) {
         return p_Add_q(p, q, r);
     });

@@ -1,6 +1,8 @@
 #=
 the transpiler DOES NOT produce names for any arguments of these functions
     SINGULAR    JULIA
+    a[i]        rtgetindex(a, i)
+    a[i] = b    rtsetindex(a, i, b)
     a[i, j]     rtgetindex(a, i, j)
     a[i, j] = b rtsetindex(a, i, j, b)
     a + b       rtplus(a, b)

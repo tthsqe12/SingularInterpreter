@@ -1,0 +1,17 @@
+ring r = 0, (x, y, z), lp;
+ASSUME(0, deg(0) == -1);
+ASSUME(0, deg(1) == 0);
+ASSUME(0, deg(x^3 + y^4 + x*y*z^3) == 5);
+ASSUME(0, deg((x, y^2, z^3)) == (1, 2, 3));
+ASSUME(0, deg((x, y^2, z^3), intvec(1, 1, 1)) == 1);
+ASSUME(0, deg((x, y^2, z^3), intvec(3, 4, 5)) == 3);
+ASSUME(0, deg((x, y^2, z^3), (intvec(1, 1, 1), intvec(2, 2, 2), intvec(3, 3, 3))) == 1);
+
+kill r; ring r = 7, (x, y), wp(2, 3);
+poly p = x^2 + y^3;
+ASSUME(0, deg(p) == 9);
+
+kill r; ring r = 7, (x, y), ws(2, 3);
+poly p = x^2 + y^3;
+ASSUME(0, deg(p) == 9);
+

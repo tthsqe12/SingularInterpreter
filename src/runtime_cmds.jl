@@ -1,3 +1,4 @@
+#### insert ####
 
 rtinsert(a::_List, b, i::Int) = rtinsert(rt_ref(a), b, i)
 
@@ -36,6 +37,8 @@ function rtinsert(a::_List, b::STuple, i::Int)
 end
 
 
+#### delete ####
+
 rtdelete(a::_List, b, i::Int) = rtinsert(rt_ref(a), b, i)
 
 function rtdelete(a::SListData, i::Int)
@@ -53,6 +56,73 @@ function rtdelete(a::SListData, i::Int)
     @assert object_is_ok(r)
     return SList(r)
 end
+
+
+#### deg ####
+
+function rtdeg(a::STuple)
+    return STuple(Any[rtdeg(i) for i in a.list])
+end
+
+function rtdeg(a::STuple, b)
+    @assert !isa(b, STuple)
+    return rtdeg(a.list[1], b)
+end
+
+function rtdeg(a, b::STuple)
+    @assert !isa(a, STuple)
+    return rtdeg(a.list[1], b)
+end
+
+function rtdeg(a::STuple, b::STuple)
+    return rtdeg(a.list[1], b.list[1])
+end
+
+function rtdeg(a::Union{Int, BigInt})
+    r = rt_basering()
+    r.valid || rt_error("deg(`$(rt_typestring(a))`) failed without a basering")
+    a1 = libSingular.n_Init(a, r.ring_ptr)
+    a2 = libSingular.p_NSet(a1, r.ring_ptr)
+    d = Int(libSingular.pLDeg(a2, r.ring_ptr))
+    libSingular.p_Delete(a2, r.ring_ptr)
+    return d
+end
+
+function rtdeg(a::SNumber)
+    a1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
+    a2 = libSingular.p_NSet(a1, a.parent.ring_ptr)
+    d = Int(libSingular.pLDeg(a2, a.ring_ptr))
+    libSingular.p_Delete(a2, a.ring_ptr)
+    return d
+end
+
+function rtdeg(a::SPoly)
+    return Int(libSingular.pLDeg(a.poly_ptr, a.parent.ring_ptr))
+end
+
+function rtdeg(a::Union{Int, BigInt}, b::_IntVec)
+    r = rt_basering()
+    r.valid || rt_error("deg(`$(rt_typestring(a))`) failed without a basering")
+    a1 = libSingular.n_Init(a, r.ring_ptr)
+    a2 = libSingular.p_NSet(a1, r.ring_ptr)
+    d = Int(libSingular.p_DegW(a2, rt_ref(b), r.ring_ptr))
+    libSingular.p_Delete(a2, r.ring_ptr)
+    return d
+end
+
+function rtdeg(a::SNumber, b::_IntVec)
+    a1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
+    a2 = libSingular.p_NSet(a1, a.parent.ring_ptr)
+    d = Int(libSingular.p_DegW(a2, rt_ref(b), a.ring_ptr))
+    libSingular.p_Delete(a2, a.ring_ptr)
+    return d
+end
+
+function rtdeg(a::SPoly, b::_IntVec)
+    return Int(libSingular.p_DegW(a.poly_ptr, rt_ref(b), a.parent.ring_ptr))
+end
+
+##################### misc ########################
 
 
 function rt_get_rtimer()
