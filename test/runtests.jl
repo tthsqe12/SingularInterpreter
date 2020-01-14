@@ -1,6 +1,6 @@
 using SingularInterpreter
 
-#include("basics.jl")
+include("basics.jl")
 
 for a in ("assign", "int", "intvec", "intmat", "bigintmat", "list", "poly", "proc")
     SingularInterpreter.reset_runtime()
