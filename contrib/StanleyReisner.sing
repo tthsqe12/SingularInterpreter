@@ -1,0 +1,543 @@
+LIB "combinat.lib";
+
+//********************1 pbs**********************//
+
+
+proc pbs(ideal h, poly a)
+{
+  list lb=pbs_pre(a, h);
+  ideal ib;
+  for(int i=1;i<=size(lb);i++)
+  {
+    ib[i]=prod_vars(lb[i]);
+  }
+  return (ib);
+}
+
+
+
+//returns 1 if p is one of the generators of h
+proc pinI(poly p, ideal h)
+{
+  int i;
+  for(i=1;i<=size(h);i++)
+  {
+    if(p==h[i])
+    {
+      return (1);
+    }
+  }
+  return (0);
+}
+
+//convert an ideal to a list of its generators
+proc ideal2list(ideal h)
+{
+  int i;list l;
+  for (i=1;i<=size(h);i++)
+  {
+    l[i]=h[i];
+  }
+  return (l);
+}
+//add the elements which are not in l1 to l1
+//input should be lists of variables
+proc unionLists(list l1, list l2)
+{
+  int i;
+  int j=1;
+  list l=l1;
+  int n=size(l1);
+  for(i=1;i<=size(l2);i++)
+  {
+    if(member(l2[i], l1)==0)
+    {
+      l[n+j]=l2[i];
+      j++;
+    }
+  }
+  return (l);
+}
+
+
+//returns the product of the variables in vars
+//useless
+proc prod_vars(list vars)
+{
+  poly p=1;
+  for(int i=1;i<=size(vars);i++)
+  {
+    p=p*vars[i];
+  }
+  return (p);
+}
+
+
+// returns the link of a in h
+proc Link_s(poly p, ideal h)
+{
+  poly pl;
+  int i, j;
+  list l1=ideal2list(variables(p));
+  list l2;
+  list lk;
+  j=1;
+  for (i=1; i<=size(h);i++)
+  {
+    l2=ideal2list(variables(h[i]));
+    pl=prod_vars(unionLists(l1,l2));
+    if (size(intersectLists(l1,l2))==0 && pinI(pl, h)==1)
+    {
+      lk[j]=l2;
+      j++;
+    }
+  }
+  return (lk);
+}
+
+
+//returns all the possiblities of b(list of vars version)
+proc pbs_pre(poly a, ideal h)
+{
+  list lb;
+  if (a==1)
+  {
+    lb=list(lb);
+    return (lb);
+  }
+  int i;
+  int j=1;
+  list lk=Link_s(a, h);
+  list lv;
+  int da=deg(a);
+  for(i=1;i<=size(lk);i++)
+  {
+    if(size(lk[i])==1)
+    {
+      lv[j]=lk[i][1];
+      j++;
+    }
+  }
+  if(size(lv)!=0)
+  {
+    lb=sublists(lv);
+    for(i=1;i<=size(lb);i++)
+    {
+      if(size(lb[i])!=da)
+      {
+        lb=delete(lb,i);
+        i--;
+      }
+    }
+  }
+  return (lb);
+}
+
+
+
+
+//**************2 mabs***************//
+
+
+proc mabs(ideal H, poly a, poly b)
+{  
+  list icl=idealcomplement(H);
+  poly p;
+  list ml;
+  int j=0;
+  for(int i=1;i<=size(icl);i++)
+  {
+    p=icl[i];
+    if(mabcondition(H, p, a, b)==1)
+    {
+      j++;
+      ml[j]=p;
+    }
+  }
+  ideal hi;
+  for(i=1;i<=size(ml);i++)
+  {
+    hi[i]=ml[i];
+  }
+  return(hi);
+}
+
+proc listminus(list L1,  list L2)
+{
+  int i,j;
+  list L=L1;
+  for(i=1;i<=size(L2);i++)
+  {
+    for(j=1;j<=size(L);j++)
+    {
+      if(L2[i]==L[j])
+      {
+        L=delete(L, j);
+        break;
+      }
+    }
+  }
+  return (L);
+}
+
+
+//if l1 is contained in l2
+proc ifsublist(list l1, list l2)
+{
+  int i,j;
+  if(size(l1)>size(l2))
+  {
+    return (0);
+  }
+  else
+  {
+    for(i=1;i<=size(l1);i++)
+    {
+      if(member(l1[i],l2)==0)
+      {
+        return (0);
+      }
+    }
+    return (1);
+  }
+}
+
+
+//if l1 and l2 are equal (regardless of order)
+proc listsequal(list l1, list l2)
+{
+  int i,j;
+  if(size(l1)==size(l2))
+  {
+    if(ifsublist(l1,l2)==1 && ifsublist(l2,l1))
+    {
+      return (1);
+    }
+    else
+    {
+      return (0);
+    }
+  }
+  else
+  {
+    return (0);
+  }  
+}
+
+
+
+//l1, a list; l2, a list of lists
+//returns 1 if l1 is in l2
+proc listsmember(list l1, list l2)
+{
+  for(int i=1;i<=size(l2);i++)
+  {
+    if(listsequal(l1, l2[i])==1)
+    {"lalalla "+ string(i) ;
+      return (1);
+    }
+  }
+  return (0);
+}
+
+//the complement of the polynomials in L
+proc idealcomplement(ideal H)
+{
+  list vars=ideal2list(variables(H));
+  list subl=sublists(vars);
+  list lh=ideal2list(H);
+  list al;
+  for(int i=1;i<=size(subl);i++)
+  {
+    al[i]=prod_vars(subl[i]);
+  }
+  list icl=listminus(al, lh);
+  return (icl);
+}
+
+
+
+proc mabcondition(ideal H, poly p, poly a, poly b)
+{
+  list h=ideal2list(H);
+  list lp=ideal2list(variables(p));
+  list la=ideal2list(variables(a));
+  list lb=ideal2list(variables(b));
+  list lu=unionLists(lp, la);
+  lu=listminus(lu, lb);
+  poly q=prod_vars(lu);
+  if(member(q, h)==1)
+  {
+    return (1);
+  }
+  return (0);
+  
+}
+
+
+
+
+
+//******************3 mgss*******************//
+
+
+proc mgss(ideal h, poly a, poly b, ideal sh, ideal M)
+{
+  //string(h);string(a);string(b);string(sh);string(M);
+  list lM=ideal2list(M);
+  list lsh=ideal2list(sh);
+  list lh=ideal2list(h);
+  list la=ideal2list(variables(a));
+  list lb=ideal2list(variables(b));
+  ideal hi;
+  list lindex=gensindexs(lM, lsh);
+  for(int i=1;i<=size(lindex);i++)
+  {
+    hi[i]=lM[lindex[i]];
+  }
+  return (hi);
+}
+
+//lM, list of monomials associated to mab set; lsh, list of minimal generators of stanley-Reiser ideal
+//returns the list of positions of the monomials of lM in lsh
+proc gensindexs(list lM, list lsh)
+{
+  list lindex;
+  int j=0;
+  for(int i=1;i<=size(lM);i++)
+  {
+    if(member(lM[i], lsh))
+    {
+      j++;
+      lindex[j]=i;
+    }
+  }
+  return (lindex);
+}
+
+
+
+
+//************4 idsrRings*****************//
+
+
+proc idsrRings(ideal h)
+{
+  int max, i, j, n;
+  ideal pp, qq, rsr, ppp;
+  for(i=1;i<=nvars(basering);i++)
+  {
+    pp=sfreemon_s(h, i);
+    pp=kbase(std(pp), i);
+    if(size(pp)!=0)
+    {
+      pp=sfreemon_s(pp, i);
+      rsr=pp;
+      break;
+    }
+  }
+  for(n=i+1;n<=nvars(basering);n++)
+  {
+    qq=sfreemon_s(h, n);
+    pp=qringadd_s(qq, rsr,n);
+    ppp=sfreemon_s(pp,n);
+    rsr=rsr+ppp;
+  }
+  return (rsr);
+}
+
+
+
+
+proc pfree_s(poly p)
+{
+  int i;
+  intvec vs=leadexp(p);
+  for(i=1;i<=size(vs);i++)
+  {
+    if(vs[i]>1)
+    {
+      return (0);
+    }
+  }
+  return(1);
+}
+
+
+proc sfreemon_s(ideal h, int d)
+{
+  int i, j;
+  i=0;
+  ideal temp;
+  if(h!=0)
+  {
+    for(j=1;j<=size(h);j++)
+    {
+      if(deg(h[j])==d && pfree_s(h[j])==1)
+      {
+        i=i+1;
+        temp[i]=h[j];
+      }
+    }
+  }
+  return (temp);
+}
+
+
+proc qringadd_s(ideal h1, ideal h2, int d)
+{
+  ideal h, qrh;
+  h=h1+h2;
+  qrh=kbase(std(h),d);
+  return (qrh);
+}
+
+
+
+
+//**********************pas***********************//
+// important to time
+proc pas(ideal h)
+{
+  poly e=1;poly p;
+  list hl=ideal2list(h);
+  int i, j, d, deg0;
+  d=0; list al=hl;
+  ideal ia;
+  ideal aset;
+  ideal h1=idsrRings(h);
+  for(i=1;i<=size(h1);i++)
+  {
+    deg0=deg(h1[i]);
+    if(d<deg0)
+    {
+      d=deg0;
+    }
+  }
+  for (i=2;i<=d;i++)
+  {
+    ia=maxideal(i);
+    for(j=1;j<=size(ia);j++)
+    {
+      p=ia[j];
+      if(!member(p, hl) && member(sqrfreepart_mon(p), hl))
+      {
+        al=al+list(p);
+      } 
+    }
+  }
+  for(i=1;i<=size(al);i++)
+  {
+    aset[i]=al[i];
+  }
+  return(aset);
+}
+
+
+
+proc sqrfreepart_mon(poly p)
+{
+  ideal vi=variables(p);
+  poly q=1;
+  for(int i=1;i<=size(vi);i++)
+  {
+    q=q*vi[i];
+  }
+  return(q);
+}
+
+
+
+//***************for testing efficiencies of 4 Singular functions***************************//
+
+
+newstruct("FirstOrderDeformation","ideal source, poly a, poly b, ideal M, ideal gens, ring over, list dgs, list rule, qring target ");
+
+
+proc simplepiece(ideal I, poly a, poly b, ideal sh, qring qi)
+{
+ list l; 
+ FirstOrderDeformation C;
+// option(noredefine);
+ C.source = I;
+ C.a=a;
+ C.b=b;
+ ideal Mi=mabs(I, a, b);
+ C.M=Mi;
+ C.gens=mgss(I,a,b, sh, Mi);
+ C.dgs=l;
+ C.over = basering;
+ C.rule=l;
+ C.target=qi;
+// option(redefine);
+ return(C);
+}
+
+proc SingTest_1(ideal h)
+
+{
+"singtest1 running";
+  int i,j;
+  list L;
+  int m=0;
+  ideal ai=pas(h);
+  ideal bi;
+  FirstOrderDeformation C;
+//  option(noredefine);
+  ideal sh=idsrRings(h);
+  qring qi=makeqring(h);
+  for(i=1;i<=ncols(ai);i++)
+  {  
+    bi=pbs(h, ai[i]); 
+    if(bi!=0)
+    {
+      for(j=1;j<=ncols(bi);j++)
+      { 
+        C=simplepiece(h, ai[i], bi[j], sh, qi);
+        if(C.gens!=0)
+        {
+          m++;
+          L[m]=C;
+        }
+      }
+    }
+  }
+//  option(redefine);
+  return (L);
+}
+
+proc makeqring(ideal h)
+{
+  def Rold = basering;
+  qring Q=std(h);
+  setring Rold;
+  return (Q);
+}
+
+
+
+//****************testing example 0****************//
+ring R=0,(x(1),x(2),x(3),x(4),x(5),x(6)),lp;
+ideal i9=x(1),x(2),x(3),x(4),x(5),x(1)*x(2),x(1)*x(3),x(1)*x(4),x(1)*x(5),x(2)*x(5),x(3)*x(4),x(3)*x(5),x(1)*x(3)*x(5),x(2)*x(4),x(1)*x(2)*x(4),x(1)*x(3)*x(4),x(1)*x(2)*x(5),1,x(1)*x(4)*x(6),x(1)*x(5)*x(6),x(1)*x(6),x(2)*x(4)*x(6),x(2)*x(5)*x(6),x(2)*x(6),x(3)*x(4)*x(6),x(3)*x(5)*x(6),x(3)*x(6),x(1)*x(2)*x(4)*x(6),x(1)*x(2)*x(5)*x(6),x(1)*x(2)*x(6),x(1)*x(3)*x(4)*x(6),x(1)*x(3)*x(5)*x(6),x(1)*x(3)*x(6),x(4)*x(6),x(5)*x(6),x(6);
+list l1=SingTest_1(i9);
+
+//****************testing example 1****************//
+ring R=0,(x(1),x(2),x(3),x(4),x(5),x(6),x(7),x(8),x(9)),lp;
+ideal i9=x(1),x(2),x(3),x(4),x(5),x(1)*x(2),x(1)*x(3),x(1)*x(4),x(1)*x(5),x(2)*x(5),x(3)*x(4),x(3)*x(5),x(1)*x(3)*x(5),x(2)*x(4),x(1)*x(2)*x(4),x(1)*x(3)*x(4),x(1)*x(2)*x(5),1,x(1)*x(4)*x(6),x(1)*x(5)*x(6),x(1)*x(6),x(2)*x(4)*x(6),x(2)*x(5)*x(6),x(2)*x(6),x(3)*x(4)*x(6),x(3)*x(5)*x(6),x(3)*x(6),x(1)*x(2)*x(4)*x(6),x(1)*x(2)*x(5)*x(6),x(1)*x(2)*x(6),x(1)*x(3)*x(4)*x(6),x(1)*x(3)*x(5)*x(6),x(1)*x(3)*x(6),x(4)*x(6),x(5)*x(6),x(6),x(2)*x(7),x(3)*x(7),x(4)*x(7),x(6)*x(7),x(2)*x(4)*x(7),x(2)*x(6)*x(7),x(3)*x(4)*x(7),x(3)*x(6)*x(7),x(4)*x(6)*x(7),x(2)*x(4)*x(6)*x(7),x(3)*x(4)*x(6)*x(7),x(7),x(1)*x(2)*x(8),x(1)*x(3)*x(8),x(1)*x(8),x(2)*x(4)*x(8),x(3)*x(4)*x(8),x(4)*x(8),x(2)*x(5)*x(8),x(5)*x(8),x(1)*x(2)*x(4)*x(8),x(1)*x(3)*x(4)*x(8),x(1)*x(4)*x(8),x(1)*x(2)*x(5)*x(8),x(1)*x(5)*x(8),x(2)*x(8),x(3)*x(8),x(8),x(2)*x(5)*x(6)*x(8),x(5)*x(6)*x(8),x(2)*x(6)*x(8),x(3)*x(6)*x(8),x(6)*x(8),x(2)*x(4)*x(7)*x(8),x(3)*x(4)*x(7)*x(8),x(4)*x(7)*x(8),x(2)*x(6)*x(7)*x(8),x(3)*x(6)*x(7)*x(8),x(6)*x(7)*x(8),x(2)*x(7)*x(8),x(3)*x(7)*x(8),x(7)*x(8),x(1)*x(3)*x(9),x(1)*x(5)*x(9),x(1)*x(8)*x(9),x(1)*x(3)*x(5)*x(9),x(1)*x(3)*x(8)*x(9),x(1)*x(5)*x(8)*x(9),x(1)*x(9),x(3)*x(9),x(5)*x(9),x(8)*x(9),x(3)*x(5)*x(9),x(3)*x(8)*x(9),x(5)*x(8)*x(9),x(9),x(3)*x(6)*x(9),x(5)*x(6)*x(9),x(6)*x(8)*x(9),x(3)*x(5)*x(6)*x(9),x(3)*x(6)*x(8)*x(9),x(5)*x(6)*x(8)*x(9),x(6)*x(9);
+list l1=SingTest_1(i9);
+
+
+//****************testing example 2****************//
+ring R=0,(x(1),x(2),x(3),x(4),x(5),x(6),x(7),x(8),x(9),x(10)),lp;
+ideal i10=x(1),x(2),x(3),x(4),x(5),x(1)*x(2),x(1)*x(4),x(1)*x(5),x(2)*x(3),x(2)*x(5),x(3)*x(4),x(3)*x(5),x(4)*x(5),x(2)*x(4),x(2)*x(3)*x(4),x(1)*x(2)*x(4),x(2)*x(4)*x(5),x(1)*x(4)*x(5),x(1)*x(2)*x(5),
+x(3)*x(4)*x(5),x(1)*x(2)*x(4)*x(5),1,x(1)*x(2)*x(6),x(2)*x(3)*x(6),x(2)*x(4)*x(6),x(1)*x(2)*x(4)*x(6),x(2)*x(3)*x(4)*x(6),x(2)*x(6),x(1)*x(5)*x(6),x(3)*x(5)*x(6),x(4)*x(5)*x(6),x(1)*x(4)*x(5)*x(6)
+,x(3)*x(4)*x(5)*x(6),x(5)*x(6),x(1)*x(6),x(3)*x(6),x(4)*x(6),x(1)*x(4)*x(6),x(3)*x(4)*x(6),x(6),x(1)*x(7),x(2)*x(7),x(3)*x(7),x(6)*x(7),x(1)*x(2)*x(7),x(1)*x(6)*x(7),x(2)*x(3)*x(7),x(2)*x(6)*x(7)
+,x(1)*x(2)*x(6)*x(7),x(3)*x(6)*x(7),x(2)*x(3)*x(6)*x(7),x(7),x(2)*x(3)*x(8),x(2)*x(8),x(3)*x(5)*x(8),x(5)*x(8),x(2)*x(5)*x(8),x(3)*x(8),x(8),x(3)*x(5)*x(6)*x(8),x(5)*x(6)*x(8),x(3)*x(6)*x(8),x(6)*x(8)
+,x(2)*x(3)*x(7)*x(8),x(2)*x(7)*x(8),x(3)*x(6)*x(7)*x(8),x(6)*x(7)*x(8),x(3)*x(7)*x(8),x(7)*x(8),x(1)*x(2)*x(9),x(2)*x(8)*x(9),x(2)*x(9),x(1)*x(5)*x(9),x(5)*x(8)*x(9),x(5)*x(9),x(1)*x(2)*x(5)*x(9),
+x(2)*x(5)*x(8)*x(9),x(2)*x(5)*x(9),x(1)*x(9),x(8)*x(9),x(9),x(1)*x(5)*x(6)*x(9),x(5)*x(6)*x(8)*x(9),x(5)*x(6)*x(9),x(1)*x(6)*x(9),x(6)*x(8)*x(9),x(6)*x(9),x(1)*x(2)*x(7)*x(9),x(2)*x(7)*x(8)*x(9)
+,x(2)*x(7)*x(9),x(1)*x(6)*x(7)*x(9),x(6)*x(7)*x(8)*x(9),x(6)*x(7)*x(9),x(1)*x(7)*x(9),x(7)*x(8)*x(9),x(7)*x(9),x(2)*x(4)*x(10),x(3)*x(4)*x(10),x(4)*x(5)*x(10),x(2)*x(3)*x(4)*x(10),x(2)*x(4)*x(5)*x(10)
+,x(3)*x(4)*x(5)*x(10),x(4)*x(10),x(2)*x(10),x(3)*x(10),x(5)*x(10),x(2)*x(3)*x(10),x(2)*x(5)*x(10),x(3)*x(5)*x(10),x(10),x(2)*x(8)*x(10),x(3)*x(8)*x(10),x(5)*x(8)*x(10),x(2)*x(3)*x(8)*x(10),x(2)*x(5)*x(8)*x(10),x(3)*x(5)*x(8)*x(10),x(8)*x(10);
+list l2=SingTest_1(i10);
+
+
+
