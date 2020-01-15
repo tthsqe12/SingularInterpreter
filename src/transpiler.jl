@@ -154,36 +154,8 @@ end
 const newstructprefix    = "SNewStruct_"
 const newstructrefprefix = "SNewStructRef_"
 
-function convert_typestring_tosymbol(s::String)
-    if s == "proc"
-        return :SProc
-    elseif s == "def"
-        return :Any
-    elseif s == "int"
-        return :Int
-    elseif s == "bigint"
-        return :BigInt
-    elseif s == "string"
-        return :SString
-    elseif s == "intvec"
-        return :SIntvec
-    elseif s == "intmat"
-        return :SIntMat
-    elseif s == "bigintmat"
-        return :SBigIntMat
-    elseif s == "list"
-        return :SList
-    elseif s == "ring"
-        return :SRing
-    elseif s == "number"
-        return :SNumber
-    elseif s == "poly"
-        return :SPoly
-    elseif s == "ideal"
-        return :SIdeal
-    else
-        return Symbol(newstructprefix * s)
-    end
+function convert_typestring_to_symbol(s::String)
+    return get(builtin_typestring_to_symbol, s, Symbol(newstructprefix * s))
 end
 
 # commands in convert_elemexpr that require special constructs
@@ -382,9 +354,8 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         s = make_nocopy(convert_expr(a.child[1], env))
         return Expr(:call, :rt_backtick, s)
     elseif a.rule == @RULE_elemexpr(4)
-        c = a.child[2]
-        c.child[1].rule == @RULE_extendedid(1) || throw(TranspileError("rhs of dot is no good"))
-        s = c.child[1].child[1]::String
+        a.child[2].rule == @RULE_elemexpr(99) || throw(TranspileError("rhs of dot is no good"))
+        s = a.child[2].child[1]::String
         doring = false
         if length(s) > 2 && s[1:2] == "r_"
             doring = true
@@ -2064,7 +2035,7 @@ function convert_proc_prologue(body::Expr, env::AstEnv)
     empty!(body.args)
     push!(body.args, Expr(:call, :rt_enterfunction, QuoteNode(env.package)))
     for v in env.declared_identifiers
-        push!(body.args, Expr(:local, Expr(:(::), Symbol(v[1]), convert_typestring_tosymbol(v[2]))))
+        push!(body.args, Expr(:local, Expr(:(::), Symbol(v[1]), convert_typestring_to_symbol(v[2]))))
     end
 end
 
@@ -3218,7 +3189,7 @@ function astprint_procarg(a::AstNode, env::AstEnv, indent::Int)::String
     if a.rule == @RULE_procarg(1)
         return a.child[1] * " " * astprint_extendedid(a.child[2], env, 0)
     elseif @RULE_procarg(2) <= a.rule <= @RULE_procarg(5)
-        return cmd_to_string(a.child[1]) * " " * astprint_extendedid(a.child[2], env, 0)
+        return cmd_to_builtin_type_string[a.child[1]] * " " * astprint_extendedid(a.child[2], env, 0)
     elseif a.rule == @RULE_procarg(6)
         return "proc " * astprint_extendedid(a.child[2], env, 0)
     elseif a.rule == @RULE_procarg(7)

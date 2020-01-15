@@ -24,6 +24,10 @@ function __init__()
     ENV["SINGULAR_EXECUTABLE"] = binSingular
     libSingular.siInit(binSingular)
 
+    s = split(get(ENV, "SINGULARPATH", ""), ":")
+    push!(s, realpath(joinpath(@__DIR__, "..", "deps", "Singular" ,"Singular", "LIB")))
+    rtGlobal.SearchPath = filter(isdir, s)
+
     if isinteractive() # Base.active_repl not defined otherwise
         initrepl(SingularInterpreter.execute,
                  prompt_text  = "Sing> ",

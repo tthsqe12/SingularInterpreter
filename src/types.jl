@@ -79,6 +79,8 @@ struct SName
 end
 makeunknown(s::String) = SName(Symbol(s))
 
+show(io::IO, a::SName) = print(io, ":"*string(a.name))
+
 
 ########################## ring independent types #############################
 
@@ -320,6 +322,7 @@ mutable struct rtCallStackEntry
 end
 
 mutable struct rtGlobalState
+    SearchPath::Vector{String}
     optimize_locals::Bool
     last_printed::Any
     rtimer_base::UInt64
@@ -333,7 +336,8 @@ end
 # when there is no current ring, the current ring is "invalid"
 const rtInvalidRing = SRing(false, libSingular.rDefault_null_helper(), 1)
 
-const rtGlobal = rtGlobalState(false,
+const rtGlobal = rtGlobalState(String[],
+                               false,
                                nothing,
                                time_ns(),
                                1000000000,

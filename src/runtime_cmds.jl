@@ -224,8 +224,19 @@ end
 function rt_load(export_names::Bool, path::String)
     libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
 
-    libname = Base.Filesystem.basename(path)
-    libname = Base.Filesystem.splitext(libname)[1]
+    @error_check(!isempty(path), "cannot load empty path")
+    if path[1] != '.' || path[1] != '/' || !isfile(path)
+        for s in rtGlobal.SearchPath
+            if isfile(joinpath(s, path))
+                path = joinpath(s, path)
+                break
+            end
+        end
+    end
+    @error_check(isfile(path), "cannot find path $path")
+
+    libname = basename(path)
+    libname = splitext(libname)[1]
     libname = uppercase(libname[1])*lowercase(libname[2:end])
 
     package = Symbol(libname)

@@ -1833,7 +1833,7 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     b = Expr(:block)
     for i in sp
         @error_check(length(i) == 2, "invalid newstruct")
-        push!(b.args, Expr(:(::), Symbol(i[2]), convert_typestring_tosymbol(String(i[1]))))
+        push!(b.args, Expr(:(::), Symbol(i[2]), convert_typestring_to_symbol(String(i[1]))))
     end
     push!(r.args, Expr(:struct, true, newreftype, b))
 
