@@ -3,7 +3,7 @@ using Test
 using SingularInterpreter
 using SingularInterpreter: rtcolon, rtequalequal, rtnot, rtand, rtor, SIntVec, SString
 
-for a in ("assign", "int", "intvec", "intmat", "bigintmat", "list", "tuple", "poly", "proc")
+for a in ("assign", "int", "intvec", "intmat", "bigintmat", "list", "tuple", "proc", "poly", "ideal")
     SingularInterpreter.reset_runtime()
     jlfile = joinpath(dirname(@__FILE__), a * ".jl")
     if isfile(jlfile)

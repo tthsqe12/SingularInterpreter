@@ -1,0 +1,4 @@
+ring r = 0, (x, y, z), lp;
+ideal a = x;
+ideal b = x, y, z;
+

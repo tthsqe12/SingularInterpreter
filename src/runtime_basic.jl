@@ -1323,12 +1323,12 @@ function rt_convert2ideal(a::Union{SNumber, SPoly})
     return SIdeal(SIdealData(r2, a.parent))
 end
 
-function rt_convert2ideal(a::STuple)
+function rt_cast2ideal(a...)
     # just convert everything to an ideal and add them up
     # answer must be wrapped in SIdeal at all times because we might throw
     r::SIdeal = rt_defaultconstructor_ideal()
-    for i in a.list
-        @error_check(isa(i, Union{Int, BigInt, SNumber, SPoly, SIdeal}), "cannot convert $i to an ideal")
+    for i in a
+        #screw it - the type assertion will handle errors
         r = rtplus(r, i)
     end
     return r
@@ -1337,10 +1337,6 @@ end
 function rt_convert2ideal(a)
     rt_error("cannot convert $a to an ideal")
     return rt_defaultconstructor_ideal()
-end
-
-function rt_cast2ideal(a...)
-    return rt_convert2ideal(a)
 end
 
 
@@ -1793,8 +1789,12 @@ function rt_assign(a::SIdeal, b)
 end
 
 function rt_assign(a::SIdeal, b::STuple)
-    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
-    return rt_convert2ideal(popfirst!(b.list)), b
+    r::SIdeal = rt_defaultconstructor_ideal()
+    for i in b.list
+        #screw it - the type assertion will handle errors
+        r = rtplus(r, i)
+    end
+    return r, empty_tuple
 end
 
 
