@@ -184,6 +184,10 @@ function rtsize(a::SPoly)
     return Int(libSingular.pLength(a.poly_ptr))
 end
 
+function rtsize(a::_Ideal)
+    return Int(libSingular.idElem(rt_ref(a).ideal_ptr))
+end
+
 ################## assertions/errors/messages #################################
 
 function rt_warn(s::String)

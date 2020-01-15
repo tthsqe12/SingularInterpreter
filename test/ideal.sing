@@ -1,4 +1,9 @@
 ring r = 0, (x, y, z), lp;
 ideal a = x;
 ideal b = x, y, z;
+ASSUME(0, typeof(a) == "ideal");
+ASSUME(0, typeof(b) == "ideal");
+ASSUME(0, size(a) == 1);
+ASSUME(0, size(b) == 3);
+ASSUME(0, size(ideal(x, y)) == 2);
 
