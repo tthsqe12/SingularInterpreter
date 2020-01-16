@@ -434,7 +434,7 @@ function rtminus(a::SPoly, b::SPoly)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.p_Copy(b.poly_ptr, b.parent.ring_ptr)
-    r1 = libSingular.p_Sub_q(a1, b1, a.parent.ring_ptr)
+    r1 = libSingular.p_Sub(a1, b1, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
 end
 
@@ -573,7 +573,7 @@ function rtminus(a::SPoly, b::Union{Int, BigInt})
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Sub_q(a1, b2, a.parent.ring_ptr)
+    r1 = libSingular.p_Sub(a1, b2, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
 end
 
@@ -604,7 +604,7 @@ function rtminus(a::SPoly, b::SNumber)
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Sub_q(a1, b2, a.parent.ring_ptr)
+    r1 = libSingular.p_Sub(a1, b2, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
 end
 
@@ -634,7 +634,7 @@ function rtminus(b::Union{Int, BigInt}, a::SPoly)
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Sub_q(b2, a1, a.parent.ring_ptr)
+    r1 = libSingular.p_Sub(b2, a1, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
 end
 
@@ -665,7 +665,7 @@ function rtminus(b::SNumber, a::SPoly)
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
     b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Sub_q(b2, a1, a.parent.ring_ptr)
+    r1 = libSingular.p_Sub(b2, a1, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
 end
 

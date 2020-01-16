@@ -1784,7 +1784,6 @@ end
 
 #### assignment to ideal
 function rt_assign(a::SIdeal, b)
-    @assert !isa(b, SIdeal)
     return rt_convert2ideal(b), empty_tuple
 end
 

@@ -96,7 +96,10 @@ auto id_Std_helper(ideal a, ring b, bool complete_reduction = false)
             delete n;
     }
     else
+    {
         id = idInit(0, a->rank);
+    }
+    idSkipZeroes(id);
     return id;
 }
 

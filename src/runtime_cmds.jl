@@ -114,13 +114,24 @@ function rtdeg(a::SNumber, b::_IntVec)
     a1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
     a2 = libSingular.p_NSet(a1, a.parent.ring_ptr)
     d = Int(libSingular.p_DegW(a2, rt_ref(b), a.ring_ptr))
-    libSingular.p_Delete(a2, a.ring_ptr)
+    libSingular.p_Delete(a2, a.parent.ring_ptr)
     return d
 end
 
 function rtdeg(a::SPoly, b::_IntVec)
     return Int(libSingular.p_DegW(a.poly_ptr, rt_ref(b), a.parent.ring_ptr))
 end
+
+
+#### std ####
+
+rtstd(a::SIdeal) = rtstd(rt_ref(a))
+
+function rtstd(a::SIdealData)
+    r = libSingular.id_Std(a.ideal_ptr, a.parent.ring_ptr, false)
+    return SIdeal(SIdealData(r, a.parent))
+end
+
 
 ##################### misc ########################
 
@@ -158,6 +169,8 @@ function rtbasering()
     end
 end
 
+
+#### size ####
 
 function rtsize(a::Int)
     return Int(a != 0)
