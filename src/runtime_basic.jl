@@ -335,7 +335,7 @@ function rt_make(a::SName, allow_unknown::Bool = false)
         # TODO: make another function rt_ref_local that does all of this in one function
         v = rt_ref(rtGlobal.local_vars[i].second)
         if isa(v, SListData)
-            v.list.back = nothing
+            v.back = nothing
         end
         return v
     end
@@ -694,7 +694,7 @@ end
 
 function rt_parameter_def(a::SName, b)
     @assert rt_local_identifier_does_not_exist(a.name)
-    push!(rtGlobal.local_rindep_vars, Pair(a.name, rt_convert2def(b)))
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2def(b)))
 end
 
 #### proc
