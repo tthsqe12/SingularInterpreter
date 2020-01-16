@@ -10,3 +10,18 @@ ASSUME(0, size(ideal(x, y)) == 2);
 ideal g = std(ideal(x^2 - y^2, x - y));
 ASSUME(0, size(g) == 1);
 ASSUME(0, g[1] == x - y);
+
+kill r;
+kill basering; // kills a and b too
+ring r = (0, a, b), (x, y, z), lp;
+ideal i = variables(1);
+ASSUME(0, size(i) == 0);
+i = variables(1 + x^2);
+ASSUME(0, size(i) == 1);
+ASSUME(0, i[1] == x);
+i = variables(a + b + x + y);
+ASSUME(0, size(i) == 2);
+ASSUME(0, i[1]*i[2] == x*y);
+i = variables(ideal(y, z)^2);
+ASSUME(0, size(i) == 2);
+ASSUME(0, i[1]*i[2] == y*z);

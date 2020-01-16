@@ -143,6 +143,31 @@ void singular_define_ideals(jlcxx::Module & Singular)
         return mp_Equal((ip_smatrix *)m, (ip_smatrix *)n, o);
     });
 
+    Singular.method("id_Variables", [](ideal I, ring r) {
+        int *e=(int *)omAlloc0((rVar(r)+1)*sizeof(int));
+        int n=0;
+        for(int i=I->nrows*I->ncols-1;i>=0;i--)
+        {
+            int n0=p_GetVariables(I->m[i],e,r);
+            if (n0>n) n=n0;
+        }
+        ideal l=idInit(n,1);
+        for(int i=rVar(r);i>0;i--)
+        {
+            if (e[i]>0)
+            {
+                n--;
+                poly p=p_One(r);
+                p_SetExp(p,i,1,r);
+                p_Setm(p,r);
+                l->m[n]=p;
+                if (n==0) break;
+            }
+        }
+        omFreeSize((ADDRESS)e,(rVar(r)+1)*sizeof(int));
+        return l;
+    });
+
     Singular.method("id_FreeModule", &id_FreeModule);
 
     Singular.method("idSkipZeroes", &idSkipZeroes);

@@ -123,6 +123,35 @@ function rtdeg(a::SPoly, b::_IntVec)
 end
 
 
+### variables ###
+
+function rtvariables(a::STuple)
+    return STuple(Any[rtvariables(i) for i in a.list])
+end
+
+function rtvariables(a::Union{Int, BigInt})
+    R = rt_basering()
+    R.valid || rt_error("variables(`$(rt_typestring(a))`) failed without a basering")
+    return SIdeal(SIdealData(libSingular.idInit(1,1), R))
+end
+
+function rtvariables(a::SNumber)
+    return SIdeal(SIdealData(libSingular.idInit(1,1), a.parent))
+end
+
+function rtvariables(a::SPoly)
+    r = libSingular.p_Variables(a.poly_ptr, a.parent.ring_ptr)
+    return SIdeal(SIdealData(r, a.parent))
+end
+
+rtvariables(a::SIdeal) = rtvariables(rt_ref(a))
+
+function rtvariables(a::SIdealData)
+    r = libSingular.id_Variables(a.ideal_ptr, a.parent.ring_ptr)
+    return SIdeal(SIdealData(r, a.parent))
+end
+
+
 #### std ####
 
 rtstd(a::SIdeal) = rtstd(rt_ref(a))
