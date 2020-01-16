@@ -185,6 +185,9 @@ void singular_define_coeffs(jlcxx::Module & Singular)
         return n_GreaterZero(x, n) > 0;
     });
 
+    Singular.method("n_Equal", [](snumber * x, snumber * y, ip_sring * r) {
+        return n_Equal(x, y, r->cf) > 0;
+    });
     Singular.method("n_Equal", [](snumber * x, snumber * y, const coeffs n) {
         return n_Equal(x, y, n) > 0;
     });

@@ -867,6 +867,43 @@ rtequalequal(a::SString, b::SString) = Int(a.string == b.string)
 
 rtequalequal(a::_IntVec, b::_IntVec) = Int(rt_ref(a) == rt_ref(b))
 
+rtequalequal(a::Union{Int, BigInt}, b::SNumber) = rtequalequal(b, a)
+
+function rtequalequal(a::SNumber, b::Union{Int, BigInt})
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
+    r = Int(libSingular.n_Equal(a.number_ptr, b1, a.parent.ring_ptr))
+    libSingular.n_Delete(b1, a.parent.ring_ptr)
+    return r
+end
+
+function rtequalequal(a::SNumber, b::SNumber)
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot compare from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
+    return Int(libSingular.n_Equal(a.number_ptr, b.number_ptr, a.parent.ring_ptr))
+end
+
+rtequalequal(a::Union{Int, BigInt, Number}, b::SPoly) = rtequalequal(b, a)
+
+function rtequalequal(a::SPoly, b::Union{Int, BigInt})
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
+    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
+    r = Int(libSingular.p_EqualPolys(a.poly_ptr, b2, a.parent.ring_ptr))
+    libSingular.p_Delete(b2, a.parent.ring_ptr)
+    return r
+end
+
+function rtequalequal(a::SPoly, b::SNumber)
+    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot compare from different basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
+    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
+    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
+    r = Int(libSingular.p_EqualPolys(a.poly_ptr, b2, a.parent.ring_ptr))
+    libSingular.p_Delete(b2, a.parent.ring_ptr)
+    return r
+end
+
 function rtequalequal(a::SPoly, b::SPoly)
     @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot compare from different basering")
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")

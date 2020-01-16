@@ -16,6 +16,7 @@ kill basering; // kills a and b too
 ring r = (0, a, b), (x, y, z), lp;
 ideal i = variables(1);
 ASSUME(0, size(i) == 0);
+ASSUME(0, i[1] == 0);
 i = variables(1 + x^2);
 ASSUME(0, size(i) == 1);
 ASSUME(0, i[1] == x);
