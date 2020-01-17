@@ -226,6 +226,21 @@ function rtleadexp(a)
 end
 
 
+#### kbase ####
+
+rtkbase(a::SIdeal) = rtkbase(rt_ref(a))
+
+function rtkbase(a::SIdealData)
+    return SIdeal(SIdealData(libSingular.id_kbase(a.ideal_ptr, -1, a.parent.ring_ptr), a.parent))
+end
+
+rtkbase(a::SIdeal, b::Int) = rtkbase(rt_ref(a), b)
+
+function rtkbase(a::SIdealData, b::Int)
+    return SIdeal(SIdealData(libSingular.id_kbase(a.ideal_ptr, Cint(b), a.parent.ring_ptr), a.parent))
+end
+
+
 ##################### system stuff ########################
 
 function rt_get_rtimer()

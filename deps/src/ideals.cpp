@@ -242,11 +242,11 @@ void singular_define_ideals(jlcxx::Module & Singular)
 	return n;
     });
 
-    Singular.method("id_kbase", [](ideal I, ring r) {
+    Singular.method("id_kbase", [](ideal I, int n, ring r) {
         ideal res;
-	const ring origin = currRing;
+	    const ring origin = currRing;
         rChangeCurrRing(r);
-        res = scKBase(-1, I, r->qideal);
+        res = scKBase(n, I, r->qideal);
         rChangeCurrRing(origin);
         return res;
     });
