@@ -162,8 +162,39 @@ function rtstd(a::SIdealData)
 end
 
 
-##################### misc ########################
+#### size ####
 
+function rtsize(a::Int)
+    return Int(a != 0)
+end
+
+function rtsize(a::BigInt)
+    return Int(a.size)
+end
+
+function rtsize(a::_IntVec)
+    return Int(length(rt_ref(a)))
+end
+
+function rtsize(a::Union{_IntMat, _BigIntMat})
+    nrows, ncols = size(rt_ref(a))
+    return Int(nrows * ncols)
+end
+
+function rtsize(a::_List)
+    return Int(length(rt_ref(a).data))
+end
+
+function rtsize(a::SPoly)
+    return Int(libSingular.pLength(a.poly_ptr))
+end
+
+function rtsize(a::_Ideal)
+    return Int(libSingular.idElem(rt_ref(a).ideal_ptr))
+end
+
+
+##################### system stuff ########################
 
 function rt_get_rtimer()
     t = time_ns()
@@ -198,37 +229,6 @@ function rtbasering()
     end
 end
 
-
-#### size ####
-
-function rtsize(a::Int)
-    return Int(a != 0)
-end
-
-function rtsize(a::BigInt)
-    return Int(a.size)
-end
-
-function rtsize(a::_IntVec)
-    return Int(length(rt_ref(a)))
-end
-
-function rtsize(a::Union{_IntMat, _BigIntMat})
-    nrows, ncols = size(rt_ref(a))
-    return Int(nrows * ncols)
-end
-
-function rtsize(a::_List)
-    return Int(length(rt_ref(a).data))
-end
-
-function rtsize(a::SPoly)
-    return Int(libSingular.pLength(a.poly_ptr))
-end
-
-function rtsize(a::_Ideal)
-    return Int(libSingular.idElem(rt_ref(a).ideal_ptr))
-end
 
 ################## assertions/errors/messages #################################
 
