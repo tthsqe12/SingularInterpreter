@@ -362,6 +362,13 @@ void singular_define_rings(jlcxx::Module & Singular)
         omFreeSize((ADDRESS)e,(rVar(r)+1)*sizeof(int));
         return l;
     });
+    Singular.method("p_leadexp", [](spolyrec * p, ip_sring * r) {
+        int s = r->N;
+        jlcxx::Array<size_t> ans;
+        for(int i = 1; i <= s; i++)
+            ans.push_back(p == NULL ? 0 : p_GetExp(p, i, r));
+        return ans;
+    });
     Singular.method("p_Add_q", [](spolyrec * p, spolyrec * q, ip_sring * r) {
         return p_Add_q(p, q, r);
     });

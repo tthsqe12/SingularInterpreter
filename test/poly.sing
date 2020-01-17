@@ -23,3 +23,6 @@ ASSUME(0, x - x == bigint(0));
 ASSUME(0, x + a - x == a);
 ASSUME(0, a + b == b + a);
 ASSUME(0, x + y == y + x);
+
+kill r; ring r;
+ASSUME(0, leadexp(x*(y+z)^2) == intvec(1, 2, 0));

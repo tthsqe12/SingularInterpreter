@@ -209,6 +209,23 @@ function rtnvars(a)
     return 0
 end
 
+
+#### leadexp ####
+
+function rtleadexp(a::STuple)
+    return STuple(Any[rtleadexp(i) for i in a.list])
+end
+
+function rtleadexp(a::SPoly)
+    return SIntVec(libSingular.p_leadexp(a.poly_ptr, a.parent.ring_ptr))
+end
+
+function rtleadexp(a)
+    rt_error("leadexp(`$(rt_typestring(a))`) failed, expected leadexp(`poly`)")
+    return 0
+end
+
+
 ##################### system stuff ########################
 
 function rt_get_rtimer()
