@@ -919,6 +919,19 @@ function rt_parameter_list(a::SName, b)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2list(b)))
 end
 
+#### ring
+function rt_defaultconstructor_ring()
+    return rtInvalidRing
+end
+
+# declaring a ring requires special treatment in transpiler.jl
+
+function rt_parameter_ring(a::SName, b)
+    rt_warn("rings are not allowed as parameters for some reason")
+    @assert rt_local_identifier_does_not_exist(a.name)
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ring(b)))
+end
+
 #### number
 function rt_defaultconstructor_number()
     R = rt_basering()
@@ -1832,6 +1845,9 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     b = Expr(:block)
     for i in sp
         @error_check(length(i) == 2, "invalid newstruct")
+        if i[1] == "qring"
+            i[1] = "ring"
+        end
         push!(b.args, Expr(:(::), Symbol(i[2]), convert_typestring_to_symbol(String(i[1]))))
     end
     push!(r.args, Expr(:struct, true, newreftype, b))
