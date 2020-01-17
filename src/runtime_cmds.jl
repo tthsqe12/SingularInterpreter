@@ -194,6 +194,21 @@ function rtsize(a::_Ideal)
 end
 
 
+#### nvars ####
+
+function rtnvars(a::STuple)
+    return STuple(Any[rtnvars(i) for i in a.list])
+end
+
+function rtnvars(a::SRing)
+    return Int(libSingular.rVar(a.ring_ptr))
+end
+
+function rtnvars(a)
+    rt_error("nvars(`$(rt_typestring(a))`) failed, expected nvars(`ring`)")
+    return 0
+end
+
 ##################### system stuff ########################
 
 function rt_get_rtimer()

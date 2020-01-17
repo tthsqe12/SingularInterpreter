@@ -910,6 +910,20 @@ function rtequalequal(a::SPoly, b::SPoly)
     return Int(libSingular.p_EqualPolys(a.poly_ptr, b.poly_ptr, a.parent.ring_ptr))
 end
 
+rtequalequal(a::SIdeal, b::Int) = rtequalequal(rt_ref(a), b)
+
+function rtequalequal(a::SIdealData, b::Union{Int, BigInt})
+    # compare a and b as matrices!
+    a1 = a.ideal_ptr
+    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
+    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
+    b3 = libSingular.idInit(1, 1)
+    libSingular.setindex_internal(b3, b2, 0)
+    r = Int(libSingular.mp_Equal(a1, b3, a.parent.ring_ptr))
+    libSingular.id_Delete(b3, a.parent.ring_ptr)
+    return r
+end
+
 
 rtequalequal(a::_List, b::_List) = rtequalequal(rt_ref(a), rt_ref(b))
 
