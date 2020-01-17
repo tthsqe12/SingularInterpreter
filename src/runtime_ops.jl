@@ -345,15 +345,9 @@ end
 rtsetindex(a::SIdeal, i::Int, b) = rtsetindex(a.ideal, i, b)
 
 function rtsetindex(a::SIdealData, i::Int, b)
-    n = Int(libSingular.ngens(a.ideal_ptr))
-    @error_check(1 <= i <= n, "ideal index out of range for assignment")
-    b1 = rt_convert2poly_ptr(b, a.parent)
-    p0 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
-    if p0 != C_NULL
-        libSingular.p_Delete(p0, a.parent.ring_ptr)
-    end
-    libSingular.setindex_internal(a.ideal_ptr, b1, Cint(i - 1))
-    return STuple(Any[])
+    @error_check(i > 0, "ideal index must be positive for assignment")
+    libSingular.id_setindex_fancy(a.ideal_ptr, Cint(i), rt_convert2poly_ptr(b, a.parent), a.parent.ring_ptr)
+    return empty_tuple
 end
 
 

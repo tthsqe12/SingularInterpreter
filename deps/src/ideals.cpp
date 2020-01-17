@@ -115,6 +115,29 @@ void singular_define_ideals(jlcxx::Module & Singular)
     Singular.method("setindex_internal",
                     [](ideal r, poly n, int o) { return r->m[o] = n; });
 
+    Singular.method("id_setindex_fancy", [](ideal h, int n, poly p, ring r) {
+        if (n <= 0)
+            return;
+        int old_elems = IDELEMS(h);
+        if (n <= old_elems)
+        {
+            if (h->m[n - 1] != NULL)
+                p_Delete(&h->m[n - 1], r);
+        }
+        else
+        {
+            poly * old_polys = h->m;
+            poly * new_polys = (poly *)omAlloc0(n*sizeof(poly));
+            for (int i = 0; i < old_elems; i++)
+                new_polys[i] = old_polys[i];
+            if (old_elems > 0)
+                omFreeSize((ADDRESS)old_polys, sizeof(poly)*old_elems);
+            h->m = new_polys;
+            IDELEMS(h) = n;
+        }
+        h->m[n - 1] = p;
+    });
+
     Singular.method("getindex",
                     [](ideal r, int o) { return (poly)(r->m[o]); });
 
