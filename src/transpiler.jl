@@ -987,15 +987,25 @@ function rt_make_ring(coeff, var, ord)
     return SRing(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
 end
 
-function rt_make_qring(a::SIdeal)
-    error("rt_make_qring not implement")
-    return rtInvalidRing
+rt_make_qring(a::SRing) = a
+
+rt_make_qring(a::SIdeal) = rt_make_qring(rt_ref(a))
+
+function rt_make_qring(a::SIdealData)
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "constructing qring outside of basering")
+    r = libSingular.new_qring(a.ideal_ptr, a.parent.ring_ptr)
+    if r == C_NULL
+        rt_error("qring construction failed")
+        return rtInvalidRing
+    else
+        return SRing(true, r, length(rtGlobal.callstack))
+    end
 end
 
 function rt_declare_assign_ring(a::SName, b::SRing)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration(a.name, SRing)
+        rt_check_declaration_local(a.name, SRing)
         push!(rtGlobal.local_vars, Pair(a.name, b))
     else
         d = rt_check_declaration_global_ring_indep(a.name, SRing)

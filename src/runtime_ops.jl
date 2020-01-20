@@ -379,14 +379,14 @@ rttimes(a::BigInt, b::BigInt) = a * b
 # op(number, number)
 
 function rtplus(a::SNumber, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
+    @error_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "cannot add from different basering")
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
     r1 = libSingular.n_Add(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
     return SNumber(r1, a.parent)
 end
 
 function rtminus(a::SNumber)
-    @warn_check(a.parent.ring_ptr.cpp_object == rtGlobal.currentring.ring_ptr.cpp_object, "negating outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "negating outside of basering")
     r1 = libSingular.n_Neg(a.number_ptr, a.parent.ring_ptr)
     return SNumber(r1, a.parent)
 end

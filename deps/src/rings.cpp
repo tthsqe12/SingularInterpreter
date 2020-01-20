@@ -251,6 +251,74 @@ void singular_define_rings(jlcxx::Module & Singular)
     });
     Singular.method("rBitmask",
                     [](ip_sring * r) { return (unsigned int)r->bitmask; });
+
+
+    Singular.method("new_qring", [](ideal id, ring r) {
+
+        coeffs newcf = r->cf;
+        const int cpos = id_PosConstant(id, r);
+
+        if(rField_is_Ring(r))
+        {
+            if (cpos >= 0)
+            {
+                newcf = n_CoeffRingQuot1(p_GetCoeff(id->m[cpos], r), r->cf);
+                if (newcf == NULL)
+                    return reinterpret_cast<ring>(NULL);
+            }
+        }
+
+        ring qr = rCopy(r);
+        assume(qr->cf == r->cf);
+
+        if ( qr->cf != newcf )
+        {
+            nKillChar(qr->cf);
+            qr->cf = newcf;
+        }
+
+        ideal qid;
+
+        if ((rField_is_Ring(r)) && (cpos != -1))
+        {
+            int i, j;
+            int *perm = (int *)omAlloc0((qr->N+1)*sizeof(int));
+
+            for(i=qr->N;i>0;i--)
+                perm[i]=i;
+
+            nMapFunc nMap = n_SetMap(r->cf, newcf);
+            qid = idInit(IDELEMS(id)-1,1);
+            for (i = 0, j = 0; i<IDELEMS(id); i++)
+                if (i != cpos)
+                    qid->m[j++] = p_PermPoly(id->m[i], perm, r, qr, nMap, NULL, 0);
+        }
+        else
+        {
+            qid = idrCopyR(id,r,qr);
+        }
+
+        idSkipZeroes(qid);
+/*
+        if ((idElem(qid)>1) || rIsSCA(r) || (r->qideal!=NULL))
+            assumeStdFlag(a);
+*/
+        if (r->qideal!=NULL) /* we are already in a qring! */
+        {
+            ideal tmp = id_SimpleAdd(qid, r->qideal, r);
+            id_Delete(&qid, r);
+            qid = tmp;
+            id_Delete(&qr->qideal, r);
+        }
+
+        qr->qideal = qid;
+        if (idElem(qid) == 0)
+            id_Delete(&qr->qideal, currRing);
+
+        return qr;
+    });
+
+
     Singular.method("p_Delete", [](spolyrec * p, ip_sring * r) {
         return p_Delete(&p, r);
     });

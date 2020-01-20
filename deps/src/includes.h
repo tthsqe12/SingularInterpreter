@@ -24,6 +24,7 @@
 #include <coeffs/rmodulon.h>
 #include <polys/monomials/ring.h>
 #include <polys/monomials/p_polys.h>
+#include <polys/prCopy.h>
 #include <polys/simpleideals.h>
 #include <kernel/GBEngine/kstd1.h>
 #include <kernel/GBEngine/syz.h>
