@@ -485,7 +485,7 @@ proc SingTest_1(ideal h)
   FirstOrderDeformation C;
 //  option(noredefine);
   ideal sh=idsrRings(h);
-  qring qi=makeqring(h);
+  def qi=makeqring(h);
   for(i=1;i<=ncols(ai);i++)
   {  
     bi=pbs(h, ai[i]); 
