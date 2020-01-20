@@ -300,8 +300,9 @@ function rt_search_locals(a::Symbol)
     R = rtGlobal.callstack[n].current_ring
     for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
         if rtGlobal.local_vars[i].first == a
-            if isa(a, SingularRingType)
-                if a.parent === R
+            b = rtGlobal.local_vars[i].second
+            if isa(b, SingularRingType)
+                if rt_ref(b).parent === R
                     return true, i
                 end
             else
