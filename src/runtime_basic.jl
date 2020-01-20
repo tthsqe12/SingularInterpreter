@@ -301,7 +301,11 @@ function rt_search_locals(a::Symbol)
     for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
         if rtGlobal.local_vars[i].first == a
             b = rtGlobal.local_vars[i].second
-            if isa(b, SingularRingType)
+            if isa(b, SList)
+                if !rt_ref(b).parent.valid || rt_ref(b).parent === R
+                    return true, i
+                end
+            elseif isa(b, SingularRingType)
                 if rt_ref(b).parent === R
                     return true, i
                 end
@@ -1228,6 +1232,11 @@ function rt_convert2list(a::SListData)
     return SList(deepcopy(a))
 end
 
+function rt_convert2list(a::SPoly)
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "polynomial encountered from a foreign ring")
+    return SList(SListData(Any[a], a.parent, 1, nothing))
+end
+
 function rt_convert2list(a::STuple)
     count = 0
     for i in a.list
@@ -1248,6 +1257,17 @@ function rt_cast2list(a...)
         count += rt_is_ring_dep(i)
     end
     return SList(SListData(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
+end
+
+#### ring
+
+function rt_convert2ring(a::SRing)
+    return a
+end
+
+function rt_convert2ring(a)
+    rt_error("cannot convert a $(rt_typestring(a)) to a ring")
+    return rtInvalidRing
 end
 
 #### number

@@ -152,6 +152,19 @@ function rtvariables(a::SIdealData)
 end
 
 
+#### maxideal
+
+function rtmaxideal(a::STuple)
+    return STuple(Any[rtmaxideal(i) for i in a.list])
+end
+
+function rtmaxideal(a::Int)
+    R = rt_basering()
+    R.valid || rt_error("maxideal(`int`) failed without a basering")
+    return SIdeal(SIdealData(libSingular.id_MaxIdeal(Cint(a), R.ring_ptr), R))
+end
+
+
 #### std ####
 
 rtstd(a::SIdeal) = rtstd(rt_ref(a))

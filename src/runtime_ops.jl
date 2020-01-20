@@ -355,7 +355,16 @@ end
 
 
 function rtplus(a::_List, b::_List)
-    return SList(SListData(vcat(rt_edit(a).data, rt_edit(b).data)))
+    A = rt_edit(a)
+    B = rt_edit(b)
+    if A.parent.valid
+        newparent = A.parent
+        @warn_check(!B.parent.valid || newparent == B.parent, "funny thing happened while adding lists")
+    else
+        newparent = B.parent
+    end
+    return SList(SListData(vcat(A.data, B.data), newparent,
+                                 A.ring_dep_count + B.ring_dep_count, nothing))
 end
 
 rtplus(a::Int, b::Int) = Base.checked_add(a, b)
