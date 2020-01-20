@@ -194,6 +194,27 @@ function rtsize(a::_Ideal)
 end
 
 
+#### ncols ####
+
+function rtncols(a::STuple)
+    return STuple(Any[rtncols(i) for i in a.list])
+end
+
+function rtncols(a::Union{_IntMat, _BigIntMat})
+    nrows, ncols = size(rt_ref(a))
+    return ncols
+end
+
+function rtncols(a::_Ideal)
+    return Int(libSingular.id_ncols(rt_ref(a).ideal_ptr))
+end
+
+function rtncols(a)
+    rt_error("ncols(`$(rt_typestring(a))`) failed")
+    return 0
+end
+
+
 #### nvars ####
 
 function rtnvars(a::STuple)

@@ -195,6 +195,8 @@ void singular_define_ideals(jlcxx::Module & Singular)
 
     Singular.method("idSkipZeroes", &idSkipZeroes);
 
+    Singular.method("id_ncols", [](ideal m) { return m->ncols; });
+
     Singular.method("ngens", [](ideal m) { return (int)IDELEMS(m); });
 
     Singular.method("rank", [](ideal m) { return (int)m->rank; });

@@ -927,7 +927,7 @@ end
 # declaring a ring requires special treatment in transpiler.jl
 
 function rt_parameter_ring(a::SName, b)
-    rt_warn("rings are not allowed as parameters for some reason")
+    #rt_warn("rings are not allowed as parameters for some reason")
     @assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ring(b)))
 end
