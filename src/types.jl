@@ -362,15 +362,11 @@ end
 
 ###### these macros do not work without esc !!!!
 
-macro warn_check(ex, msgs...)
-    msg_body = isempty(msgs) ? ex : msgs[1]
-    msg = string(msg_body)
-    return :($(esc(ex)) ? nothing : rt_warn($msg))
+macro warn_check(cond, msg)
+    return :($(esc(cond)) ? nothing : rt_warn($(esc(msg))))
 end
 
 
-macro error_check(ex, msgs...)
-    msg_body = isempty(msgs) ? ex : msgs[1]
-    msg = string(msg_body)
-    return :($(esc(ex)) ? nothing : rt_error($msg))
+macro error_check(cond, msg)
+    return :($(esc(cond)) ? nothing : rt_error($(esc(msg))))
 end

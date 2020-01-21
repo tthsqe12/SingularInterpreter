@@ -1805,6 +1805,17 @@ function rt_assign(a::_List, b)
     return rt_convert2list(b), empty_tuple
 end
 
+#### assignment to ring
+function rt_assign(a::SRing, b)
+    @assert !isa(b, STuple)
+    return rt_convert2ring(b), empty_tuple
+end
+
+function rt_assign(a::SRing, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
+    return rt_convert2ring(popfirst!(b.list)), b
+end
+
 #### assignment to poly
 function rt_assign(a::SPoly, b)
     @assert !isa(b, STuple)
@@ -1836,7 +1847,7 @@ end
 
 # newstructs are allowed to be created inside a proc, hence no choice but eval(code)
 function rtnewstruct(a::SString, b::SString)
-    @error_check(!haskey(rtGlobal.newstruct_casts, a.string), "redefinition of newstruct " * a.string)
+    @error_check(!haskey(rtGlobal.newstruct_casts, a.string), "redefinition of newstruct $(a.string)")
     code = rt_convert_newstruct_decl(a.string, b.string)
     eval(code)
     return
