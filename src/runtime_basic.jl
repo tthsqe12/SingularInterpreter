@@ -1008,6 +1008,13 @@ function rt_defaultconstructor_ideal()
     return SIdeal(SIdealData(id, R))
 end
 
+function rt_new_empty_ideal()
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct an ideal when no basering is active")
+    h = libSingular.idInit(0, 1)
+    return SIdeal(SIdealData(h, R))
+end
+
 function rt_declare_ideal(a::Vector{SName})
     for i in a
         rt_declare_ideal(i)
@@ -1290,25 +1297,25 @@ end
 #### poly
 
 # return a new libSingular.poly not owned by any instance of a SingularType
-function rt_convert2poly_ptr(a::Union{Int, BigInt}, b::SRing)
-    @error_check(b.valid, "cannot convert to a polynomial when no basering is active")
-    r1 = libSingular.n_Init(a, b.ring_ptr)
-    return libSingular.p_NSet(r1, b.ring_ptr)
+function rt_convert2poly_ptr(a::Union{Int, BigInt}, R::SRing)
+    @error_check(R.valid, "cannot convert to a polynomial when no basering is active")
+    r1 = libSingular.n_Init(a, R.ring_ptr)
+    return libSingular.p_NSet(r1, R.ring_ptr)
 end
 
-function rt_convert2poly_ptr(a::SNumber, b::SRing)
-    @error_check(a.parent.ring_ptr.cpp_object == b.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
+function rt_convert2poly_ptr(a::SNumber, R::SRing)
+    @error_check(a.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
     r1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
-    return libSingular.p_NSet(r1, a.parrent.ring_ptr)
+    return libSingular.p_NSet(r1, a.parent.ring_ptr)
 end
 
-function rt_convert2poly_ptr(a::SPoly, b::SRing)
-    @error_check(a.parent.ring_ptr.cpp_object == b.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
+function rt_convert2poly_ptr(a::SPoly, R::SRing)
+    @error_check(a.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
     return libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
 end
 
-function rt_convert2poly_ptr(a, b::SRing)
-    rt_error("cannot convert $a to a polynomial")
+function rt_convert2poly_ptr(a, R::SRing)
+    rt_error("cannot convert $(rt_typestring(a)) to a poly")
     return libSingular.p_null_helper()
 end
 
@@ -1329,15 +1336,46 @@ function rt_convert2poly(a::SNumber)
 end
 
 function rt_convert2poly(a)
-    rt_error("cannot convert $a to a polynomial")
+    rt_error("cannot convert $(rt_typestring(a)) to a poly")
     return rt_defaultconstructor_poly()
 end
 
 
 #### ideal
 
-function rt_convert2ideal(a::_Ideal)
-    return rt_copy(a)
+function rt_convert2ideal_ptr(a::Union{Int, BigInt, SNumber, SPoly}, R::SRing)
+    p = rt_convert2poly_ptr(a, R)
+    r = libSingular.idInit(1, 1)
+    libSingular.setindex_internal(r, p, 0) # p is consumed
+    return r
+end
+
+function rt_convert2ideal_ptr(a::SIdealData, R::SRing)
+    @error_check(a.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a ideal from a different basering")
+    libSingular.id_Copy(a.ideal_ptr, a.parent.ring_ptr)
+end
+
+function rt_convert2ideal_ptr(a::SIdeal, R::SRing)
+    @error_check(a.ideal.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a ideal from a different basering")
+    # we may steal a.ideal.ideal_ptr because no one else cares about it
+    r = a.ideal.ideal_ptr
+    a.ideal.ideal_ptr = libSingular.idInit(1, 1)
+    return r
+end
+
+function rt_convert2ideal_ptr(a, R::SRing)
+    rt_error("cannot convert $(rt_typestring(a)) to an ideal")
+    return libSingular.idInit(1, 1)
+end
+
+
+function rt_convert2ideal(a::SIdealData)
+    h = libSingular.id_Copy(a.ideal_ptr, a.parent.ring_ptr)
+    return SIdeal(SIdealData(h, a.parent))
+end
+
+function rt_convert2ideal(a::SIdeal)
+    return a
 end
 
 function rt_convert2ideal(a::Union{Int, BigInt})
@@ -1358,18 +1396,18 @@ function rt_convert2ideal(a::Union{SNumber, SPoly})
 end
 
 function rt_cast2ideal(a...)
-    # just convert everything to an ideal and add them up
-    # answer must be wrapped in SIdeal at all times because we might throw
-    r::SIdeal = rt_defaultconstructor_ideal()
+    # answer must be wrapped in SIdeal at all times because rt_convert2ideal_ptr might throw
+    r::SIdeal = rt_new_empty_ideal()
     for i in a
-        #screw it - the type assertion will handle errors
-        r = rtplus(r, i)
+        libSingular.id_append(r.ideal.ideal_ptr,
+                              rt_convert2ideal_ptr(i, r.ideal.parent),
+                              r.ideal.parent.ring_ptr)
     end
     return r
 end
 
 function rt_convert2ideal(a)
-    rt_error("cannot convert $a to an ideal")
+    rt_error("cannot convert $(rt_typestring(a)) to an ideal")
     return rt_defaultconstructor_ideal()
 end
 
@@ -1833,12 +1871,14 @@ function rt_assign(a::SIdeal, b)
 end
 
 function rt_assign(a::SIdeal, b::STuple)
-    r::SIdeal = rt_defaultconstructor_ideal()
-    for i in b.list
-        #screw it - the type assertion will handle errors
-        r = rtplus(r, i)
+    r::SIdeal = rt_new_empty_ideal()
+    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, SNumber, SPoly, SIdeal})
+        i = popfirst!(b.list)
+        libSingular.id_append(r.ideal.ideal_ptr,
+                              rt_convert2ideal_ptr(i, r.ideal.parent),
+                              r.ideal.parent.ring_ptr)
     end
-    return r, empty_tuple
+    return r, b
 end
 
 

@@ -138,6 +138,30 @@ void singular_define_ideals(jlcxx::Module & Singular)
         h->m[n - 1] = p;
     });
 
+    /* append b to a; b is completely consumed by this operation */
+    Singular.method("id_append", [](ideal a, ideal b, ring r) {
+        int belems = IDELEMS(b);
+        int aelems = IDELEMS(a);
+        if (belems > 0)
+        {
+            poly * old_polys = a->m;
+            poly * new_polys = (poly *)omAlloc0((aelems + belems)*sizeof(poly));
+            for (int i = 0; i < aelems; i++)
+                new_polys[i] = old_polys[i];
+            if (aelems > 0)
+                omFreeSize((ADDRESS)old_polys, sizeof(poly)*aelems);
+            for (int i = 0; i < belems; i++)
+            {
+                new_polys[aelems + i] = b->m[i];
+                b->m[i] = NULL;
+            }
+            a->m = new_polys;
+            IDELEMS(a) = aelems + belems;
+        }
+        id_Delete(&b, r);
+        return;
+    });
+
     Singular.method("getindex",
                     [](ideal r, int o) { return (poly)(r->m[o]); });
 
