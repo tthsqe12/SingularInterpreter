@@ -426,7 +426,8 @@ function rtplus(a::SPoly, b::SPoly)
 end
 
 function rtminus(a::SPoly)
-    rt_warn(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "negating outside of basering")
+    a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object ||
+        rt_warn("negating outside of basering")
     a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
     r1 = libSingular.p_Neg(a1, a.parent.ring_ptr)
     return SPoly(r1, a.parent)
