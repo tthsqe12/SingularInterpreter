@@ -122,6 +122,21 @@ function rtdeg(a::SPoly, b::_IntVec)
     return Int(libSingular.p_DegW(a.poly_ptr, rt_ref(b), a.parent.ring_ptr))
 end
 
+### var ###
+
+rtvar(a::STuple) = STuple(Any[rtvar(i) for i in a.list])
+
+function rtvar(i::Int)
+    r = rt_basering()
+    r.valid || rt_error("var(`int`) failed without a basering")
+    r_ = r.ring_ptr
+    n::Int = libSingular.rVar(r_)
+    i in 1:n || rt_error("var number $i out of range 1..$n")
+    p = libSingular.p_One(r_)
+    libSingular.p_SetExp(p, i, 1, r_)
+    libSingular.p_Setm(p, r_)
+    SPoly(p, r)
+end
 
 ### variables ###
 
