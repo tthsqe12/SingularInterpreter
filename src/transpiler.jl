@@ -144,6 +144,13 @@ function make_copy(a)
     end
 end
 
+function make_promotion(a)
+    if is_a_name(a)
+        return Expr(:call, :rt_promote, Expr(:call, :rt_make, a))
+    else
+        return Expr(:call, :rt_copy_allow_tuple, a)
+    end
+end
 
 function convert_stringexpr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_stringexpr(0) < 100
@@ -676,7 +683,8 @@ function convert_returncmd(a::AstNode, env::AstEnv)
         t = gensym()
         r = Expr(:block)
         if length(b) == 1
-            push!(r.args, Expr(:(=), t, make_copy(b[1])))
+            push!(r.args, Expr(:(=), t, make_promotion(b[1])))
+#            push!(r.args, Expr(:(=), t, make_copy(b[1])))
         else
             push!(r.args, Expr(:(=), t, Expr(:call, :rt_maketuple, make_tuple_array_copy(b)...)))
         end
@@ -883,21 +891,33 @@ function scan_assignment(left::AstNode, env::AstEnv)
     end
 end
 
-function push_assignment!(rest::Symbol, out::Expr, left::AstNode, right, env::AstEnv)
+function push_assignment!(rest::Symbol, last::Bool, out::Expr, left::AstNode, right, env::AstEnv)
     if left.rule == @RULE_expr(2) || @RULE_elemexpr(0) < left.rule < @RULE_elemexpr(100)
         a::AstNode = left.rule == @RULE_expr(2) ? left.child[1] : left
         @assert 0 < a.rule - @RULE_elemexpr(0) < 100
         if a.rule == @RULE_elemexpr(99)
             var = a.child[1]::String
             if haskey(env.declared_identifiers, var)
-                push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign, Symbol(var), right)))
+                if last
+                    push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign_last, Symbol(var), right)))
+                else
+                    push!(out.args, Expr(:(=), Expr(:tuple, Symbol(var), rest), Expr(:call, :rt_assign_more, Symbol(var), right)))
+                end
             else
-                push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign, makeunknown(var), right)))
+                if last
+                    push!(out.args, Expr(:call, :rtassign_last, makeunknown(var), right))
+                else
+                    push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_more, makeunknown(var), right)))
+                end
             end
         elseif a.rule == @RULE_elemexpr(98)
             @assert isempty(env.declared_identifiers)
             s = make_nocopy(convert_expr(a.child[1], env))
-            push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right)))
+            if last
+                push!(out.args, Expr(:call, :rtassign_last, Expr(:call, :rt_backtick, s), right))
+            else
+                push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_more, Expr(:call, :rt_backtick, s), right)))
+            end
         elseif a.rule == @RULE_elemexpr(4)
             b = convert_expr(a.child[1], env)
             c = a.child[2]
@@ -907,11 +927,19 @@ function push_assignment!(rest::Symbol, out::Expr, left::AstNode, right, env::As
             is_valid_newstruct_member(s) || throw(TranspileError(s * " is not a valid newstruct member name"))
             if isa(b, Symbol)
                 b = Expr(:(.), b, QuoteNode(Symbol(s)))
-                push!(out.args, Expr(:(=), Expr(:tuple, b, rest), Expr(:call, :rt_assign, b, right)))
+                if last
+                    push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign_last, b, right)))
+                else
+                    push!(out.args, Expr(:(=), Expr(:tuple, b, rest), Expr(:call, :rt_assign_more, b, right)))
+                end
             else
                 b = Expr(:call, isa(b, SName) ? :rt_make : :rt_ref, b)
                 b = Expr(:(.), b, QuoteNode(Symbol(s)))
-                push!(out.args, Expr(:(=), Expr(:tuple, b, rest), Expr(:call, :rt_assign, b, right)))
+                if last
+                    push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign_last, b, right)))
+                else
+                    push!(out.args, Expr(:(=), Expr(:tuple, b, rest), Expr(:call, :rt_assign_more, b, right)))
+                end
             end
         elseif a.rule == @RULE_elemexpr(9)
             t = a.child[1]::Int
@@ -920,34 +948,68 @@ function push_assignment!(rest::Symbol, out::Expr, left::AstNode, right, env::As
         elseif a.rule == @RULE_elemexpr(6)
             @assert isempty(env.declared_identifiers)
             s = make_nocopy(convert_elemexpr_name_call(a, env))
-            push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_names, s, right)))
+            if last
+                push!(out.args, Expr(:call, :rtassign_names_last, s, right))
+            else
+                push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_names_more, s, right)))
+            end
         else
             throw(TranspileError("cannot assign to lhs"))
         end
     elseif left.rule == @RULE_extendedid(1)
         var = left.child[1]::String
         if haskey(env.declared_identifiers, var)
-            push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign, Symbol(var), right)))
+            if last
+                push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign_last, Symbol(var), right)))
+            else
+                push!(out.args, Expr(:(=), Expr(:tuple, Symbol(var), rest), Expr(:call, :rt_assign_more, Symbol(var), right)))
+            end
         else
-            push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign, makeunknown(var), right)))
+            if last
+                push!(out.args, Expr(:call, :rtassign_last, makeunknown(var), right))
+            else
+                push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_more, makeunknown(var), right)))
+            end
         end
     elseif left.rule == @RULE_extendedid(2)
         @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_expr(left.child[1], env))
-        push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign, Expr(:call, :rt_backtick, s), right)))
+        if last
+            push!(out.args, Expr(:call, :rtassign_last, Expr(:call, :rt_backtick, s), right))
+        else
+            push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_more, Expr(:call, :rt_backtick, s), right)))
+        end
     elseif left.rule == @RULE_extendedid(3)
         @assert isempty(env.declared_identifiers)
         s = make_nocopy(convert_extendedid_name_call(left, env))
-        push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_names, s, right)))
+        if last
+            push!(out.args, Expr(:call, :rtassign_names_last, s, right))
+        else
+            push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_names_more, s, right)))
+        end
     elseif left.rule == @RULE_expr(3)
-        push!(out.args, Expr(:(=), rest, Expr(:call, :rtsetindex, make_nocopy(convert_expr(left.child[1], env)),
-                                                                  make_nocopy(convert_expr(left.child[2], env)),
-                                                                  make_nocopy(convert_expr(left.child[3], env)),
-                                                                  make_nocopy(right))))
+        if last
+            push!(out.args, Expr(:call, :rtsetindex_last, make_nocopy(convert_expr(left.child[1], env)),
+                                                          make_nocopy(convert_expr(left.child[2], env)),
+                                                          make_nocopy(convert_expr(left.child[3], env)),
+                                                          make_nocopy(right)))
+
+        else
+            push!(out.args, Expr(:(=), rest, Expr(:call, :rtsetindex_more, make_nocopy(convert_expr(left.child[1], env)),
+                                                                           make_nocopy(convert_expr(left.child[2], env)),
+                                                                           make_nocopy(convert_expr(left.child[3], env)),
+                                                                           make_nocopy(right))))
+        end
     elseif left.rule == @RULE_expr(4)
-        push!(out.args, Expr(:(=), rest, Expr(:call, :rtsetindex, make_nocopy(convert_expr(left.child[1], env)),
-                                                                  make_nocopy(convert_expr(left.child[2], env)),
-                                                                  make_nocopy(right))))
+        if last
+            push!(out.args, Expr(:call, :rtsetindex_last, make_nocopy(convert_expr(left.child[1], env)),
+                                                          make_nocopy(convert_expr(left.child[2], env)),
+                                                          make_nocopy(right)))
+        else
+            push!(out.args, Expr(:(=), rest, Expr(:call, :rtsetindex_more, make_nocopy(convert_expr(left.child[1], env)),
+                                                                           make_nocopy(convert_expr(left.child[2], env)),
+                                                                           make_nocopy(right))))
+        end
     else
         throw(TranspileError("cannot assign to lhs 3"))
     end
@@ -1106,11 +1168,10 @@ function convert_assign(a::AstNode, env::AstEnv)
         else
             rhsexpr = Expr(:call, :rt_maketuple, make_tuple_array_copy(rhs)...)
         end
-        for l in lhs
-            push_assignment!(rest, r, l, rhsexpr, env)
+        for i in 1:length(lhs)
+            push_assignment!(rest, i >= length(lhs), r, lhs[i], rhsexpr, env)
             rhsexpr = rest
         end
-        push!(r.args, Expr(:call, :rt_check_empty_tuple, rest))
         return r
     else
         throw(TranspileError("internal error in convert_assign"))
@@ -2168,7 +2229,7 @@ function convert_proccmd(a::AstNode, env::AstEnv)
 
         else
             push!(r.args, Expr(:call, :rt_declare_proc, makeunknown(s)))
-            push!(r.args, Expr(:call, :rtassign, makeunknown(s), procobj))
+            push!(r.args, Expr(:call, :rtassign_last, makeunknown(s), procobj))
             return r
         end
     else

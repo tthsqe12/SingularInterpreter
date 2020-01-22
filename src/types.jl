@@ -366,7 +366,10 @@ macro warn_check(cond, msg)
     return :($(esc(cond)) ? nothing : rt_warn($(esc(msg))))
 end
 
-
 macro error_check(cond, msg)
     return :($(esc(cond)) ? nothing : rt_error($(esc(msg))))
+end
+
+macro expensive_assert(cond)
+    return nothing
 end

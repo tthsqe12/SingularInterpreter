@@ -220,6 +220,40 @@ rt_ref(a::SPoly) = a
 rt_ref(a::SIdealData) = a
 rt_ref(a::SIdeal) = a.ideal
 
+# unsafe promotion
+
+rt_promote(a::Nothing) = a
+
+rt_promote(a::SProc) = a
+
+rt_promote(a::SName) = error("internal error: The name $a leaked through. Please report this.")
+
+rt_promote(a::Int) = a
+
+rt_promote(a::BigInt) = a
+
+rt_promote(a::SString) = a
+
+rt_promote(a::Vector{Int}) = SIntVec(a)
+rt_promote(a::SIntVec) = a
+
+rt_promote(a::Array{Int, 2}) = SIntMat(a)
+rt_promote(a::SIntMat) = a
+
+rt_promote(a::Array{BigInt, 2}) = SBigIntMat(a)
+rt_promote(a::SBigIntMat) = a
+
+rt_promote(a::SListData) = SList(a)
+rt_promote(a::SList) = a
+
+rt_promote(a::SRing) = a
+
+rt_promote(a::SPoly) = a
+
+rt_promote(a::SIdealData) = SIdeal(a)
+rt_promote(a::SIdeal) = a
+
+
 
 # rt_ringof has to be used for .r_... members of newstruct, which are read-only
 function rt_ringof(a)
@@ -294,29 +328,18 @@ function rt_basering()
     return rtGlobal.callstack[end].current_ring
 end
 
-
+#=
 function rt_search_locals(a::Symbol)
     n = length(rtGlobal.callstack)
     R = rtGlobal.callstack[n].current_ring
     for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
         if rtGlobal.local_vars[i].first == a
-            b = rtGlobal.local_vars[i].second
-            if isa(b, SList)
-                if !rt_ref(b).parent.valid || rt_ref(b).parent === R
-                    return true, i
-                end
-            elseif isa(b, SingularRingType)
-                if rt_ref(b).parent === R
-                    return true, i
-                end
-            else
-                return true, i
-            end
+            return true, i
         end
     end
     return false, 0
 end
-
+=#
 
 ########################## make and friends ###################################
 
@@ -333,20 +356,20 @@ end
 # this function is named make in the c singular interpreter code
 function rt_make(a::SName, allow_unknown::Bool = false)
 
+    n = length(rtGlobal.callstack)
+
     # local
-    b, i = rt_search_locals(a.name)
-    if b
-        # local lists are expected to not know their names after make
-        # TODO: make another function rt_ref_local that does all of this in one function
-        v = rt_ref(rtGlobal.local_vars[i].second)
-        if isa(v, SListData)
-            v.back = nothing
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            return rt_ref(vars[i].second)
         end
-        return v
     end
 
+    R = rtGlobal.callstack[n].current_ring
+
     # global ring independent
-    for p in (rtGlobal.callstack[end].current_package, :Top)
+    for p in (rtGlobal.callstack[n].current_package, :Top)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
@@ -363,7 +386,6 @@ function rt_make(a::SName, allow_unknown::Bool = false)
     end
 
     # global ring dependent
-    R = rtGlobal.callstack[end].current_ring
     if haskey(R.vars, a.name)
         # ditto comment
         v = R.vars[a.name]
@@ -388,14 +410,20 @@ end
 
 function rtdefined(a::SName)
 
+    n = length(rtGlobal.callstack)
+
     # local
-    b, i = rt_search_locals(a.name)
-    if b
-        return size(rtGlobal.callstack)
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            return Int(n)
+        end
     end
 
+    R = rtGlobal.callstack[n].current_ring
+
     # global ring independent
-    for p in (rtGlobal.callstack[end].current_package, :Top)
+    for p in (rtGlobal.callstack[n].current_package, :Top)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
@@ -405,7 +433,6 @@ function rtdefined(a::SName)
     end
 
     # global ring dependent
-    R = rtGlobal.callstack[end].current_ring
     if haskey(R.vars, a.name)
         return 1
     end
@@ -438,16 +465,20 @@ end
 
 function rtkill(a::SName)
 
+    n = length(rtGlobal.callstack)
+
     # local
-    found, i = rt_search_locals(a.name)
-    if found
-        rtGlobal.local_vars[i] = rtGlobal.local_vars[end]
-        pop!(rtGlobal.local_vars)
-        return
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            vars[i] = vars[end]
+            pop!(vars)
+            return
+        end
     end
 
     # global ring independent
-    for p in (rtGlobal.callstack[end].current_package, :Top)
+    for p in (rtGlobal.callstack[n].current_package, :Top)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
@@ -466,7 +497,7 @@ function rtkill(a::SName)
 
     # hmm, where does this go
     if string(a.name) == "basering"
-        rtGlobal.callstack[end].current_ring = rtInvalidRing
+        rtGlobal.callstack[n].current_ring = rtInvalidRing
         return
     end
 
@@ -498,9 +529,9 @@ end
 
 function rt_leavefunction()
     n = length(rtGlobal.callstack)
-    @assert n > 1
+    @expensive_assert n > 1
     i = rtGlobal.callstack[n].start_local_vars - 1
-    @assert length(rtGlobal.local_vars) >= i
+    @expensive_assert length(rtGlobal.local_vars) >= i
     resize!(rtGlobal.local_vars, i)
     pop!(rtGlobal.callstack)
 end
@@ -511,12 +542,23 @@ function rtcall(allow_name_ret::Bool, f::SProc, v...)
     return f.func(v...)
 end
 
+function rtcall(allow_name_ret::Bool, f, v...)
+    @assert !isa(f, SProc)
+    @assert !isa(f, SName)
+    rt_error("objects of type `$(rt_typestring(f))` are not callable")
+    return nothing
+end
+
 function rtcall(allow_name_ret::Bool, a::SName, v...)
 
+    n = length(rtGlobal.callstack)
+
     # local
-    b, i = rt_search_locals(a.name)
-    if b
-        return rtcall(false, rtGlobal.local_vars[i].second, v...)
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            return rtcall(false, vars[i].second, v...)
+        end
     end
 
     # global ring independent - proc
@@ -610,9 +652,12 @@ end
 
 # return does not matter, new entry symbol => value will be simply pushed onto rtGlobal.local_vars
 function rt_check_declaration_local(a::Symbol, typ)
-    found, i = rt_search_locals(a)
-    if found
-        rt_declare_warnerror(rtGlobal.local_vars[i].second, a, typ)
+    n = length(rtGlobal.callstack)
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a
+            rt_declare_warnerror(vars[i].second, a, typ)
+        end
     end
 end
 
@@ -698,7 +743,7 @@ function rt_declare_def(a::SName)
 end
 
 function rt_parameter_def(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2def(b)))
 end
 
@@ -729,7 +774,7 @@ function rt_declare_proc(a::SName)
 end
 
 function rt_parameter_proc(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2proc(b)))
 end
 
@@ -756,7 +801,7 @@ function rt_declare_int(a::SName)
 end
 
 function rt_parameter_int(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2int(b)))
 end
 
@@ -783,7 +828,7 @@ function rt_declare_bigint(a::SName)
 end
 
 function rt_parameter_bigint(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2bigint(b)))
 end
 
@@ -810,7 +855,7 @@ function rt_declare_string(a::SName)
 end
 
 function rt_parameter_string(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2string(b)))
 end
 
@@ -837,7 +882,7 @@ function rt_declare_intvec(a::SName)
 end
 
 function rt_parameter_intvec(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2intvec(b)))
 end
 
@@ -864,7 +909,7 @@ function rt_declare_intmat(a::SName, nrows::Int = 1, ncols::Int = 1)
 end
 
 function rt_parameter_intmat(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2intmat(b)))
 end
 
@@ -892,7 +937,7 @@ function rt_declare_bigintmat(a::SName, nrows::Int = 1, ncols::Int = 1)
 end
 
 function rt_parameter_bigintmat(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2bigintmat(b)))
 end
 
@@ -920,7 +965,7 @@ function rt_declare_list(a::SName)
 end
 
 function rt_parameter_list(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2list(b)))
 end
 
@@ -933,7 +978,7 @@ end
 
 function rt_parameter_ring(a::SName, b)
     #rt_warn("rings are not allowed as parameters for some reason")
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ring(b)))
 end
 
@@ -964,7 +1009,7 @@ function rt_declare_number(a::SName)
 end
 
 function rt_parameter_number(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2number(b)))
 end
 
@@ -995,7 +1040,7 @@ function rt_declare_poly(a::SName)
 end
 
 function rt_parameter_poly(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2poly(b)))
 end
 
@@ -1034,7 +1079,7 @@ function rt_declare_ideal(a::SName)
 end
 
 function rt_parameter_ideal(a::SName, b)
-    @assert rt_local_identifier_does_not_exist(a.name)
+    @expensive_assert rt_local_identifier_does_not_exist(a.name)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ideal(b)))
 end
 
@@ -1592,15 +1637,18 @@ rt_typestring(a) = rt_typedata_to_string(rt_typedata(a))
 # Since we don't know if an assignment is the first or not - and even if we did,
 # we don't know the type of the rhs - all of this type checking is done by rt_assign
 
-function rtassign(a::SName, b)
+function rtassign_more(a::SName, b)
+
+    n = length(rtGlobal.callstack)
 
     # local
-    ok, i = rt_search_locals(a.name)
-    if ok
-        l = rtGlobal.local_vars
-        newvalue, rest = rt_assign(l[i].second, b)
-        l[i] = Pair(l[i].first, newvalue)
-        return rest
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            newvalue, rest = rt_assign_more(vars[i].second, b)
+            vars[i] = Pair(vars[i].first, newvalue)
+            return rest
+        end
     end
 
     # global ring independent
@@ -1612,7 +1660,7 @@ function rtassign(a::SName, b)
                     rt_assign_global_list_ring_indep(d, a.name, rt_convert2list(b))
                     return empty_tuple
                 else
-                    d[a.name], rest = rt_assign(d[a.name], b)
+                    d[a.name], rest = rt_assign_more(d[a.name], b)
                     return rest
                 end
                 return
@@ -1634,6 +1682,49 @@ function rtassign(a::SName, b)
 
     rt_error("cannot assign to " * String(a.name))
 end
+
+function rtassign_last(a::SName, b)
+
+    n = length(rtGlobal.callstack)
+
+    # local
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            vars[i] = Pair(vars[i].first, rt_assign_last(vars[i].second, b))
+            return
+        end
+    end
+
+    R = rtGlobal.callstack[n].current_ring
+
+    # global ring independent
+    for p in (rtGlobal.callstack[n].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                if isa(d[a.name], SList)
+                    rt_assign_global_list_ring_indep(d, a.name, rt_convert2list(b))
+                else
+                    d[a.name] = rt_assign_last(d[a.name], b)
+                end
+                return
+            end
+        end
+    end
+
+    # global ring dependent
+    if haskey(R.vars, a.name)
+        if isa(R.vars[a.name], SList)
+            rt_assign_global_list_ring_dep(R, a.name, rt_convert2list(b))
+        else
+            R.vars[a.name]= rt_assign_last(R.vars[a.name], b)
+        end
+    end
+
+    rt_error("cannot assign to " * String(a.name))
+end
+
 
 function rtassign_names(a::Vector{SName}, b)
     for i in a
@@ -1689,13 +1780,16 @@ end
 
 function rt_incrementby(a::SName, b::Int)
 
+    n = length(rtGlobal.callstack)
+
     # local
-    ok, i = rt_search_locals(a.name)
-    if ok
-        l = rtGlobal.local_vars
-        newvalue, rest = rt_assign(l[i].second, rtplus(l[i].second, b))
-        l[i] = Pair(l[i].first, newvalue)
-        return
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_local_vars:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            newvalue = rt_assign_last(vars[i].second, rtplus(vars[i].second, b))
+            vars[i] = Pair(vars[i].first, newvalue)
+            return
+        end
     end
 
     # global ring independent
@@ -1703,7 +1797,7 @@ function rt_incrementby(a::SName, b::Int)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                d[a.name], rest = rt_assign(d[a.name], rtplus(d[a.name], b))
+                d[a.name] = rt_assign_last(d[a.name], rtplus(d[a.name], b))
                 return
             end
         end
@@ -1712,7 +1806,7 @@ function rt_incrementby(a::SName, b::Int)
     # global ring dependent
     d = rtGlobal.callstack[end].current_ring.vars
     if haskey(d, a.name)
-        d[a.name], rest = rt_assign(d[a.name], rtplus(d[a.name], b))
+        d[a.name] = rt_assign_last(d[a.name], rtplus(d[a.name], b))
         return
     end
 
@@ -1721,71 +1815,141 @@ end
 
 
 #### assignment to nothing - used at least for the first set of a variable of type def
-function rt_assign(a::Nothing, b)
+function rt_assign_more(a::Nothing, b)
     @assert !isa(b, STuple)
     return rt_copy(b), empty_tuple
 end
 
-function rt_assign(a::Nothing, b::STuple)
+function rt_assign_more(a::Nothing, b::STuple)
     @error_check(!isempty(b), "too few arguments to assignment on right hand side")
     return popfirst!(b.list), b
 end
 
+function rt_assign_last(a::Nothing, b)
+    @assert !isa(b, STuple)
+    return rt_copy(b)
+end
+
+function rt_assign_last(a::Nothing, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return b.list[1]
+end
+
+
 #### assignment to proc
-function rt_assign(a::SProc, b)
+function rt_assign_more(a::SProc, b)
     @assert !isa(b, STuple)
     return rt_convert2proc(b), empty_tuple
 end
 
-function rt_assign(a::SProc, b::STuple)
-    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+function rt_assign_more(a::SProc, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2proc(popfirst!(b.list)), b
 end
 
+function rt_assign_last(a::SProc, b)
+    @assert !isa(b, STuple)
+    return rt_convert2proc(b)
+end
+
+function rt_assign_last(a::SProc, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2proc(b.list[1])
+end
+
 #### assignment to int
-function rt_assign(a::Int, b)
+function rt_assign_more(a::Int, b)
     @assert !isa(b, STuple)
     return rt_convert2int(b), empty_tuple
 end
 
-function rt_assign(a::Int, b::STuple)
-    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+function rt_assign_more(a::Int, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2int(popfirst!(b.list)), b
 end
 
+function rt_assign_last(a::Int, b)
+    @assert !isa(b, STuple)
+    return rt_convert2int(b)
+end
+
+function rt_assign_last(a::Int, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2int(b.list[1])
+end
+
+
 #### assignment to bigint
-function rt_assign(a::BigInt, b)
+function rt_assign_more(a::BigInt, b)
     @assert !isa(b, STuple)
     return rt_convert2bigint(b), empty_tuple
 end
 
-function rt_assign(a::BigInt, b::STuple)
-    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+function rt_assign_more(a::BigInt, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2bigint(popfirst!(b.list)), b
 end
 
+function rt_assign_last(a::BigInt, b)
+    @assert !isa(b, STuple)
+    return rt_convert2bigint(b)
+end
+
+function rt_assign_last(a::BigInt, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2bigint(b.list[1])
+end
+
 #### assignment to string
-function rt_assign(a::SString, b)
+function rt_assign_more(a::SString, b)
     @assert !isa(b, STuple)
     return rt_convert2string(b), empty_tuple
 end
 
-function rt_assign(a::SString, b::STuple)
-    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+function rt_assign_more(a::SString, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2string(popfirst!(b.list)), b
 end
 
+function rt_assign_last(a::SString, b)
+    @assert !isa(b, STuple)
+    return rt_convert2string(b)
+end
+
+function rt_assign_last(a::SString, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2string(b.list[1])
+end
+
 #### assignment to intvec
-function rt_assign(a::SIntVec, b)
+function rt_assign_more(a::SIntVec, b)
+    @assert !isa(b, STuple)
     return rt_convert2intvec(b), empty_tuple
 end
 
-#### assignment to intmat
-function rt_assign(a::_IntMat, b::_IntMat)
-    return rt_copy(b)
+function rt_assign_more(a::SIntVec, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
+    return rt_convert2intvec(popfirst!(b.list)), b
 end
 
-function rt_assign(a::_IntMat, b::STuple)
+function rt_assign_last(a::SIntVec, b)
+    @assert !isa(b, STuple)
+    return rt_convert2intvec(b)
+end
+
+function rt_assign_last(a::SIntVec, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2intvec(b.list[1])
+end
+
+#### assignment to intmat
+function rt_assign_more(a::_IntMat, b)
+    @assert !isa(b, STuple)
+    rt_error("assignment not implemented yet")
+    return rt_defaultconstructor_intmat(), empty_tuple
+end
+
+function rt_assign_more(a::_IntMat, b::STuple)
     A = rt_edit(a)
     nrows, ncols = size(A)
     row_idx = col_idx = 1
@@ -1803,8 +1967,29 @@ function rt_assign(a::_IntMat, b::STuple)
     return SIntMat(A), b
 end
 
-function rt_assign(a::_IntMat, b)
-    rt_error("cannot assign $(rt_typestring(b)) to intmat")
+function rt_assign_last(a::_IntMat, b)
+    @assert !isa(b, STuple)
+    rt_error("assignment not implemented yet")
+    return rt_copy(b)
+end
+
+function rt_assign_last(a::_IntMat, b::STuple)
+    A = rt_edit(a)
+    nrows, ncols = size(A)
+    row_idx = col_idx = 1
+    while !isempty(b.list)
+        A[row_idx, col_idx] = rt_convert2int(popfirst!(b.list))
+        col_idx += 1
+        if col_idx > ncols
+            col_idx = 1
+            row_idx += 1
+            if row_idx > nrows
+                break
+            end
+        end
+    end
+    @error_check(isempty(b.list), "argument mismatch in assignment")
+    return SIntMat(A)
 end
 
 #### assignment to bigintmat
@@ -1830,47 +2015,64 @@ function rt_assign(a::_BigIntMat, b::STuple)
     return SBigIntMat(A), b
 end
 
-function rt_assign(a::_BigIntMat, b)
-    rt_error("cannot assign $b to bigintmat")
-end
-
 #### assignment to list
-function rt_assign(a::_List, b::_List)
-    return rt_copy(b), empty_tuple
-end
-
-function rt_assign(a::_List, b)
+function rt_assign_more(a::_List, b)
     return rt_convert2list(b), empty_tuple
 end
 
+function rt_assign_last(a::_List, b)
+    return rt_convert2list(b)
+end
+
 #### assignment to ring
-function rt_assign(a::SRing, b)
+function rt_assign_more(a::SRing, b)
     @assert !isa(b, STuple)
     return rt_convert2ring(b), empty_tuple
 end
 
-function rt_assign(a::SRing, b::STuple)
+function rt_assign_more(a::SRing, b::STuple)
     @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2ring(popfirst!(b.list)), b
 end
 
+function rt_assign_last(a::SRing, b)
+    @assert !isa(b, STuple)
+    return rt_convert2ring(b)
+end
+
+function rt_assign_last(a::SRing, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2ring(b.list[1])
+end
+
 #### assignment to poly
-function rt_assign(a::SPoly, b)
+function rt_assign_more(a::SPoly, b)
     @assert !isa(b, STuple)
     return rt_convert2poly(b), empty_tuple
 end
 
-function rt_assign(a::SPoly, b::STuple)
-    @error_check(!isempty(b), "too few arguments to assignment on right hand side")
+function rt_assign_more(a::SPoly, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2poly(popfirst!(b.list)), b
 end
 
+function rt_assign_last(a::SPoly, b)
+    @assert !isa(b, STuple)
+    return rt_convert2poly(b)
+end
+
+function rt_assign_last(a::SPoly, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2poly(b.list[1])
+end
+
 #### assignment to ideal
-function rt_assign(a::SIdeal, b)
+function rt_assign_more(a::SIdeal, b)
+    @assert !isa(b, STuple)
     return rt_convert2ideal(b), empty_tuple
 end
 
-function rt_assign(a::SIdeal, b::STuple)
+function rt_assign_more(a::SIdeal, b::STuple)
     r::SIdeal = rt_new_empty_ideal()
     while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, SNumber, SPoly, SIdeal})
         i = popfirst!(b.list)
@@ -1879,6 +2081,23 @@ function rt_assign(a::SIdeal, b::STuple)
                               r.ideal.parent.ring_ptr)
     end
     return r, b
+end
+
+function rt_assign_last(a::SIdeal, b)
+    @assert !isa(b, STuple)
+    return rt_convert2ideal(b)
+end
+
+function rt_assign_last(a::SIdeal, b::STuple)
+    r::SIdeal = rt_new_empty_ideal()
+    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, SNumber, SPoly, SIdeal})
+        i = popfirst!(b.list)
+        libSingular.id_append(r.ideal.ideal_ptr,
+                              rt_convert2ideal_ptr(i, r.ideal.parent),
+                              r.ideal.parent.ring_ptr)
+    end
+    @error_check(isempty(b.list), "argument mismatch in assignment")
+    return r
 end
 
 
@@ -2102,6 +2321,7 @@ function rt_maketuple(v...)
     end
 end
 
+#=
 function rt_checktuplelength(a::Tuple{Vararg{Any}}, n::Int)
     if length(a) != n
         rt_error("expected " * string(n) * " arguments in expression list; got " * string(length(a)))
@@ -2115,3 +2335,4 @@ end
 function rt_check_empty_tuple(a)
     @error_check(!isa(a, STuple) || isempty(a.list), "too many arguments to assignment on right hand side")
 end
+=#

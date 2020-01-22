@@ -12,10 +12,8 @@ function rtinsert(a::SListData, b, i::Int)
     else
         insert!(r.data, i + 1, bcopy)
     end
-    # remove nothings on the end
-    while !isempty(r.data) && r.data[end] == nothing
-        pop!(r.data)
-    end
+    # should not have nothings on the end remove nothings on the end
+    @expensive_assert !isempty(r.data) && r.data[end] != nothing
     if rt_is_ring_dep(bcopy)
         r.ring_dep_count += 1
         if !r.parent.valid
@@ -23,7 +21,7 @@ function rtinsert(a::SListData, b, i::Int)
             @warn_check(r.parent.valid, "list has ring dependent elements but no basering")
         end
     end
-    @assert object_is_ok(r)
+    @expensive_assert object_is_ok(r)
     return SList(r)
 end
 
@@ -39,9 +37,9 @@ end
 
 #### delete ####
 
-rtdelete(a::_List, b, i::Int) = rtinsert(rt_ref(a), b, i)
+#rtdelete(a::_List, b, i::Int) = rtdelete(rt_ref(a), b, i)
 
-function rtdelete(a::SListData, i::Int)
+function rtdelete(a::_List, i::Int)
     r = rt_edit(a)
     change = Int(rt_is_ring_dep(r.data[i]))
     deleteat!(r.data, i)
@@ -53,7 +51,7 @@ function rtdelete(a::SListData, i::Int)
     if r.ring_dep_count <= 0
         r.parent = rtInvalidRing
     end
-    @assert object_is_ok(r)
+    @expensive_assert object_is_ok(r)
     return SList(r)
 end
 

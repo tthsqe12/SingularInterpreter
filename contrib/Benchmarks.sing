@@ -1,0 +1,126 @@
+proc permute(list N)
+{
+    int i, j, k;
+    list L, L1;
+
+    if (size(N) == 1)
+    {
+        return(list(N));
+    }
+    else
+    {
+        k = 1;
+        for (i = 1; i <= size(N); i++)
+        {
+            L = permute(delete(N,i));
+            for (j = 1; j <= size(L); j++)
+            {
+                L1[k] = L[j] + list(N[i]);
+                k = k + 1;
+            }
+        }
+    }
+    return(L1);
+};
+
+proc fib1(int n)
+{
+    if (n <= 1)
+    {
+        return(n);
+    }
+    else
+    {
+        return(fib1(n - 1) + fib1(n - 2));
+    }
+};
+
+proc fib2(int n)
+{
+    bigint a = 0;
+    bigint b = 1;
+    bigint t;
+    for (int i = n; i > 0; i--)
+    {
+        t = b;
+        b = a + b;
+        a = t;
+    }
+    return(a);
+};
+
+proc fib2m(int n)
+{
+    int a = 0;
+    int b = 1;
+    int t;
+    for (int i = n; i > 0; i--)
+    {
+        t = b mod 1000;
+        b = (a + b) mod 1000;
+        a = t;
+    }
+    return(a);
+};
+
+proc fib3(int n)
+{
+    if (n <= 1)
+    {
+        return(bigint(n), bigint(1));
+    }
+    bigint a, b = fib3(n div 2);
+    if (n mod 2)
+    {
+        return(a*a + b*b, b*(2*a + b));
+    }
+    else
+    {
+        return(a*(2*b - a), a*a + b*b);
+    }
+};
+
+
+// warm up
+
+ASSUME(0, fib1(10) == 55);
+ASSUME(0, fib2(10) == 55);
+ASSUME(0, fib2m(10) == 55);
+ASSUME(0, fib3(10) == (55, 89));
+ASSUME(0, permute(list(1)) == list(list(1)));
+ASSUME(0, permute(list(1,2)) == list(list(2,1), list(1,2)));
+ASSUME(0, size(permute(list(1,2,3))) == 6);
+
+
+// let's go
+
+int time;
+bigint a, b;
+list l;
+system("--ticks-per-sec", 1000);
+time = rtimer; a    = fib1(12);         "fib1(12): " + string(rtimer - time);
+time = rtimer; a    = fib1(15);         "fib1(15): " + string(rtimer - time);
+time = rtimer; a    = fib1(18);         "fib1(18): " + string(rtimer - time);
+time = rtimer; a    = fib1(21);         "fib1(21): " + string(rtimer - time);
+time = rtimer; a    = fib1(24);         "fib1(24): " + string(rtimer - time);
+time = rtimer; a    = fib1(27);         "fib1(27): " + string(rtimer - time);
+time = rtimer; a    = fib2( 1000);      "fib2(  1000): " + string(rtimer - time);
+time = rtimer; a    = fib2( 10000);     "fib2( 10000): " + string(rtimer - time);
+time = rtimer; a    = fib2( 40000);     "fib2( 40000): " + string(rtimer - time);
+time = rtimer; a    = fib2(160000);     "fib2(160000): " + string(rtimer - time);
+time = rtimer; a    = fib2m( 1000);     "fib2m(  1000): " + string(rtimer - time);
+time = rtimer; a    = fib2m( 10000);    "fib2m( 10000): " + string(rtimer - time);
+time = rtimer; a    = fib2m( 40000);    "fib2m( 40000): " + string(rtimer - time);
+time = rtimer; a    = fib2m(160000);    "fib2m(160000): " + string(rtimer - time);
+time = rtimer; a    = fib2m(640000);    "fib2m(640000): " + string(rtimer - time);
+time = rtimer; a, b = fib3(10^3);       "fib3(10^3): " + string(rtimer - time);
+time = rtimer; a, b = fib3(10^4);       "fib3(10^4): " + string(rtimer - time);
+time = rtimer; a, b = fib3(10^5);       "fib3(10^5): " + string(rtimer - time);
+time = rtimer; a, b = fib3(10^6);       "fib3(10^6): " + string(rtimer - time);
+time = rtimer; a, b = fib3(10^7);       "fib3(10^7): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3));             "permute(3): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4));           "permute(4): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5));         "permute(5): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6));       "permute(6): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6,7));     "permute(7): " + string(rtimer - time);
+time = rtimer; l = permute(list(1,2,3,4,5,6,7,8));   "permute(8): " + string(rtimer - time);
