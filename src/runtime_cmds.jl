@@ -301,6 +301,9 @@ set_arg1(x, withcopy=false) = set_arg(x, 1, withcopy)
 set_arg2(x, withcopy=false) = set_arg(x, 2, withcopy)
 
 get_res() = libSingular.get_leftv_res()
+
+get_res(::Type{Int}) = Int(get_res())
+
 get_res(::Type{SPoly}, r::SRing) =
     SPoly(libSingular.internal_void_to_poly_helper(get_res()), r)
 
@@ -319,6 +322,15 @@ function rtlead(x::Union{SPoly, _Ideal})
     get_res(typeof(x), sing_ring(x))
 end
 
+### rvar ###
+
+rtrvar(a::STuple) = STuple(Any[rtrvar(i) for i in a.list])
+
+function rtrvar(x)
+    set_arg1(x, true) # needs to be copied!
+    cmd1(IS_RINGVAR)
+    get_res(Int)
+end
 
 ##################### system stuff ########################
 

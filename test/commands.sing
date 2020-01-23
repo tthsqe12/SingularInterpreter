@@ -12,3 +12,11 @@ ASSUME(0, lead((x^2+1, y+y^3)) == (x^2, y^3));
 ideal idlead = lead(id);
 ASSUME(0, idlead[1] == x);
 ASSUME(0, idlead[2] == y^2);
+
+// rvar
+ASSUME(0, rvar(p) == 0);
+ASSUME(0, rvar(x) == 1);
+ASSUME(0, rvar(y) == 2);
+ASSUME(0, rvar(z) == 3);
+ASSUME(0, rvar((x^2, y, x)) == (0, 2, 1));
+ASSUME(0, rvar(id) == 0);
