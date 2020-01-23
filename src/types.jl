@@ -316,7 +316,25 @@ end
 # This could be passed around as a first argument to _every_ rt function, but
 # we take the simpler approach for now and manually manage a call stack in rtGlobal.callstack.
 mutable struct rtCallStackEntry
-    start_local_vars::Int       # index into rtGlobal.local_vars
+#=
+    Should always have
+        start_all_locals <= start_current_locals <= length(rtGlobal.local_vars) + 1
+
+    Variables in [start_current_locals, length(rtGlobal.local_vars)] are our
+    local vars, including the ring independent vars and the ring dependent
+    vars from the current ring.
+
+    Variables in [start_all_locals, start_current_locals) are our hidden local
+    ring dependent vars. They are hidden by the fact that their ring is not
+    the current ring.
+
+    Obviously, this makes changing the current ring inside a function an
+    expensive operation that involves rearranging the whole interval
+        [start_all_locals, length(rtGlobal.local_vars)]
+    and setting start_current_locals appropriately.
+=#
+    start_all_locals::Int       # index into rtGlobal.local_vars
+    start_current_locals::Int   # index into rtGlobal.local_vars
     current_ring::SRing
     current_package::Symbol
 end
@@ -342,7 +360,7 @@ const rtGlobal = rtGlobalState(String[],
                                time_ns(),
                                1000000000,
                                Dict(:Top => Dict{Symbol, Any}()),
-                               rtCallStackEntry[rtCallStackEntry(1, rtInvalidRing, :Top)],
+                               rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
                                Dict{String, Function}())
 
@@ -354,7 +372,7 @@ function reset_runtime()
     rtGlobal.rtimer_base = time_ns()
     rtGlobal.rtimer_scale = 1000000000
     rtGlobal.vars = Dict(:Top => Dict{Symbol, Any}())
-    rtGlobal.callstack = rtCallStackEntry[rtCallStackEntry(1, rtInvalidRing, :Top)]
+    rtGlobal.callstack = rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)]
     rtGlobal.local_vars = Pair{Symbol, Any}[]
     rtGlobal.newstruct_casts = Dict{String, Function}()
 end
@@ -372,4 +390,5 @@ end
 
 macro expensive_assert(cond)
     return nothing
+#    return :($(esc(cond)) ? nothing : rt_error("expensive assertion failed"))
 end

@@ -144,14 +144,6 @@ function make_copy(a)
     end
 end
 
-function make_promotion(a)
-    if is_a_name(a)
-        return Expr(:call, :rt_promote, Expr(:call, :rt_make, a))
-    else
-        return Expr(:call, :rt_copy_allow_tuple, a)
-    end
-end
-
 function convert_stringexpr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_stringexpr(0) < 100
     return SString(a.child[1])
@@ -582,7 +574,7 @@ end
 
 
 function rt_assume_level_ok(a::Int)
-    level = rt_make(SName(:assumeLevel), true)
+    level = rt_make_allow_name_ret(SName(:assumeLevel))
     if isa(level, SName)
         # assumeLevel is undefined
         return a == 0
@@ -596,7 +588,7 @@ function rt_assume_level_ok(a::Int)
 end
 
 function rt_assume_level_ok(a)
-        rt_error("first argument of ASSUME must be an int")
+    rt_error("first argument of ASSUME must be an int")
 end
 
 function scan_expr(a::AstNode, env::AstEnv)
@@ -683,8 +675,7 @@ function convert_returncmd(a::AstNode, env::AstEnv)
         t = gensym()
         r = Expr(:block)
         if length(b) == 1
-            push!(r.args, Expr(:(=), t, make_promotion(b[1])))
-#            push!(r.args, Expr(:(=), t, make_copy(b[1])))
+            push!(r.args, Expr(:(=), t, make_copy(b[1])))
         else
             push!(r.args, Expr(:(=), t, Expr(:call, :rt_maketuple, make_tuple_array_copy(b)...)))
         end
@@ -840,14 +831,14 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
         push!(out.args, Expr(:(=), t1, make_nocopy(convert_expr(left.child[1], env))))
         push!(out.args, Expr(:(=), t2, make_nocopy(convert_expr(left.child[2], env))))
         push!(out.args, Expr(:(=), t3, make_nocopy(convert_expr(left.child[3], env))))
-        push!(out.args, Expr(:call, :rtsetindex, t1, t2, t3,
+        push!(out.args, Expr(:call, :rtsetindex_laste, t1, t2, t3,
                             Expr(:call, :rtplus, Expr(:call, :rtgetindex, t1, t2, t3), right)))
     elseif left.rule == @RULE_expr(4)
         t1 = gensym()
         t2 = gensym()
         push!(out.args, Expr(:(=), t1, make_nocopy(convert_expr(left.child[1], env))))
         push!(out.args, Expr(:(=), t2, make_nocopy(convert_expr(left.child[2], env))))
-        push!(out.args, Expr(:call, :rtsetindex, t1, t2,
+        push!(out.args, Expr(:call, :rtsetindex_last, t1, t2,
                             Expr(:call, :rtplus, Expr(:call, :rtgetindex, t1, t2), right)))
     else
         throw(TranspileError("cannot increment/decrement lhs"))
@@ -1027,11 +1018,6 @@ function push_exprlist_expr!(l::Array{AstNode}, a::AstNode, env::AstEnv)
     end
 end
 
-
-function rt_set_current_ring(a::SRing)
-    rtGlobal.callstack[end].current_ring = a
-end
-
 function rt_make_ring_from_ringlist(a::SListData)
     error("rt_make_ring_from_ringlist not implement")
     return rtInvalidRing
@@ -1073,7 +1059,7 @@ function rt_declare_assign_ring(a::SName, b::SRing)
         d = rt_check_declaration_global_ring_indep(a.name, SRing)
         d[a.name] = b
     end
-    rtGlobal.callstack[n].current_ring = b
+    rt_set_current_ring(b)
     return
 end
 
@@ -1456,7 +1442,7 @@ function rt_parse_coeff(coeff)
     push!(r, a)
     for a in coeff[2:end]
         if isa(a, SName)
-            a = rt_make(a, true)
+            a = rt_make_allow_name_ret(a)
             if isa(a, SName)
                 a = String(a.name)
             else

@@ -1,10 +1,14 @@
 #=
 the transpiler DOES NOT produce names for any arguments of these functions
+
+    SINGULAR        JULIA
+    a[i]            rtgetindex(a, i)
+    a[i] = b        rtsetindex_last(a, i, b)
+    a[i, j]         rtgetindex(a, i, j)
+    a[i, j] = b     rtsetindex_last(a, i, j, b)
+    a[i], b[j] = c  rtsetindex_last(b, j, rtsetindex_more(a, i, c))
+
     SINGULAR    JULIA
-    a[i]        rtgetindex(a, i)
-    a[i] = b    rtsetindex_more(a, i, b)
-    a[i, j]     rtgetindex(a, i, j)
-    a[i, j] = b rtsetindex_more(a, i, j, b)
     a + b       rtplus(a, b)
     -a          rtminus(a)
     a - b       rtminus(a, b)
@@ -73,7 +77,7 @@ function rtsetindex_more(a::SListData, i::Vector{Int}, b)
         rt_setindex(a, i[1], b)
         return empty_tuple
     else
-        @error_check(!isempty(i), "argument mismatch in assignment")
+        @error_check(isempty(i), "argument mismatch in assignment")
         return b
     end
 end
@@ -107,7 +111,7 @@ function rtsetindex_last(a::SListData, i::Vector{Int}, b)
     if length(i) == 1
         rt_setindex(a, i[1], b)
     else
-        @error_check(!isempty(i), "argument mismatch in assignment")
+        @error_check(isempty(i), "argument mismatch in assignment")
     end
     return
 end
@@ -260,7 +264,7 @@ function rtgetindex(a::Vector{Int}, i::Vector{Int})
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
-rtsetindex_more(a::_IntVec, i::Union{Int, _IntVec}, b) = rtgetindex(rt_ref(a), rt_ref(i), b)
+rtsetindex_more(a::_IntVec, i::Union{Int, _IntVec}, b) = rtsetindex_more(rt_ref(a), rt_ref(i), b)
 
 function rtsetindex_more(a::Vector{Int}, i::Int, b)
     @assert !isa(b, STuple)
@@ -270,7 +274,7 @@ end
 
 function rtsetindex_more(a::Vector{Int}, i::Int, b::STuple)
     @error_check(!isempty(b.list), "argument mismatch in assignment")
-    a[i] = rt_convert2int(popfirst!(b))
+    a[i] = rt_convert2int(popfirst!(b.list))
     return b
 end
 
@@ -280,7 +284,7 @@ function rtsetindex_more(a::Vector{Int}, i::Vector{Int}, b)
         a[i[1]] = rt_convert2int(b)
         return empty_tuple
     else
-        @error_check(!isempty(i), "argument mismatch in assignment")
+        @error_check(isempty(i), "argument mismatch in assignment")
         return b
     end
 end
@@ -297,6 +301,40 @@ function rtsetindex_more(a::Vector{Int}, i::Vector{Int}, b::STuple)
     deleteat!(b.list, 1:n)
     return b
 end
+
+rtsetindex_last(a::_IntVec, i::Union{Int, _IntVec}, b) = rtsetindex_last(rt_ref(a), rt_ref(i), b)
+
+function rtsetindex_last(a::Vector{Int}, i::Int, b)
+    @assert !isa(b, STuple)
+    a[i] = rt_convert2int(b)
+    return
+end
+
+function rtsetindex_last(a::Vector{Int}, i::Int, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    a[i] = rt_convert2int(b.list[1])
+    return
+end
+
+function rtsetindex_last(a::Vector{Int}, i::Vector{Int}, b)
+    @assert !isa(b, STuple)
+    @error_check(length(i) == 1, "argument mismatch in assignment")
+    a[i[1]] = rt_convert2int(b)
+    return
+end
+
+function rtsetindex_last(a::Vector{Int}, i::Vector{Int}, b::STuple)
+    n = length(i)
+    @error_check(length(b.list) == n, "argument mismatch in assignment")
+    if a === i
+        i = deepcopy(i)
+    end
+    for t in 1:n
+        a[i[t]] = rt_convert2int(b.list[t])
+    end
+    return
+end
+
 
 
 #### intmat/bigintmat get/setindex ####
@@ -320,15 +358,15 @@ end
 
 
 rtsetindex_more(a::Union{_IntMat, _BigIntMat},
-           i::Union{Int, _IntVec},
-           j::Union{Int, _IntVec},
-           b) =
+                i::Union{Int, _IntVec},
+                j::Union{Int, _IntVec},
+                b) =
     rtsetindex_more(rt_ref(a), rt_ref(i), rt_ref(j), b)
 
 function rtsetindex_more(a::Union{Array{Int, 2}, Array{BigInt, 2}},
-                    i::Union{Int, Vector{Int}},
-                    j::Union{Int, Vector{Int}},
-                    b)
+                         i::Union{Int, Vector{Int}},
+                         j::Union{Int, Vector{Int}},
+                         b)
     @assert !isa(b, STuple)
     first = true
     for s in i
@@ -362,11 +400,56 @@ function rtsetindex_more(a::Union{Array{Int, 2}, Array{BigInt, 2}},
     return b
 end
 
+rtsetindex_last(a::Union{_IntMat, _BigIntMat},
+                i::Union{Int, _IntVec},
+                j::Union{Int, _IntVec},
+                b) =
+    rtsetindex_last(rt_ref(a), rt_ref(i), rt_ref(j), b)
+
+function rtsetindex_last(a::Union{Array{Int, 2}, Array{BigInt, 2}},
+                         i::Union{Int, Vector{Int}},
+                         j::Union{Int, Vector{Int}},
+                         b)
+    @assert !isa(b, STuple)
+    first = true
+    for s in i
+        for t in j
+            @error_check(first, "argument mismatch in assignment")
+            if isa(a, Array{Int, 2})
+                a[s, t] = rt_convert2int(b)
+            else
+                a[s, t] = rt_convert2bigint(b)
+            end
+            first = false
+        end
+    end
+    @error_check(!first, "argument mismatch in assignment")
+    return
+end
+
+function rtsetindex_last(a::Union{Array{Int, 2}, Array{BigInt, 2}},
+                    i::Union{Int, Vector{Int}},
+                    j::Union{Int, Vector{Int}},
+                    b::STuple)
+    for s in i
+        for t in j
+            @error_check(!isempty(b.list), "argument mismatch in assignment")
+            if isa(a, Array{Int, 2})
+                a[s, t] = rt_convert2int(popfirst!(b.list))
+            else
+                a[s, t] = rt_convert2bigint(popfirst!(b.list))
+            end
+        end
+    end
+    @error_check(isempty(b.list), "argument mismatch in assignment")
+    return
+end
+
 
 
 #### ideal get/setindex ####
 
-rtgetindex(a::SIdeal, i::Int) = rtgetindex(a.ideal, i)
+rtgetindex(a::_Ideal, i::Union{Int, _IntVec}) = rtgetindex(rt_ref(a), rt_ref(i))
 
 function rtgetindex(a::SIdealData, i::Int)
     n = Int(libSingular.ngens(a.ideal_ptr))
@@ -376,16 +459,86 @@ function rtgetindex(a::SIdealData, i::Int)
     return SPoly(r2, a.parent)
 end
 
-rtsetindex_more(a::SIdeal, i::Int, b) = rtsetindex_more(a.ideal, i, b)
+function rtgetindex(a::SIdealData, i::Vector{Int})
+    r = Any[rtgetindex(a, t) for t in i]
+    return length(r) == 1 ? r[1] : STuple(r)
+end
 
-function rtsetindex_more(a::SIdealData, i::Int, b)
+function rt_setindex(a::SIdealData, i::Int, b)
+    @assert !isa(b, STuple)    
     @error_check(i > 0, "ideal index must be positive for assignment")
     libSingular.id_setindex_fancy(a.ideal_ptr, Cint(i), rt_convert2poly_ptr(b, a.parent), a.parent.ring_ptr)
+    return
+end
+
+rtsetindex_more(a::_Ideal, i::Union{Int, _IntVec}, b) = rtsetindex_more(rt_ref(a), rt_ref(i), b)
+
+function rtsetindex_more(a::SIdealData, i::Int, b)
+    @assert !isa(b, STuple)
+    rt_setindex(a, i, b)
     return empty_tuple
+end
+
+function rtsetindex_more(a::SIdealData, i::Int, b::STuple)
+    @error_check(!isempty(b.list), "argument mismatch in assignment")
+    rt_setindex(a, i, popfirst!(b.list))
+    return b
+end
+
+function rtsetindex_more(a::SIdealData, i::Vector{Int}, b)
+    @assert !isa(b, STuple)
+    if length(i) == 1
+        rt_setindex(a, i, b)
+        return empty_tuple
+    else
+        @error_check(isempty(i), "argument mismatch in assignment")
+        return b
+    end
+end
+
+function rtsetindex_more(a::SIdealData, i::Vector{Int}, b::STuple)
+    n = length(i)
+    @error_check(length(b.data) >= n, "argument mismatch in assignment")
+    for t in 1:n
+        rt_setindex(a, i[t], b.list[t])
+    end
+    deleteat!(b.list, 1:n)
+    return b
+end
+
+rtsetindex_last(a::_Ideal, i::Union{Int, _IntVec}, b) = rtsetindex_last(rt_ref(a), rt_ref(i), b)
+
+function rtsetindex_last(a::SIdealData, i::Int, b)
+    @assert !isa(b, STuple)
+    rt_setindex(a, i, b)
+    return
+end
+
+function rtsetindex_last(a::SIdealData, i::Int, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    rt_setindex(a, i, b.list[1])
+    return
+end
+
+function rtsetindex_last(a::SIdealData, i::Vector{Int}, b)
+    @assert !isa(b, STuple)
+    @error_check(length(i) == 1, "argument mismatch in assignment")
+    rt_setindex(a, i[1], b)
+    return
+end
+
+function rtsetindex_last(a::SIdealData, i::Vector{Int}, b::STuple)
+    n = length(i)
+    @error_check(length(b.data) == n, "argument mismatch in assignment")
+    for t in 1:n
+        rt_setindex(a, i[t], b.list[t])
+    end
 end
 
 
 
+
+#########################################
 
 
 function rtplus(a::_List, b::_List)
