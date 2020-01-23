@@ -20,3 +20,4 @@ ASSUME(0, rvar(y) == 2);
 ASSUME(0, rvar(z) == 3);
 ASSUME(0, rvar((x^2, y, x)) == (0, 2, 1));
 ASSUME(0, rvar(id) == 0);
+ASSUME(0, rvar(r) == 0);

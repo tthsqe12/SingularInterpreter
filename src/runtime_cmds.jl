@@ -297,6 +297,13 @@ function set_arg(x::Union{SPoly,_Ideal}, i, withcopy)
     libSingular.set_leftv_arg_i(sing_ptr(x), i, withcopy)
 end
 
+function set_arg(x::SRing, i, withcopy=false)
+    libSingular.rChangeCurrRing(x.ring_ptr)
+    v = libSingular.internal_to_void_helper(x.ring_ptr)
+    libSingular.set_leftv_arg_i(v, i, withcopy)
+end
+
+
 set_arg1(x, withcopy=false) = set_arg(x, 1, withcopy)
 set_arg2(x, withcopy=false) = set_arg(x, 2, withcopy)
 
@@ -327,7 +334,7 @@ end
 rtrvar(a::STuple) = STuple(Any[rtrvar(i) for i in a.list])
 
 function rtrvar(x)
-    set_arg1(x, true) # needs to be copied!
+    set_arg1(x, !(x isa SRing)) # needs to be copied! (except for rings)
     cmd1(IS_RINGVAR)
     get_res(Int)
 end

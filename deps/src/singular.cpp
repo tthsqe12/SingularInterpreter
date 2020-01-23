@@ -102,6 +102,16 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                            lv.rtyp = IDEAL_CMD;
                                        });
 
+    // experimental
+    Singular.method("set_leftv_arg_i", [](void *x, int i, bool copy) {
+                                           assert(0 <= i && i <= 2);
+                                           assert(!copy);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = x;
+                                           lv.rtyp = ANY_TYPE;
+                                       });
+
     Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
     Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
 
@@ -113,6 +123,9 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
 
     Singular.method("internal_void_to_ideal_helper",
                       [](void * x) { return reinterpret_cast<ideal>(x); });
+
+    Singular.method("internal_to_void_helper",
+                      [](ring x) { return reinterpret_cast<void*>(x); });
 
     // Calls the Singular interpreter with `input`.
     // `input` needs to be valid Singular input.
