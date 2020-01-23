@@ -10,6 +10,11 @@ static std::string singular_return;
 static std::string singular_error;
 static std::string singular_warning;
 
+// for calling interpreter routines from SingularInterpreter
+static sleftv lv1;
+static sleftv lv2;
+static sleftv lvres;
+
 // Internal singular interpreter variable
 extern int         inerror;
 
@@ -81,9 +86,25 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
     singular_define_matrices(Singular);
     singular_define_coeff_rings(Singular);
 
+    Singular.method("set_leftv_arg_i", [](poly p, int i, bool copy) {
+                                           assert(0 <= i && i <= 2);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = copy ? pCopy(p) : p;
+                                           lv.rtyp = POLY_CMD;
+                                       });
+
+    Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
+    Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
+
+    Singular.method("rChangeCurrRing", [](ring r) {
+                                           ring old = currRing;
+                                           rChangeCurrRing(r);
+                                           return old;
+                                       });
 
     // Calls the Singular interpreter with `input`.
-    // `input` needs to be valid Singular input. 
+    // `input` needs to be valid Singular input.
     // Returns a 4-tuple:
     // 1. entry is a bool, indicated if an error has happened
     // 2. entry is the output as a string
