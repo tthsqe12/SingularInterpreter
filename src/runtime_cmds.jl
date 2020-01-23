@@ -292,9 +292,9 @@ end
 
 op_code(cmd::CMDS) = Int(cmd) - 643 # 643: divergence from Singular
 
-function set_arg(x::SPoly, i, withcopy)
-    libSingular.rChangeCurrRing(x.parent.ring_ptr)
-    libSingular.set_leftv_arg_i(x.poly_ptr, i, withcopy)
+function set_arg(x::Union{SPoly,_Ideal}, i, withcopy)
+    libSingular.rChangeCurrRing(sing_ring(x).ring_ptr)
+    libSingular.set_leftv_arg_i(sing_ptr(x), i, withcopy)
 end
 
 set_arg1(x, withcopy=false) = set_arg(x, 1, withcopy)
@@ -304,16 +304,19 @@ get_res() = libSingular.get_leftv_res()
 get_res(::Type{SPoly}, r::SRing) =
     SPoly(libSingular.internal_void_to_poly_helper(get_res()), r)
 
+get_res(::Type{<:_Ideal}, r::SRing) =
+    SIdeal(SIdealData(libSingular.internal_void_to_ideal_helper(get_res()), r))
+
 cmd1(cmd::CMDS) = libSingular.iiExprArith1(op_code(cmd))
 
-### rtlead ###
+### lead ###
 
 rtlead(a::STuple) = STuple(Any[rtlead(i) for i in a.list])
 
-function rtlead(x::SPoly)
+function rtlead(x::Union{SPoly, _Ideal})
     set_arg1(x, true)
     cmd1(LEAD_CMD)
-    get_res(SPoly, x.parent)
+    get_res(typeof(x), sing_ring(x))
 end
 
 

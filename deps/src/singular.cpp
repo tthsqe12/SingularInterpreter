@@ -86,12 +86,20 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
     singular_define_matrices(Singular);
     singular_define_coeff_rings(Singular);
 
-    Singular.method("set_leftv_arg_i", [](poly p, int i, bool copy) {
+    Singular.method("set_leftv_arg_i", [](poly x, int i, bool copy) {
                                            assert(0 <= i && i <= 2);
                                            auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
                                            lv.Init();
-                                           lv.data = copy ? pCopy(p) : p;
+                                           lv.data = copy ? pCopy(x) : x;
                                            lv.rtyp = POLY_CMD;
+                                       });
+
+    Singular.method("set_leftv_arg_i", [](ideal x, int i, bool copy) {
+                                           assert(0 <= i && i <= 2);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = copy ? idCopy(x) : x;
+                                           lv.rtyp = IDEAL_CMD;
                                        });
 
     Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
@@ -102,6 +110,9 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                            rChangeCurrRing(r);
                                            return old;
                                        });
+
+    Singular.method("internal_void_to_ideal_helper",
+                      [](void * x) { return reinterpret_cast<ideal>(x); });
 
     // Calls the Singular interpreter with `input`.
     // `input` needs to be valid Singular input.

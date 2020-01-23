@@ -32,9 +32,3 @@ ASSUME(0, -(x+y) == -x-y);
 
 kill r; ring r;
 ASSUME(0, leadexp(x*(y+z)^2) == intvec(1, 2, 0));
-
-poly p = x^2+y;
-ASSUME(0, lead(p) == x^2);
-ASSUME(0, p == x^2+y); // p not mutated
-ASSUME(0, lead(x^2+y^3) == y^3);
-ASSUME(0, lead((x^2+1, y+y^3)) == (x^2, y^3))

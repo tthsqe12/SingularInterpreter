@@ -1,0 +1,14 @@
+ring r;
+
+poly p = x^2+y;
+ideal id = (x, y^2+y);
+
+// lead
+ASSUME(0, lead(p) == x^2);
+ASSUME(0, p == x^2+y); // p not mutated
+ASSUME(0, lead(x^2+y^3) == y^3);
+ASSUME(0, lead((x^2+1, y+y^3)) == (x^2, y^3));
+
+ideal idlead = lead(id);
+ASSUME(0, idlead[1] == x);
+ASSUME(0, idlead[2] == y^2);
