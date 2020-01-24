@@ -112,6 +112,15 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                            lv.rtyp = ANY_TYPE;
                                        });
 
+    Singular.method("set_leftv_arg_i", [](std::string x, int i, bool copy) {
+                                           // TODO (or not): avoid copying this poor string 2 or 3 times
+                                           assert(0 <= i && i <= 2);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = (void*)(omStrDup(x.c_str()));
+                                           lv.rtyp = STRING_CMD;
+                                       });
+
     Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
     Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
 

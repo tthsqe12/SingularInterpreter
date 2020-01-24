@@ -303,6 +303,12 @@ function set_arg(x::SRing, i, withcopy=false)
     libSingular.set_leftv_arg_i(v, i, withcopy)
 end
 
+function set_arg(x::SString, i, withcopy=false)
+    # TODO: handle gracefully when basering is not valid
+    # (not that Singular would handle that gracefully...)
+    libSingular.rChangeCurrRing(rt_basering().ring_ptr)
+    libSingular.set_leftv_arg_i(x.string, i , withcopy)
+end
 
 set_arg1(x, withcopy=false) = set_arg(x, 1, withcopy)
 set_arg2(x, withcopy=false) = set_arg(x, 2, withcopy)
