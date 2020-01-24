@@ -2394,6 +2394,15 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
         Expr(:return, Expr(:(.), :f, QuoteNode(:data)))
     ))
 
+    # rt_promote
+    push!(r.args, Expr(:function, Expr(:call, :rt_promote, Expr(:(::), :f, newreftype)),
+        Expr(:return, Expr(:call, newtype, :f))
+    ))
+
+    push!(r.args, Expr(:function, Expr(:call, :rt_promote, Expr(:(::), :f, newtype)),
+        Expr(:return, :f)
+    ))
+
     # rt_convert2T
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :f, newreftype)),
         Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
