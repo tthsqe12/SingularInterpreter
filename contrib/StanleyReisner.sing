@@ -488,6 +488,7 @@ proc SingTest_1(ideal h)
   def qi=makeqring(h);
   for(i=1;i<=ncols(ai);i++)
   {  
+"----------------- SingTest_1 i = " + string(i) + "/" + string(ncols(ai)) + " --------------";
     bi=pbs(h, ai[i]); 
     if(bi!=0)
     {
@@ -498,6 +499,10 @@ proc SingTest_1(ideal h)
         {
           m++;
           L[m]=C;
+"------------- adding m = " + string(m) + " ------------";
+//"C.a"; C.a;
+//"C.b"; C.b;
+//"C.gens"; C.gens;
         }
       }
     }
