@@ -1164,7 +1164,7 @@ rtnot(a) = rt_error("not `$(rt_typestring(a))` failed, expected ! `int`")
 rtdotdot(a::Int, b::Int) = SIntVec(a <= b ? (a:1:b) : (a:-1:b))
 
 function rtcolon(a::Int, b::Int)
-    b < 0 && rt_error("`$a .. $b` failed, second argument must be >= 0")
+    b < 0 && rt_error("`$a : $b` failed, second argument must be >= 0")
     SIntVec(collect(Iterators.repeated(a, b)))
 end
 
