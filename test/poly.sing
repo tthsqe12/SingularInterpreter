@@ -32,3 +32,10 @@ ASSUME(0, -(x+y) == -x-y);
 
 kill r; ring r;
 ASSUME(0, leadexp(x*(y+z)^2) == intvec(1, 2, 0));
+
+ASSUME(0, !(x < y));
+ASSUME(0, x > y);
+ASSUME(0, !(x <= y));
+ASSUME(0, x <= x);
+ASSUME(0, x >= y);
+ASSUME(0, !(y >= x));

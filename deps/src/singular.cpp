@@ -123,6 +123,10 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
 
     Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
     Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
+    Singular.method("iiExprArith2", [](int op) {
+                                        // TODO: check what is the default proccall argument
+                                        return iiExprArith2(&lvres, &lv1, op, &lv2);
+                                    });
 
     Singular.method("rChangeCurrRing", [](ring r) {
                                            ring old = currRing;

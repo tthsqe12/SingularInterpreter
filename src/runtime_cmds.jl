@@ -290,7 +290,10 @@ end
 
 ##################### the lazy way: use sleftv's ##########
 
-op_code(cmd::CMDS) = Int(cmd) - 643 # 643: divergence from Singular
+function op_code(cmd::CMDS)
+    c = Int(cmd)
+    c < 1000 ? c : c - 643 # 643: divergence from Singular
+end
 
 function set_arg(x::Union{SPoly,_Ideal}, i, withcopy)
     libSingular.rChangeCurrRing(sing_ring(x).ring_ptr)
@@ -324,6 +327,8 @@ get_res(::Type{<:_Ideal}, r::SRing) =
     SIdeal(SIdealData(libSingular.internal_void_to_ideal_helper(get_res()), r))
 
 cmd1(cmd::CMDS) = libSingular.iiExprArith1(op_code(cmd))
+cmd2(cmd::CMDS) = libSingular.iiExprArith2(op_code(cmd))
+cmd2(cmd::Char) = libSingular.iiExprArith2(Int(cmd))
 
 ### lead ###
 
@@ -343,6 +348,20 @@ function rtrvar(x)
     set_arg1(x, !(x isa SRing)) # needs to be copied! (except for rings)
     cmd1(IS_RINGVAR)
     get_res(Int)
+end
+
+### comparisons ###
+
+for (op, code) in (:rtless => '<',
+                   :rtgreater => '>',
+                   :rtlessequal => LE,
+                   :rtgreaterequal => GE)
+    @eval function $op(x, y)
+        set_arg1(x, !(x isa SRing))
+        set_arg2(y, !(y isa SRing))
+        cmd2($code)
+        get_res(Int)
+    end
 end
 
 ##################### system stuff ########################
