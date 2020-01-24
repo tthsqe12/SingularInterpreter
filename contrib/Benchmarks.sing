@@ -87,8 +87,8 @@ ASSUME(0, fib1(10) == 55);
 ASSUME(0, fib2(10) == 55);
 ASSUME(0, fib2m(10) == 55);
 ASSUME(0, fib3(10) == (55, 89));
-ASSUME(0, permute(list(1)) == list(list(1)));
-ASSUME(0, permute(list(1,2)) == list(list(2,1), list(1,2)));
+ASSUME(0, size(permute(list(1))) == 1);
+ASSUME(0, size(permute(list(1,2))) == 2);
 ASSUME(0, size(permute(list(1,2,3))) == 6);
 
 
