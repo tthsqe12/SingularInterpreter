@@ -38,3 +38,6 @@ ASSUME(0, -intvec(9) == intvec(-9));
 ASSUME(0, v - v == intvec(0, 0, 0));
 ASSUME(0, v - intvec(1, 2, 3) == 0:3);
 ASSUME(0, intvec(1, 2) - intvec(3, 4, 5) == intvec(-2, -2, -5));
+
+ASSUME(0, v - 1 == intvec(0, 1, 2));
+ASSUME(0, 1 - v == intvec(0, -2, -3)); // TODO: is this a bug (to report) in Singular?

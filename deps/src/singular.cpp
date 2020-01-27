@@ -10,6 +10,8 @@ static std::string singular_return;
 static std::string singular_error;
 static std::string singular_warning;
 
+typedef ssize_t julia_int;
+
 // for calling interpreter routines from SingularInterpreter
 static sleftv lv1;
 static sleftv lv2;
@@ -85,6 +87,14 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
     singular_define_ideals(Singular);
     singular_define_matrices(Singular);
     singular_define_coeff_rings(Singular);
+
+    Singular.method("set_leftv_arg_i", [](julia_int x, int i, bool copy) {
+                                           assert(0 <= i && i <= 2);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = (void*)x;
+                                           lv.rtyp = INT_CMD;
+                                       });
 
     Singular.method("set_leftv_arg_i", [](poly x, int i, bool copy) {
                                            assert(0 <= i && i <= 2);
