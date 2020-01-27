@@ -675,7 +675,16 @@ function convert_returncmd(a::AstNode, env::AstEnv)
         t = gensym()
         r = Expr(:block)
         if length(b) == 1
-            push!(r.args, Expr(:(=), t, make_copy(b[1])))
+            c = b[1]
+            if isa(c, Expr) && c.head === :call && length(c.args) == 2 &&
+                              c.args[1] == :rt_ref && isa(c.args[2], Symbol)
+                @assert haskey(env.declared_identifiers, string(a.args[2]))
+                push!(r.args, Expr(:(=), t, Expr(:call, :rt_promote, c.args[2])))
+            elseif is_a_name(c)
+                push!(r.args, Expr(:(=), t, Expr(:call, :rt_make_return, c)))
+            else
+                push!(r.args, Expr(:(=), t, Expr(:call, :rt_copy_allow_tuple, c)))
+            end
         else
             push!(r.args, Expr(:(=), t, Expr(:call, :rt_maketuple, make_tuple_array_copy(b)...)))
         end
