@@ -34,3 +34,11 @@ ASSUME(0, (1 || 1) == 1);
 ASSUME(0, (2 || 2) == 1);
 ASSUME(0, (0 or 1) == 1);
 ASSUME(0, (0 or 0) == 0);
+
+i = 1;
+i++;
+ASSUME(0, i == 2);
+i++;
+ASSUME(0, i == 3);
+i--;
+ASSUME(0, i == 2);

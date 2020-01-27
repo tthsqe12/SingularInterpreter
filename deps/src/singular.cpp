@@ -133,30 +133,68 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
 
     // for `Vector{Int}`
     Singular.method("set_leftv_arg_i",
-                    [](jlcxx::ArrayRef<ssize_t> a, int i, bool copy) {
+                    [](jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2, int i) {
                         assert(1 <= i && i <= 2);
+                        assert(d1 * d2 == a.size());
+                        assert(ismatrix || d2 == 1);
                         auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
                         lv.Init();
-                        intvec *iv = new intvec(a.size()); // cannot use a global intvec, Singular
-                                                           // then sometimes tries to de-allocate it
-                        for(int i=0; i<a.size(); ++i)
-                            (*iv)[i] = a[i];
+                        intvec *iv; // cannot use a global intvec, Singular
+                                    // then sometimes tries to de-allocate it
+                        if (ismatrix) {
+                            iv = new intvec(d1, d2, 0);
+                            // iv and a use row-major and column-major format respectively
+                            int i=0;
+                            for (int i2=1; i2<=d2; i2++)
+                                for (int i1=1; i1<=d1; i1++)
+                                {
+                                    IMATELEM(*iv, i1, i2) = a[i++];
+                                   std::cout << "set\n";
+                                   std::cout << ":" << i1 << "|" << i2 << "->" << i << " => " << a[i-1]<< " (" << IMATELEM(*iv, i1, i2) << ") "<<std::endl;
+                                }
+                        }
+                        else {
+                            iv = new intvec(d1);
+                            for (int i=0; i<a.size(); ++i)
+                                (*iv)[i] = a[i];
+                        }
 
                         lv.data = (void*)iv;
-                        lv.rtyp = INTVEC_CMD;
+                        lv.rtyp = ismatrix ? (int)INTMAT_CMD : (int)INTVEC_CMD;
                     });
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
     Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
 
+    Singular.method("lvres_array_get_dim",
+                    [](int d) {
+                        assert(1 <= d && d <= 2);
+                        assert(lvres.rtyp == INTVEC_CMD || lvres.rtyp == INTMAT_CMD);
+                        intvec *iv = (intvec*)lvres.data;
+                        return d == 1 ? iv->rows() : iv->cols();
+                    });
+
     Singular.method("lvres_to_jlarray",
                     [](jlcxx::ArrayRef<ssize_t> a){
-                        // TODO: check if a supports resize
-                        assert(a.size() == 0);
+                        assert(lvres.rtyp == INTVEC_CMD || lvres.rtyp == INTMAT_CMD);
                         intvec &iv = *(intvec*)lvres.data;
-                        assert(lvres.rtyp == INTVEC_CMD);
-                        for(int i=0; i<iv.length(); ++i)
-                            a.push_back(iv[i]);
+                        assert(a.size() == iv.length());
+                        int d1 = iv.rows();
+                        int d2 = iv.cols();
+                        int i = 0;
+                        if (lvres.rtyp == INTMAT_CMD)
+for (int i2=1; i2<=d2; i2++)
+                            for (int i1=1; i1<=d1; i1++)
+                                {
+                                    a[i++] = IMATELEM(iv, i1, i2);
+                                    std::cout << "get\n";
+
+                                    std::cout << ":" << i1 << "|" << i2 << "->" << i << " => " << a[i-1] <<  " (" << IMATELEM(iv, i1, i2) << ") "<<std::endl;
+                                }
+
+                        else
+                            for(i=0; i<iv.length(); ++i)
+                                a[i] = iv[i];
                     });
 
     Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
