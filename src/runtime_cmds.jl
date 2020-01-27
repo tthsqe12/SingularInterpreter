@@ -342,6 +342,8 @@ cmd1(cmd::Char) = libSingular.iiExprArith1(Int(cmd))
 cmd2(cmd::CMDS) = libSingular.iiExprArith2(op_code(cmd))
 cmd2(cmd::Char) = libSingular.iiExprArith2(Int(cmd))
 
+main_type(::_IntVec, ::_IntVec) = SIntVec
+
 ### lead ###
 
 rtlead(a::STuple) = STuple(Any[rtlead(i) for i in a.list])
@@ -366,6 +368,13 @@ function rtminus(x)
     set_arg1(x, !(x isa SRing))
     cmd1('-')
     get_res(typeof(x))
+end
+
+function rtminus(x, y)
+        set_arg1(x, !(x isa SRing))
+        set_arg2(y, !(y isa SRing))
+        cmd2('-')
+        get_res(main_type(x, y))
 end
 
 ### comparisons ###

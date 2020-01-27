@@ -14,9 +14,6 @@ static std::string singular_warning;
 static sleftv lv1;
 static sleftv lv2;
 static sleftv lvres;
-static intvec intvec1;
-static intvec intvec2;
-
 
 // Internal singular interpreter variable
 extern int         inerror;
@@ -130,14 +127,16 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                         assert(1 <= i && i <= 2);
                         auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
                         lv.Init();
-                        auto &iv = i == 1 ? intvec1 : intvec2;
-                        iv.resize(a.size());
+                        intvec *iv = new intvec(a.size()); // cannot use a global intvec, Singular
+                                                           // then sometimes tries to de-allocate it
                         for(int i=0; i<a.size(); ++i)
-                            iv[i] = a[i];
-                        lv.data = (void*)(&intvec1);
+                            (*iv)[i] = a[i];
+
+                        lv.data = (void*)iv;
                         lv.rtyp = INTVEC_CMD;
                     });
 
+    // TODO: check if lvres must be somehow de-allocated / does not leak
     Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
 
     Singular.method("lvres_to_jlarray",
