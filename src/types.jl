@@ -376,7 +376,7 @@ const empty_tuple = STuple(Any[])
 
 function reset_runtime()
     rtGlobal.optimize_locals = false
-    rtGlobal.last_printed = false
+    rtGlobal.last_printed = nothing
     rtGlobal.rtimer_base = time_ns()
     rtGlobal.rtimer_scale = 1000000000
     rtGlobal.vars = Dict(:Top => Dict{Symbol, Any}())

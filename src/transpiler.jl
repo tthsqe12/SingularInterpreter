@@ -678,7 +678,7 @@ function convert_returncmd(a::AstNode, env::AstEnv)
             c = b[1]
             if isa(c, Expr) && c.head === :call && length(c.args) == 2 &&
                               c.args[1] == :rt_ref && isa(c.args[2], Symbol)
-                @assert haskey(env.declared_identifiers, string(a.args[2]))
+                @assert haskey(env.declared_identifiers, string(c.args[2]))
                 push!(r.args, Expr(:(=), t, Expr(:call, :rt_promote, c.args[2])))
             elseif is_a_name(c)
                 push!(r.args, Expr(:(=), t, Expr(:call, :rt_make_return, c)))
@@ -788,7 +788,7 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
         if a.rule == @RULE_elemexpr(99)
             var = a.child[1]::String
             if haskey(env.declared_identifiers, var)
-                push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign, Symbol(var), Expr(:call, :rtplus, Symbol(var), right))))
+                push!(out.args, Expr(:(=), Symbol(var), Expr(:call, :rt_assign_last, Symbol(var), Expr(:call, :rtplus, Symbol(var), right))))
             else
                 push!(out.args, Expr(:call, :rt_incrementby, makeunknown(var), right))
             end
@@ -810,7 +810,7 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
                 push!(out.args, Expr(:(=), t, Expr(:call, isa(b, SName) ? :rt_make : :rt_ref, b)))    # make returns a reference
                 b = Expr(:(.), t, QuoteNode(Symbol(s)))
             end
-            push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign, b, Expr(:call, :rtplus, b, right))))
+            push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign_last, b, Expr(:call, :rtplus, b, right))))
         elseif a.rule == @RULE_elemexpr(6)
             @assert isempty(env.declared_identifiers)
             s = convert_elemexpr_name_call(a, env)
@@ -821,7 +821,7 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
     elseif left.rule == @RULE_extendedid(1)
         var = left.child[1]::String
         if haskey(env.declared_identifiers, var)
-            push!(out.args, Expr(:(=), Symbol(var), Expr(:rt_assign, Symbol(var), Expr(:call, :rtplus, Symbol(var), right))))
+            push!(out.args, Expr(:(=), Symbol(var), Expr(:rt_assign_last, Symbol(var), Expr(:call, :rtplus, Symbol(var), right))))
         else
             push!(out.args, Expr(:call, :rt_incrementby, makeunknown(var), right))
         end
@@ -1076,12 +1076,11 @@ function scan_assign_qring(a::AstNode, b::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_extendedid(0) < 100
     @assert 0 < b.rule - @RULE_exprlist(0) < 100
     scan_exprlist(b, env)
+    env.everything_is_screwed = true    # change of basering
     if a.rule == @RULE_extendedid(1)
         scan_add_declaration(a.child[1]::String, "ring", env)
-        env.rings_are_screwed = true
     elseif a.rule == @RULE_extendedid(2)
         scan_expr(b.child[1], env)
-        env.everything_is_screwed = true
     else
         throw(TranspileError("invalid qring name"))
     end
@@ -1092,19 +1091,13 @@ function convert_assign_qring(a::AstNode, b::AstNode, env::AstEnv)
     @assert 0 < b.rule - @RULE_exprlist(0) < 100
     rhs::Array{Any} = convert_exprlist(b, env)
     r = Expr(:block)
+    @assert isempty(env.declared_identifiers)   # change of basering
     if a.rule == @RULE_extendedid(1)
         var = a.child[1]::String
-        if haskey(env.declared_identifiers, var)
-            @assert env.declared_identifiers[var] == "ring"
-            push!(r.args, Expr(:(=), Symbol(var), Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
-            push!(r.args, Expr(:call, :rt_set_current_ring, Symbol(var)))
-        else
-            push!(r.args, Expr(:call, :rt_declare_assign_ring,
-                                        makeunknown(var),
-                                        Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
-        end
+        push!(r.args, Expr(:call, :rt_declare_assign_ring,
+                                    makeunknown(var),
+                                    Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
     elseif a.rule == @RULE_extendedid(2)
-        @assert isempty(env.declared_identifiers)
         push!(r.args, Expr(:call, :rt_declare_assign_ring,
                                         Expr(:call, :rt_backtick, make_nocopy(convert_expr(a.child[1], env))),
                                         Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
@@ -1609,7 +1602,7 @@ function scan_ringcmd(a::AstNode, env::AstEnv)
     else
         throw(TranspileError("internal error in scan_ringcmd"))
     end
-    env.rings_are_screwed = true # change of basering
+    env.everything_is_screwed = true # change of basering
 end
 
 function convert_ringcmd(a::AstNode, env::AstEnv)
@@ -1632,7 +1625,7 @@ function convert_ringcmd(a::AstNode, env::AstEnv)
         throw(TranspileError("internal error in convert_ringcmd"))
     end
     if use_local
-        @assert isa(var, Symbol)
+        @assert false   # nothing should be fast because basering is changing
         push!(r.args, Expr(:(=), var, ring))
         push!(r.args, Expr(:call, :rt_set_current_ring, var))
     else
