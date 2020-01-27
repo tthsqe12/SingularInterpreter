@@ -207,6 +207,9 @@ mutable struct SPoly
     end
 end
 
+sing_ring(p::SPoly) = p.parent
+sing_ptr(p::SPoly) = p.poly_ptr
+
 function rt_poly_finalizer(a::SPoly)
     libSingular.p_Delete(a.poly_ptr, a.parent.ring_ptr)
     rt_ring_finalizer(a.parent)
@@ -227,6 +230,9 @@ mutable struct SIdealData
     end
 end
 
+sing_ptr(i::SIdealData) = i.ideal_ptr
+sing_ring(i::SIdealData) = i.parent
+
 function rt_ideal_finalizer(a::SIdealData)
     libSingular.id_Delete(a.ideal_ptr, a.parent.ring_ptr)
     rt_ring_finalizer(a.parent)
@@ -236,6 +242,8 @@ struct SIdeal
     ideal::SIdealData
 end
 
+sing_ptr(i::SIdeal) = sing_ptr(i.ideal)
+sing_ring(i::SIdeal) = sing_ring(i.ideal)
 
 #### singular type "matrix"
 mutable struct SMatrix

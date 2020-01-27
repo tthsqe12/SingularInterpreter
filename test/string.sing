@@ -1,0 +1,6 @@
+ASSUME(0, "a" < "b");
+ASSUME(0, "a" <= "b");
+ASSUME(0, "a" <= "a");
+ASSUME(0, !("a" > "b"));
+ASSUME(0, !("a" >= "b"));
+ASSUME(0, "a" >= "a");
