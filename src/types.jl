@@ -115,6 +115,8 @@ struct SIntVec
     vector::Vector{Int}
 end
 
+sing_array(x::SIntVec) = x.vector
+sing_array(x::Vector) = x
 
 #### singular type "intmat"     mutable in the singular language
 struct SIntMat

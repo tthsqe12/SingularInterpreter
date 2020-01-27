@@ -310,7 +310,12 @@ function set_arg(x::SString, i, withcopy=false)
     # TODO: handle gracefully when basering is not valid
     # (not that Singular would handle that gracefully...)
     libSingular.rChangeCurrRing(rt_basering().ring_ptr)
-    libSingular.set_leftv_arg_i(x.string, i , withcopy)
+    libSingular.set_leftv_arg_i(x.string, i, withcopy)
+end
+
+function set_arg(x::_IntVec, i, withcopy=false)
+    x = sing_array(x)
+    libSingular.set_leftv_arg_i(x, i, withcopy)
 end
 
 set_arg1(x, withcopy=false) = set_arg(x, 1, withcopy)
@@ -326,7 +331,14 @@ get_res(::Type{SPoly}, r::SRing) =
 get_res(::Type{<:_Ideal}, r::SRing) =
     SIdeal(SIdealData(libSingular.internal_void_to_ideal_helper(get_res()), r))
 
+function get_res(::Type{<:_IntVec})
+    iv = Int[]
+    libSingular.lvres_to_jlarray(iv)
+    SIntVec(iv)
+end
+
 cmd1(cmd::CMDS) = libSingular.iiExprArith1(op_code(cmd))
+cmd1(cmd::Char) = libSingular.iiExprArith1(Int(cmd))
 cmd2(cmd::CMDS) = libSingular.iiExprArith2(op_code(cmd))
 cmd2(cmd::Char) = libSingular.iiExprArith2(Int(cmd))
 
@@ -348,6 +360,12 @@ function rtrvar(x)
     set_arg1(x, !(x isa SRing)) # needs to be copied! (except for rings)
     cmd1(IS_RINGVAR)
     get_res(Int)
+end
+
+function rtminus(x)
+    set_arg1(x, !(x isa SRing))
+    cmd1('-')
+    get_res(typeof(x))
 end
 
 ### comparisons ###

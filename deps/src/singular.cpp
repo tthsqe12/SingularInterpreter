@@ -14,6 +14,9 @@ static std::string singular_warning;
 static sleftv lv1;
 static sleftv lv2;
 static sleftv lvres;
+static intvec intvec1;
+static intvec intvec2;
+
 
 // Internal singular interpreter variable
 extern int         inerror;
@@ -121,7 +124,32 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                            lv.rtyp = STRING_CMD;
                                        });
 
+    // for `Vector{Int}`
+    Singular.method("set_leftv_arg_i",
+                    [](jlcxx::ArrayRef<ssize_t> a, int i, bool copy) {
+                        assert(1 <= i && i <= 2);
+                        auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                        lv.Init();
+                        auto &iv = i == 1 ? intvec1 : intvec2;
+                        iv.resize(a.size());
+                        for(int i=0; i<a.size(); ++i)
+                            iv[i] = a[i];
+                        lv.data = (void*)(&intvec1);
+                        lv.rtyp = INTVEC_CMD;
+                    });
+
     Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
+
+    Singular.method("lvres_to_jlarray",
+                    [](jlcxx::ArrayRef<ssize_t> a){
+                        // TODO: check if a supports resize
+                        assert(a.size() == 0);
+                        intvec &iv = *(intvec*)lvres.data;
+                        assert(lvres.rtyp == INTVEC_CMD);
+                        for(int i=0; i<iv.length(); ++i)
+                            a.push_back(iv[i]);
+                    });
+
     Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
     Singular.method("iiExprArith2", [](int op) {
                                         // TODO: check what is the default proccall argument
