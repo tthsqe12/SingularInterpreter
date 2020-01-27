@@ -404,11 +404,26 @@ function rt_make(a::SName)
         return rt_box_it_with_ring(p, R)
     end
 
-    allow_unknown || rt_error(String(a.name) * " is undefined")
-
-    return a
+    rt_error(String(a.name) * " is undefined")
 end
 
+# Since our local variables are going to disappear after we return, we can avoid
+# the extra copy in the code sequence return rt_copy_allow_tuple(rt_ref(localvar))
+function rt_make_return(a::SName)
+    n = length(rtGlobal.callstack)
+
+    # local
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            return vars[i].second
+        end
+    end
+
+    return rt_copy(rt_make(a)) # global variables must be copied
+end
+
+# same as make but we just return a if nothing was found
 function rt_make_allow_name_ret(a::SName)
 
     n = length(rtGlobal.callstack)
