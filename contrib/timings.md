@@ -1,5 +1,14 @@
 # benchmarks
 
+`singular`: original interpreter written in c
+
+`julia`:  interpreter written in julia that stores every variable in a lookup table
+
+`julia'`: interpreter written in julia with local variables optimized where possible
+
+The benchmarketing code has some warmups to try to get some of the julia code compiled outside of the timers.
+All times are in milliseconds.
+
 ```
 | task            | singular  |    julia  |   julia'  |
 recursive calls and int arithmetic:
@@ -35,5 +44,5 @@ recursively list all n! permutations:
 | permute(8)      |     5869  |     2310  |      950  |
 Stanley-Reisner:
 | Rina 9 vars     |   872000  |   330000  |   122000  |
-| Rina 10 vars    |  2683000  |           |   377000  |
+| Rina 10 vars    |  2683000  |  1073000  |   377000  |
 ```
