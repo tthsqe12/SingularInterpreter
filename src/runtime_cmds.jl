@@ -347,10 +347,22 @@ function get_res(::Type{<:_IntMat})
     SIntMat(im)
 end
 
-cmd1(cmd::CMDS) = libSingular.iiExprArith1(op_code(cmd))
-cmd1(cmd::Char) = libSingular.iiExprArith1(Int(cmd))
-cmd2(cmd::CMDS) = libSingular.iiExprArith2(op_code(cmd))
-cmd2(cmd::Char) = libSingular.iiExprArith2(Int(cmd))
+function iiExprArith1(x)
+    res = libSingular.iiExprArith1(x)
+    libSingular.unsetCurrRing()
+    res
+end
+
+function iiExprArith2(x)
+    res = libSingular.iiExprArith2(x)
+    libSingular.unsetCurrRing()
+    res
+end
+
+cmd1(cmd::CMDS) = iiExprArith1(op_code(cmd))
+cmd1(cmd::Char) = iiExprArith1(Int(cmd))
+cmd2(cmd::CMDS) = iiExprArith2(op_code(cmd))
+cmd2(cmd::Char) = iiExprArith2(Int(cmd))
 
 result_type(::_IntVec, ::_IntVec) = SIntVec
 result_type(::_IntVec, ::Int) = SIntVec

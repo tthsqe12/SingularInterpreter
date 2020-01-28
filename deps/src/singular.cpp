@@ -195,6 +195,8 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                            return old;
                                        });
 
+    Singular.method("unsetCurrRing", [] { rChangeCurrRing(NULL); });
+
     Singular.method("internal_void_to_ideal_helper",
                       [](void * x) { return reinterpret_cast<ideal>(x); });
 
