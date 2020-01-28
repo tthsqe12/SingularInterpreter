@@ -367,7 +367,7 @@ end
 const rtInvalidRing = SRing(false, libSingular.rDefault_null_helper(), 1)
 
 const rtGlobal = rtGlobalState(String[],
-                               false,
+                               true,
                                nothing,
                                time_ns(),
                                1000000000,
@@ -379,7 +379,7 @@ const rtGlobal = rtGlobalState(String[],
 const empty_tuple = STuple(Any[])
 
 function reset_runtime()
-    rtGlobal.optimize_locals = false
+    rtGlobal.optimize_locals = true
     rtGlobal.last_printed = nothing
     rtGlobal.rtimer_base = time_ns()
     rtGlobal.rtimer_scale = 1000000000

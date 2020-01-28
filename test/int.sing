@@ -42,3 +42,26 @@ i++;
 ASSUME(0, i == 3);
 i--;
 ASSUME(0, i == 2);
+
+ASSUME(0, !defined(f));
+ASSUME(0, !defined(j));
+proc f(int b)
+{
+    int i;
+    if (b)
+    {
+        int j;
+        i = j;
+    }
+    j++;
+    return(i + j);
+}
+ASSUME(0, f(1) == 1);
+ASSUME(0, !defined(j));
+int j = 2;
+ASSUME(0, f(1) == 1);
+ASSUME(0, j == 2);
+ASSUME(0, f(0) == 3);
+ASSUME(0, j == 3);
+ASSUME(0, f(0) == 4);
+ASSUME(0, j == 4);
