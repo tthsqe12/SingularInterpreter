@@ -629,7 +629,7 @@ function rt_set_current_ring(a::SRing)
                 @assert rt_ref(value).back === nothing
                 p = rt_ref(value).parent
                 if p.valid && !(p === a)
-                    hidden = true                    
+                    hidden = true
                 end
             elseif isa(value, _SingularRingType)
                 p = rt_ref(value).parent
@@ -673,7 +673,7 @@ function rt_set_current_ring(a::SRing)
                      join(map(string, collect(vars_in_both)), ", ")  *
                      " from " * string(pack) * "; your code is probably broken")
             return
-        end        
+        end
     end
     rtGlobal.callstack[n].current_ring = a
 end
@@ -1645,7 +1645,7 @@ function rt_indenting_print(A::Union{Array{Int, 2}, Array{BigInt, 2}}, indent::I
 end
 
 function rt_indenting_print(a::Union{SIntMat, SBigIntMat}, indent::Int)
-    return rt_indenting_print(rt_ref(a))
+    return rt_indenting_print(rt_ref(a), indent)
 end
 
 function rt_indenting_print(a::SIntVec, indent::Int)
