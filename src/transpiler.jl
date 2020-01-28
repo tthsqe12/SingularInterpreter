@@ -1765,10 +1765,10 @@ function scan_command(a::AstNode, env::AstEnv)
         scan_scriptcmd(a.child[1], env)
     elseif a.rule == @RULE_command(8)
         b = a.child[1]
-        scan_expr(b.child[2], env)
         if b.child[1].rule == @RULE_setrings(1)
-            env.rings_are_screwed = 1
-        elseif b.child[1].rule == @RULE_setrings(1)
+            scan_expr(b.child[2], env)
+            env.everything_is_screwed = true    # change of basering
+        elseif b.child[1].rule == @RULE_setrings(2)
             throw(TranspileError("keepring is not allowed"))
         else
             throw(TranspileError("internal error in scan_command 8"))
@@ -1796,7 +1796,7 @@ function convert_command(a::AstNode, env::AstEnv)
         b = a.child[1]
         if b.child[1].rule == @RULE_setrings(1)
             return Expr(:call, :rt_set_current_ring, make_nocopy(convert_expr(b.child[2], env)))
-        elseif b.child[1].rule == @RULE_setrings(1)
+        elseif b.child[1].rule == @RULE_setrings(2)
             throw(TranspileError("keepring is not allowed"))
         else
             throw(TranspileError("internal error in convert_command 8"))
