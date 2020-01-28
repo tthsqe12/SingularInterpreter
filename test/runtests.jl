@@ -11,6 +11,11 @@ for a in ["assign", "int", "intvec", "intmat", "bigintmat", "list",
         println("running ", a, ".jl")
         include(jlfile)
     end
-    println("running ", a, ".sing")
-    execute(read(joinpath(dirname(@__FILE__), a * ".sing"), String))
+
+    for opt in (false, true)
+        SingularInterpreter.reset_runtime()
+        SingularInterpreter.rtGlobal.optimize_locals = opt
+        println("running ", a, ".sing [optimize_locals = $opt]")
+        execute(read(joinpath(dirname(@__FILE__), a * ".sing"), String))
+    end
 end
