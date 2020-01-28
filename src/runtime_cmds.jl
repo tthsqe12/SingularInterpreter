@@ -398,7 +398,8 @@ end
 for (op, code) in (:rtless => '<',
                    :rtgreater => '>',
                    :rtlessequal => LE,
-                   :rtgreaterequal => GE)
+                   :rtgreaterequal => GE,
+                   :rtequalequal => EQUAL_EQUAL)
     @eval function $op(x, y)
         set_arg1(x, !(x isa SRing))
         set_arg2(y, !(y isa SRing))
