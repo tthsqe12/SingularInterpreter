@@ -2225,6 +2225,28 @@ function convert_proccmd(a::AstNode, env::AstEnv)
     end
 end
 
+function scan_filecmd(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_filecmd(0) < 100
+    if a.rule == @RULE_filecmd(1)
+        env.everything_is_screwed = true    # execute
+    else
+        throw(TranspileError("internal error in scan_filecmd"))
+    end
+end
+
+function convert_filecmd(a::AstNode, env::AstEnv)
+    @assert 0 < a.rule - @RULE_filecmd(0) < 100
+    if a.rule == @RULE_filecmd(1)
+        arg1 = Expr(:call, :rtread, convert_stringexpr(a.child[1], env))
+        t1 = gensym()
+        t2 = gensym()
+        return Expr(:block,
+                    Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, arg1)),
+                    Expr(:if, t2, Expr(:return, t1)))
+    else
+        throw(TranspileError("internal error in convert_filecmd"))
+    end
+end
 
 function scan_flowctrl(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_flowctrl(0) < 100
@@ -2237,6 +2259,8 @@ function scan_flowctrl(a::AstNode, env::AstEnv)
         scan_forcmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(5)
         scan_proccmd(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(6)
+        scan_filecmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(8)
     else
         throw(TranspileError("internal error in scan_flowctrl"))
@@ -2255,6 +2279,8 @@ function convert_flowctrl(a::AstNode, env::AstEnv)
         return convert_forcmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(5)
         return convert_proccmd(a.child[1], env)
+    elseif a.rule == @RULE_flowctrl(6)
+        return convert_filecmd(a.child[1], env)
     elseif a.rule == @RULE_flowctrl(8)
         return Expr(:block)
     else

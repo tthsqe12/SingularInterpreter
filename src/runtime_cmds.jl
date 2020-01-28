@@ -455,6 +455,22 @@ function rtbasering()
     end
 end
 
+function rtread(a::SString)
+    # this function is a can of worms
+    path = a.string
+    @error_check(!isempty(path), "cannot read empty path")
+    if path[1] != '.' || path[1] != '/' || !isfile(path)
+        for s in rtGlobal.SearchPath
+            if isfile(joinpath(s, path))
+                path = joinpath(s, path)
+                break
+            end
+        end
+    end
+    @error_check(isfile(path), "cannot find path $path")
+    return SString(read(path, String))
+end
+
 
 ################## assertions/errors/messages #################################
 
