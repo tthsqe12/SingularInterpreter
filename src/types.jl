@@ -123,6 +123,8 @@ struct SIntMat
     matrix::Array{Int, 2}
 end
 
+sing_array(x::SIntMat) = x.matrix
+sing_array(x::Matrix) = x
 
 #### singular type "bigintmat"  mutable in the singular language
 struct SBigIntMat

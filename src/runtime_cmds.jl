@@ -315,9 +315,9 @@ function set_arg(x::SString, i, withcopy=false)
     libSingular.set_leftv_arg_i(x.string, i, withcopy)
 end
 
-function set_arg(x::_IntVec, i, withcopy=false)
+function set_arg(x::Union{_IntVec,_IntMat}, i, withcopy=false)
     x = sing_array(x)
-    libSingular.set_leftv_arg_i(x, i, withcopy)
+    libSingular.set_leftv_arg_i(vec(x), x isa Matrix, size(x, 1), size(x, 2), i)
 end
 
 set_arg1(x, withcopy=false) = set_arg(x, 1, withcopy)
@@ -334,9 +334,17 @@ get_res(::Type{<:_Ideal}, r::SRing) =
     SIdeal(SIdealData(libSingular.internal_void_to_ideal_helper(get_res()), r))
 
 function get_res(::Type{<:_IntVec})
-    iv = Int[]
+    d = libSingular.lvres_array_get_dim(1)
+    iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv)
     SIntVec(iv)
+end
+
+function get_res(::Type{<:_IntMat})
+    d = libSingular.lvres_array_get_dim.((1, 2))
+    im = Matrix{Int}(undef, d)
+    libSingular.lvres_to_jlarray(vec(im))
+    SIntMat(im)
 end
 
 cmd1(cmd::CMDS) = libSingular.iiExprArith1(op_code(cmd))
@@ -347,6 +355,10 @@ cmd2(cmd::Char) = libSingular.iiExprArith2(Int(cmd))
 result_type(::_IntVec, ::_IntVec) = SIntVec
 result_type(::_IntVec, ::Int) = SIntVec
 result_type(::Int, ::_IntVec) = SIntVec
+
+result_type(::_IntMat, ::_IntMat) = SIntMat
+result_type(::_IntMat, ::Int) = SIntMat
+result_type(::Int, ::_IntMat) = SIntMat
 
 ### lead ###
 
