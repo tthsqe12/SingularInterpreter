@@ -290,11 +290,6 @@ end
 
 ##################### the lazy way: use sleftv's ##########
 
-function op_code(cmd::CMDS)
-    c = Int(cmd)
-    c < 1000 ? c : c - 643 # 643: divergence from Singular
-end
-
 set_arg(x::Int, i, withcopy) = libSingular.set_leftv_arg_i(x, i, withcopy)
 
 function set_arg(x::Union{SPoly,_Ideal}, i, withcopy)
@@ -352,10 +347,8 @@ get_res(::Type{SString}) = SString(unsafe_string(Ptr{Cchar}(get_res())))
 iiExprArith1(x) = libSingular.iiExprArith1(x)
 iiExprArith2(x) = libSingular.iiExprArith2(x)
 
-cmd1(cmd::CMDS) = iiExprArith1(op_code(cmd))
-cmd1(cmd::Char) = iiExprArith1(Int(cmd))
-cmd2(cmd::CMDS) = iiExprArith2(op_code(cmd))
-cmd2(cmd::Char) = iiExprArith2(Int(cmd))
+cmd1(cmd::Union{CMDS,Char}) = iiExprArith1(Int(cmd))
+cmd2(cmd::Union{CMDS,Char}) = iiExprArith2(Int(cmd))
 
 result_type(::_IntVec, ::_IntVec) = SIntVec
 result_type(::_IntVec, ::Int) = SIntVec

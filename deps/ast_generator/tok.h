@@ -40,7 +40,7 @@ extern int  yyparse(void);
 #define IDHDL             UMINUS+4
 
 enum {
-  ALIAS_CMD     = 1000,
+  ALIAS_CMD     = UMINUS + 15,
   ALIGN_CMD,
   ATTRIB_CMD,
   BAREISS_CMD,
@@ -175,8 +175,10 @@ enum {
   REPART_CMD,
   RES_CMD,
   RESERVEDNAME_CMD,
+  RESERVEDNAMELIST_CMD,
   RESTART_CMD,
   RESULTANT_CMD,
+  RIGHTSTD_CMD,
   RINGLIST_CMD,
   RING_LIST_CMD,
   ROWS_CMD,
