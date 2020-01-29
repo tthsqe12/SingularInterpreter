@@ -11,6 +11,10 @@ ASSUME(0, s[1] == "a");
 ASSUME(0, s[2] == "s");
 ASSUME(0, s[3] == "d");
 ASSUME(0, s[4] == "");
+// indexing with intvec is not supposed to work with anonymous strings
+ASSUME(0, s[1..3] == ("a", "s", "d"));
+ASSUME(0, s[2..4] == ("s", "d", ""));
+ASSUME(0, s[0..1] == ("", "a"));
 ASSUME(0, "asd"[0] == "");
 ASSUME(0, "asd"[1] == "a");
 ASSUME(0, "asd"[2] == "s");

@@ -290,33 +290,33 @@ end
 
 ##################### the lazy way: use sleftv's ##########
 
-set_arg(x::Int, i, withcopy) = libSingular.set_leftv_arg_i(x, i, withcopy)
+set_arg(x::Int, i; kw...) = libSingular.set_leftv_arg_i(x, i)
 
-function set_arg(x::Union{SPoly,_Ideal}, i, withcopy)
+function set_arg(x::Union{SPoly,_Ideal}, i; withcopy, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).ring_ptr)
     libSingular.set_leftv_arg_i(sing_ptr(x), i, withcopy)
 end
 
-function set_arg(x::SRing, i, withcopy=false)
+function set_arg(x::SRing, i; withcopy=false, withname=false)
     libSingular.rChangeCurrRing(x.ring_ptr)
     v = libSingular.internal_to_void_helper(x.ring_ptr)
     libSingular.set_leftv_arg_i(v, i, withcopy)
 end
 
-function set_arg(x::SString, i, withcopy=false)
+function set_arg(x::SString, i; withcopy=false, withname=false)
     # TODO: handle gracefully when basering is not valid
     # (not that Singular would handle that gracefully...)
     libSingular.rChangeCurrRing(rt_basering().ring_ptr)
-    libSingular.set_leftv_arg_i(x.string, i, withcopy)
+    libSingular.set_leftv_arg_i(x.string, i, withname)
 end
 
-function set_arg(x::Union{_IntVec,_IntMat}, i, withcopy=false)
+function set_arg(x::Union{_IntVec,_IntMat}, i; withcopy=false, withname=false)
     x = sing_array(x)
     libSingular.set_leftv_arg_i(vec(x), x isa Matrix, size(x, 1), size(x, 2), i)
 end
 
-set_arg1(x, withcopy=false) = set_arg(x, 1, withcopy)
-set_arg2(x, withcopy=false) = set_arg(x, 2, withcopy)
+set_arg1(x; withcopy=false, withname=false) = set_arg(x, 1; withcopy=withcopy, withname=withname)
+set_arg2(x; withcopy=false, withname=false) = set_arg(x, 2; withcopy=withcopy, withname=withname)
 
 get_res() = libSingular.get_leftv_res()
 
@@ -342,13 +342,24 @@ function get_res(::Type{<:_IntMat})
     SIntMat(im)
 end
 
+function get_res(::Type{STuple})
+    a = Any[]
+    while true
+        t, p = libSingular.get_leftv_res_next()
+        p == C_NULL && return STuple(a)
+        if t == Int(STRING_CMD)
+            push!(a, SString(unsafe_string(Ptr{Cchar}(p))))
+        else
+            rt_error("unknown type in the result of last command")
+        end
+    end
+end
+
 get_res(::Type{SString}) = SString(unsafe_string(Ptr{Cchar}(get_res())))
 
-iiExprArith1(x) = libSingular.iiExprArith1(x)
-iiExprArith2(x) = libSingular.iiExprArith2(x)
-
-cmd1(cmd::Union{CMDS,Char}) = iiExprArith1(Int(cmd))
-cmd2(cmd::Union{CMDS,Char}) = iiExprArith2(Int(cmd))
+# return true when no-error
+cmd1(cmd::Union{CMDS,Char}) = libSingular.iiExprArith1(Int(cmd)) == 0
+cmd2(cmd::Union{CMDS,Char}) = libSingular.iiExprArith2(Int(cmd)) == 0
 
 result_type(::_IntVec, ::_IntVec) = SIntVec
 result_type(::_IntVec, ::Int) = SIntVec
@@ -363,7 +374,7 @@ result_type(::Int, ::_IntMat) = SIntMat
 rtlead(a::STuple) = STuple(Any[rtlead(i) for i in a.list])
 
 function rtlead(x::Union{SPoly, _Ideal})
-    set_arg1(x, true)
+    set_arg1(x, withcopy=true)
     cmd1(LEAD_CMD)
     get_res(typeof(x), sing_ring(x))
 end
@@ -373,20 +384,20 @@ end
 rtrvar(a::STuple) = STuple(Any[rtrvar(i) for i in a.list])
 
 function rtrvar(x)
-    set_arg1(x, !(x isa SRing)) # needs to be copied! (except for rings)
+    set_arg1(x, withcopy=!(x isa SRing)) # needs to be copied! (except for rings)
     cmd1(IS_RINGVAR)
     get_res(Int)
 end
 
 function rtminus(x)
-    set_arg1(x, !(x isa SRing))
+    set_arg1(x, withcopy=!(x isa SRing))
     cmd1('-')
     get_res(typeof(x))
 end
 
 function rtminus(x, y)
-        set_arg1(x, !(x isa SRing))
-        set_arg2(y, !(y isa SRing))
+        set_arg1(x, withcopy=!(x isa SRing))
+        set_arg2(y, withcopy=!(y isa SRing))
         cmd2('-')
         get_res(result_type(x, y))
 end
@@ -399,18 +410,22 @@ for (op, code) in (:rtless => '<',
                    :rtgreaterequal => GE,
                    :rtequalequal => EQUAL_EQUAL)
     @eval function $op(x, y)
-        set_arg1(x, !(x isa SRing))
-        set_arg2(y, !(y isa SRing))
+        set_arg1(x, withcopy=!(x isa SRing))
+        set_arg2(y, withcopy=!(y isa SRing))
         cmd2($code)
         get_res(Int)
     end
 end
 
 function rtgetindex(x::SString, y)
-        set_arg1(x)
-        set_arg2(y, !(y isa SRing))
-        cmd2('[')
+    set_arg1(x, withname=(y isa _IntVec))
+    set_arg2(y, withcopy=!(y isa SRing))
+    cmd2('[') || rt_error("command errored")
+    if y isa _IntVec
+        get_res(STuple)
+    else
         get_res(SString)
+    end
 end
 
 ##################### system stuff ########################

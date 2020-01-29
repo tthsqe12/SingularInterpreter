@@ -16,6 +16,10 @@ typedef ssize_t julia_int;
 static sleftv lv1;
 static sleftv lv2;
 static sleftv lvres;
+static leftv lvres_next;
+static const char* lv_string_names[3] = {"", "__string_name_1", "__string_name_2"};
+
+static idhdl string_idhdls[3] = {NULL, NULL, NULL};
 
 // Internal singular interpreter variable
 extern int         inerror;
@@ -33,6 +37,16 @@ static void PrintS_for_julia(const char * s)
 static void WarningS_for_julia(const char * s)
 {
     singular_warning += s;
+}
+
+static idhdl string_idhdl(int i) {
+    assert(1 <= i && i <=2);
+    idhdl x = string_idhdls[i];
+    if (x == NULL) {
+        x = IDROOT->set(lv_string_names[i], 0, STRING_CMD, false);
+        string_idhdls[i] = x;
+    }
+    return x;
 }
 
 JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
@@ -88,7 +102,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
     singular_define_matrices(Singular);
     singular_define_coeff_rings(Singular);
 
-    Singular.method("set_leftv_arg_i", [](julia_int x, int i, bool copy) {
+    Singular.method("set_leftv_arg_i", [](julia_int x, int i) {
                                            assert(0 <= i && i <= 2);
                                            auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
                                            lv.Init();
@@ -122,14 +136,28 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                            lv.rtyp = ANY_TYPE;
                                        });
 
-    Singular.method("set_leftv_arg_i", [](std::string x, int i, bool copy) {
-                                           // TODO (or not): avoid copying this poor string 2 or 3 times
-                                           assert(0 <= i && i <= 2);
-                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
-                                           lv.Init();
-                                           lv.data = (void*)(omStrDup(x.c_str()));
-                                           lv.rtyp = STRING_CMD;
-                                       });
+
+    Singular.method("set_leftv_arg_i",
+                    [](const std::string& x, int i, bool withname) {
+                        // TODO (or not): avoid copying this poor string 2 or 3 times
+                        assert(0 <= i && i <= 2);
+                        auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                        lv.Init();
+                        if (withname) {
+                            idhdl id = string_idhdl(i);
+                            IDDATA(id) = omStrDup(x.c_str());
+                            lv.data = id;
+                            lv.name = id->id; // Hans says it's necessary to have the name both in the
+                                              // idhdl and as the name field of the sleftv, but they can
+                                              // be the same pointer
+                            lv.rtyp = IDHDL;
+                        }
+                        else {
+                            lv.data = (void*)(omStrDup(x.c_str()));
+                            lv.rtyp = STRING_CMD;
+                        }
+                    });
+
 
     // for `Vector{Int}`
     Singular.method("set_leftv_arg_i",
@@ -165,6 +193,21 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                          return res;
                                      });
 
+    Singular.method("get_leftv_res_next",
+                    [] {
+                        if (lvres_next == NULL) {
+                            rChangeCurrRing(NULL);
+                            return std::make_tuple(0, (void*)NULL);
+                        }
+                        else {
+                            auto r = std::make_tuple(lvres_next->Typ(), lvres_next->Data());
+                            lvres_next = lvres_next->next;
+                            return r;
+                        }
+                    });
+
+    Singular.method("get_leftv_res_typ", [] { return lvres.Typ(); });
+
     Singular.method("lvres_array_get_dim",
                     [](int d) {
                         assert(1 <= d && d <= 2);
@@ -189,8 +232,13 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                         rChangeCurrRing(NULL);
                     });
 
-    Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
+    Singular.method("iiExprArith1", [](int op) {
+                                        lvres_next = &lvres;
+                                        return iiExprArith1(&lvres, &lv1, op);
+                                    });
+
     Singular.method("iiExprArith2", [](int op) {
+                                        lvres_next = &lvres;
                                         // TODO: check what is the default proccall argument
                                         return iiExprArith2(&lvres, &lv1, op, &lv2);
                                     });
