@@ -158,7 +158,12 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                     });
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
-    Singular.method("get_leftv_res", [] { return (void*)lvres.data; });
+    Singular.method("get_leftv_res", [] {
+                                         void *res = (void*)lvres.Data();
+                                         rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
+                                                                // this can check for its validity
+                                         return res;
+                                     });
 
     Singular.method("lvres_array_get_dim",
                     [](int d) {
@@ -179,8 +184,9 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                 for (int i1=1; i1<=d1; ++i1)
                                     a[i++] = IMATELEM(iv, i1, i2);
                         else
-                            for(int i=0; i<iv.length(); ++i)
+                            for (int i=0; i<iv.length(); ++i)
                                 a[i] = iv[i];
+                        rChangeCurrRing(NULL);
                     });
 
     Singular.method("iiExprArith1", [](int op) { return iiExprArith1(&lvres, &lv1, op); });
@@ -194,8 +200,6 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                                            rChangeCurrRing(r);
                                            return old;
                                        });
-
-    Singular.method("unsetCurrRing", [] { rChangeCurrRing(NULL); });
 
     Singular.method("internal_void_to_ideal_helper",
                       [](void * x) { return reinterpret_cast<ideal>(x); });

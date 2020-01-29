@@ -347,17 +347,8 @@ function get_res(::Type{<:_IntMat})
     SIntMat(im)
 end
 
-function iiExprArith1(x)
-    res = libSingular.iiExprArith1(x)
-    libSingular.unsetCurrRing()
-    res
-end
-
-function iiExprArith2(x)
-    res = libSingular.iiExprArith2(x)
-    libSingular.unsetCurrRing()
-    res
-end
+iiExprArith1(x) = libSingular.iiExprArith1(x)
+iiExprArith2(x) = libSingular.iiExprArith2(x)
 
 cmd1(cmd::CMDS) = iiExprArith1(op_code(cmd))
 cmd1(cmd::Char) = iiExprArith1(Int(cmd))
