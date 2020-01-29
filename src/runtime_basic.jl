@@ -1606,31 +1606,31 @@ end
 
 ############ printing #########################################################
 
-function rt_indenting_print(a::Nothing, indent::Int)
+function rt_print(a::Nothing)
     return ""
 end
 
-function rt_indenting_print(a::SName, indent::Int)
-    return rt_indenting_print(rt_make(a), indent)
+function rt_print(a::SName)
+    return rt_print(rt_make(a))
 end
 
-function rt_indenting_print(a::SProc, indent::Int)
-    return " "^indent * "procname: " * string(a.name)
+function rt_print(a::SProc)
+    return "package:  " * string() * "\n" *
+           "procname: " * string(a.name)
 end
 
-function rt_indenting_print(a::Union{Int, BigInt}, indent::Int)
-    return " "^indent * string(a)
+function rt_print(a::Union{Int, BigInt})
+    return string(a)
 end
 
-function rt_indenting_print(a::SString, indent::Int)
-    return " "^indent * a.string
+function rt_print(a::SString)
+    return a.string
 end
 
-function rt_indenting_print(A::Union{Array{Int, 2}, Array{BigInt, 2}}, indent::Int)
+function rt_print(A::Union{Array{Int, 2}, Array{BigInt, 2}})
     s = ""
     nrows, ncols = size(A)
     for i in 1:nrows
-        s *= " "^indent
         for j in 1:ncols
             s *= string(A[i,j])
             if j < ncols
@@ -1644,68 +1644,64 @@ function rt_indenting_print(A::Union{Array{Int, 2}, Array{BigInt, 2}}, indent::I
     return s
 end
 
-function rt_indenting_print(a::Union{SIntMat, SBigIntMat}, indent::Int)
-    return rt_indenting_print(rt_ref(a), indent)
+function rt_print(a::Union{SIntMat, SBigIntMat})
+    return rt_print(rt_ref(a))
 end
 
-function rt_indenting_print(a::SIntVec, indent::Int)
-    return rt_indenting_print(a.vector, indent)
+function rt_print(a::SIntVec)
+    return rt_print(a.vector)
 end
 
-function rt_indenting_print(a::Vector{Int}, indent::Int)
-    return " "^indent * join(map((x) -> string(x), a), ", ")
+function rt_print(a::Vector{Int})
+    return join(map((x) -> string(x), a), ", ")
 end
 
-function rt_indenting_print(a::SList, indent::Int)
-    return rt_indenting_print(rt_ref(a), indent)
+function rt_print(a::SList)
+    return rt_print(rt_ref(a))
 end
 
-function rt_indenting_print(a::SListData, indent::Int)
+function rt_print(a::SListData)
     s = ""
     A = a.data
     first = true
     for i in 1:length(A)
-        s *= " "^indent * (first ? "list[" : "    [") * string(i) * "]:\n"
+        s *= (first ? "list[" : "    [") * string(i) * "]:\n"
         if A[i] isa Nothing
             continue
         end
-        s *= rt_indenting_print(A[i], indent + 8)
+        s *= rt_print(A[i])
         if i < length(A)
             s *= "\n"
         end
         first = false
     end
     if first
-        s = " "^indent * "empty list"
+        s = "empty list"
     end
     return s
 end
 
-function rt_indenting_print(a::SRing, indent::Int)
-    s = libSingular.rPrint_helper(a.ring_ptr)
-    i = " "^indent
-    return i * join(split(s, r"\n|\r|\0"), "\n"*i)
+function rt_print(a::SRing)
+    return libSingular.rPrint_helper(a.ring_ptr)
 end
 
-function rt_indenting_print(a::SNumber, indent::Int)
+function rt_print(a::SNumber)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a number outside of basering")
     libSingular.StringSetS("")
     libSingular.n_Write(a.number_ptr, a.parent.ring_ptr)
-    return " "^indent * libSingular.StringEndS()
+    return libSingular.StringEndS()
 end
 
 
-function rt_indenting_print(a::SPoly, indent::Int)
+function rt_print(a::SPoly)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a polynomial outside of basering")
     s = libSingular.p_String(a.poly_ptr, a.parent.ring_ptr)
-    return " "^indent * s
+    return s
 end
 
-function rt_indenting_print(a::SIdeal, indent::Int)
-    return rt_indenting_print(a.ideal, indent)
-end
+rt_print(a::SIdeal) = rt_print(a.ideal)
 
-function rt_indenting_print(a::SIdealData, indent::Int)
+function rt_print(a::SIdealData)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing an ideal outside of basering")
     s = ""
     n = Int(libSingular.ngens(a.ideal_ptr))
@@ -1713,17 +1709,17 @@ function rt_indenting_print(a::SIdealData, indent::Int)
     for i in 1:n
         p = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.ring_ptr)
-        s *= " "^indent * (first ? "ideal[" : "     [") * string(i) * "]: " * t * (i < n ? "\n" : "")
+        s *= (first ? "ideal[" : "     [") * string(i) * "]: " * t * (i < n ? "\n" : "")
         first = false
     end
     if first
-        s = " "^indent * "empty ideal"
+        s = "empty ideal"
     end
     return s
 end
 
-function rt_indenting_print(a::STuple, indent::Int)
-    return join([rt_indenting_print(i, indent) for i in a.list], "\n")
+function rt_print(a::STuple)
+    return join([rt_print(i) for i in a.list], "\n")
 end
 
 # the "print" function in Singular returns a string and does not print
@@ -1732,7 +1728,7 @@ function rtprint(::Nothing)
 end
 
 function rtprint(a)
-    return SString(rt_indenting_print(a, 0))
+    return SString(rt_print(a))
 end
 
 # the semicolon in Singular is the method to actually print something
@@ -1742,7 +1738,7 @@ end
 
 function rt_printout(a)
     rtGlobal.last_printed = rt_copy_allow_tuple(a)
-    println(rt_indenting_print(a, 0))
+    println(rt_print(a))
 end
 
 function rt_get_last_printed()
@@ -2458,6 +2454,14 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     ))
 
     # rt_declare_T
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, Expr(:curly, :Vector, :SName))),
+        filter_lineno(quote
+            for i in a
+                $(Symbol("rt_declare_"*newtypename))(i)
+            end
+        end)
+    ))
+
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, :SName)),
         filter_lineno(quote
             n = length(rtGlobal.callstack)
@@ -2465,7 +2469,7 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
                 rt_check_declaration_local(a.name, $(newtype))
                 push!(rtGlobal.local_vars, Pair(a.name, $(Symbol("rt_defaultconstructor_"*newtypename))()))
             else
-                d = rt_check_declaration_global_ring_indep(true, a.name, $(newtype))
+                d = rt_check_declaration_global_ring_indep(a.name, $(newtype))
                 d[a.name] = $(Symbol("rt_defaultconstructor_"*newtypename))()
             end
         end)
@@ -2505,23 +2509,19 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     # print
     b = Expr(:block, Expr(:(=), :s, ""))
     for i in 1:length(sp)
-        push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), Expr(:call, :(^), " ", :indent), "." * sp[i][2] * ":\n")))
-        push!(b.args, Expr(:(*=), :s, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2]))), Expr(:call, :(+), :indent, 3))))
+        push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), "." * sp[i][2] * ":\n")))
+        push!(b.args, Expr(:(*=), :s, Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2]))))))
         if i < length(sp)
             push!(b.args, Expr(:(*=), :s, "\n"))
         end
     end
     push!(b.args, Expr(:return, :s))
-    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
-                                                Expr(:(::), :f, newreftype),
-                                                Expr(:(::), :indent, :Int)),
+    push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newreftype)),
         b
     ))
 
-    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
-                                                Expr(:(::), :f, newtype),
-                                                Expr(:(::), :indent, :Int)),
-        Expr(:return, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(:data)), :indent))
+    push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newtype)),
+        Expr(:return, Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(:data))))
     ))
 
     # rt_typedata
