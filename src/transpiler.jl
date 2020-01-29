@@ -2497,6 +2497,7 @@ end
 function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
     @assert 0 < a.rule - @RULE_proccmd(0) < 100
     if a.rule == @RULE_proccmd(1) || a.rule == @RULE_proccmd(2)
+        @assert a.child[1] == 0 || a.child[1] == 1
         static = (a.child[1] != 0)
         s = a.child[2]::String
         internalfunc = procname_to_func(s)

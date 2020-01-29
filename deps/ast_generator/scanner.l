@@ -467,15 +467,15 @@ newline                  {
                          }
 {rgvars}|{realnum}       {
                            lvalp->name = duplicate_string(yytext);
-                           return RINGVAR;
+                           return MONOM;
                          }
 [0-9]+\."e"[+-][0-9]+    {
                            lvalp->name = duplicate_string(yytext);
-                           return RINGVAR;
+                           return MONOM;
                          }
 [0-9]+\./[^\.]           {
                            lvalp->name = duplicate_string(yytext);
-                           return RINGVAR;
+                           return MONOM;
                          }
 
 ({parname}|{name})      {

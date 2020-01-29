@@ -56,7 +56,6 @@ void exitrule_str(const char * s, const char * name);
 %token <i> BIGINTMAT_CMD
 %token <i> INTMAT_CMD
 %token <i> PROC_CMD
-%token <i> STATIC_PROC_CMD
 %token <i> RING_CMD
 
 /* valid when ring defined ! */
@@ -119,8 +118,8 @@ void exitrule_str(const char * s, const char * name);
 %token <i> SETRING_CMD
 %token <i> TYPE_CMD
 
-%token <name> STRINGTOK INT_CONST
-%token <name> UNKNOWN_IDENT RINGVAR PROC_DEF
+%token <name> STRINGTOK BLOCKTOK INT_CONST
+%token <name> UNKNOWN_IDENT MONOM PROC_DEF
 
 /* control */
 %token <i> APPLY
@@ -136,7 +135,6 @@ void exitrule_str(const char * s, const char * name);
 %token <i> WHILE_CMD
 %token <i> RETURN
 %token <i> PARAMETER
-%token <i> QUIT_CMD
 
 /* system variables */
 %token <i> SYSVAR
@@ -516,11 +514,11 @@ assign: left_value exprlist
         ;
 
 elemexpr:
-        RINGVAR
+        MONOM
             {
-                enterrule("elemexpr -> RINGVAR");
+                enterrule("elemexpr -> MONOM");
                 $$ = astnode_make1(RULE_elemexpr(1), aststring_make($1));
-                exitrule("elemexpr -> RINGVAR");
+                exitrule("elemexpr -> MONOM");
             }
 
         | UNKNOWN_IDENT
