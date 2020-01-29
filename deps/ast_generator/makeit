@@ -7,7 +7,7 @@ set -e # terminate on error
 flex -s --header-file=scanner.h scanner.l
 bison -d grammar.y
 
-JULIA_PATH=$(dirname $(dirname $(readlink $(which julia))))
+JULIA_PATH=$(dirname $(dirname $(readlink -e $(which julia))))
 
 [ -d "$JULIA_PATH" ] || echo "FAILURE: could not find julia installation path"
 
