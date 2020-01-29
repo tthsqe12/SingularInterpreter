@@ -16,3 +16,14 @@ ASSUME(0, "asd"[1] == "a");
 ASSUME(0, "asd"[2] == "s");
 ASSUME(0, "asd"[3] == "d");
 ASSUME(0, "asd"[4] == "");
+
+ASSUME(0, print((1,2,3))  == ("1", "2", "3"));
+ASSUME(0, string(1,2,3)   == "1" + newline + "2" + newline + "3");
+ASSUME(0, string((1,2,3)) == "1" + newline + "2" + newline + "3");
+
+newstruct("foo", "int a, bigint b");
+proc fooprinter(foo f) {return("<" + string(f.a) + "," + string(f.b) + ">")}
+system("install", "foo", "print", fooprinter, 1);
+kill fooprinter;
+ASSUME(0, print(foo(1,2)) == "<1,2>");
+

@@ -1296,7 +1296,7 @@ function rt_convert2bigint(a::BigInt)
     return a
 end
 
-function rt_convert2bigint(a...)
+function rt_convert2bigint(a)
     rt_error("cannot convert $a to a bigint")
     return BigInt(0)
 end
@@ -1309,22 +1309,18 @@ function rt_convert2string(a::SString)
     return a
 end
 
-function rt_convert2string(a...)
-    rt_error("cannot convert $a to a string")
+function rt_convert2string(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `string`")
     return SString("")
 end
 
-function rt_cast2string(a::Int)
-    return SString(string(a))
-end
-
-function rt_cast2string(a::SProc)
-    return SString("proc "*string(a.name)) #TODO low priority: this is not how singular prints procs
+function rt_cast2string(a::STuple)
+    return SString(join([rt_print(i) for i in a.list], "\n"))
 end
 
 function rt_cast2string(a...)
-    error("cannot cast $a to a string")
-    return SString("")
+    #TODO low priority: singular prints the bodies of proc's
+    return SString(join([rt_print(i) for i in a], "\n"))
 end
 
 #### intvec
@@ -1605,9 +1601,30 @@ end
 
 
 ############ printing #########################################################
+# Printing seems to be a mess in singular. For now we just have rt_printout,
+# rt_print, and rt_cast2string all produce nice 2-dimensional output
 
 function rt_indent_string(s::String, indent::Int)
     join(split(s, r"\n|\r|\0"), "\n" * " "^indent)
+end
+
+function rt_format_matrix(a::Array{String, 2})
+    nrows, ncols = size(a)
+    b = map(s->split(s, r"\n|\r|\0"), a) # matrix of arrays of substrings
+    col_widths = [(j < ncols ? 1 : 0) + maximum([maximum(map(length, b[i,j])) for i in 1:nrows]) for j in 1:ncols]
+    row_heights = [maximum(map(length, b[i,1:end])) for i in 1:nrows]
+    r = String[]
+    for i in 1:nrows
+        for k in 1:row_heights[i]
+            for j in 1:ncols
+                push!(r, rpad(k <= length(b[i,j]) ? b[i,j][k] : "", col_widths[j]))
+            end
+            if i < nrows || k < row_heights[i]
+                push!(r, "\n")
+            end
+        end
+    end
+    return join(r)
 end
 
 function rt_print(a::Nothing)
@@ -1619,8 +1636,8 @@ function rt_print(a::SName)
 end
 
 function rt_print(a::SProc)
-    return "package:  " * string() * "\n" *
-           "procname: " * string(a.name)
+    return "package:  " * string(a.package) * "\n" *
+           "procname: " * a.name
 end
 
 function rt_print(a::Union{Int, BigInt})
@@ -1631,21 +1648,8 @@ function rt_print(a::SString)
     return a.string
 end
 
-function rt_print(A::Union{Array{Int, 2}, Array{BigInt, 2}})
-    s = ""
-    nrows, ncols = size(A)
-    for i in 1:nrows
-        for j in 1:ncols
-            s *= string(A[i,j])
-            if j < ncols
-                s *= ", " # TODO low priority: align columns
-            end
-        end
-        if i < nrows
-            s *= ",\n"
-        end
-    end
-    return s
+function rt_print(a::Union{Array{Int, 2}, Array{BigInt, 2}})
+    return rt_format_matrix(map(string, a))
 end
 
 function rt_print(a::Union{SIntMat, SBigIntMat})
