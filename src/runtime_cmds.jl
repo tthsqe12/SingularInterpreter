@@ -347,6 +347,8 @@ function get_res(::Type{<:_IntMat})
     SIntMat(im)
 end
 
+get_res(::Type{SString}) = SString(unsafe_string(Ptr{Cchar}(get_res())))
+
 iiExprArith1(x) = libSingular.iiExprArith1(x)
 iiExprArith2(x) = libSingular.iiExprArith2(x)
 
@@ -409,6 +411,13 @@ for (op, code) in (:rtless => '<',
         cmd2($code)
         get_res(Int)
     end
+end
+
+function rtgetindex(x::SString, y)
+        set_arg1(x)
+        set_arg2(y, !(y isa SRing))
+        cmd2('[')
+        get_res(SString)
 end
 
 ##################### system stuff ########################

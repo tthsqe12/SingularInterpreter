@@ -4,3 +4,15 @@ ASSUME(0, "a" <= "a");
 ASSUME(0, !("a" > "b"));
 ASSUME(0, !("a" >= "b"));
 ASSUME(0, "a" >= "a");
+
+string s = "asd";
+ASSUME(0, s[0] == "");
+ASSUME(0, s[1] == "a");
+ASSUME(0, s[2] == "s");
+ASSUME(0, s[3] == "d");
+ASSUME(0, s[4] == "");
+ASSUME(0, "asd"[0] == "");
+ASSUME(0, "asd"[1] == "a");
+ASSUME(0, "asd"[2] == "s");
+ASSUME(0, "asd"[3] == "d");
+ASSUME(0, "asd"[4] == "");
