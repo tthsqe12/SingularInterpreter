@@ -1606,6 +1606,10 @@ end
 
 ############ printing #########################################################
 
+function rt_indent_string(s::String, indent::Int)
+    join(split(s, r"\n|\r|\0"), "\n" * " "^indent)
+end
+
 function rt_print(a::Nothing)
     return ""
 end
@@ -1665,14 +1669,9 @@ function rt_print(a::SListData)
     A = a.data
     first = true
     for i in 1:length(A)
-        s *= (first ? "list[" : "    [") * string(i) * "]:\n"
-        if A[i] isa Nothing
-            continue
-        end
-        s *= rt_print(A[i])
-        if i < length(A)
-            s *= "\n"
-        end
+        h = (first ? "list[" : "    [") * string(i) * "]: "
+        s *= h
+        s *= rt_indent_string(rt_print(A[i]), length(h)) * (i < length(A) ? "\n" : "")
         first = false
     end
     if first
@@ -1709,7 +1708,8 @@ function rt_print(a::SIdealData)
     for i in 1:n
         p = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.ring_ptr)
-        s *= (first ? "ideal[" : "     [") * string(i) * "]: " * t * (i < n ? "\n" : "")
+        h = (first ? "ideal[" : "     [") * string(i) * "]: "
+        s *= h * t * (i < n ? "\n" : "")
         first = false
     end
     if first
@@ -1718,6 +1718,7 @@ function rt_print(a::SIdealData)
     return s
 end
 
+# just for fun - rtprint and rt_printout have special cases for tuples
 function rt_print(a::STuple)
     return join([rt_print(i) for i in a.list], "\n")
 end
@@ -1728,7 +1729,12 @@ function rtprint(::Nothing)
 end
 
 function rtprint(a)
+    @assert !isa(a, STuple)
     return SString(rt_print(a))
+end
+
+function rtprint(a::STuple)
+    return STuple([SString(rt_print(i)) for i in a.list])
 end
 
 # the semicolon in Singular is the method to actually print something
@@ -1737,12 +1743,24 @@ function rt_printout(::Nothing)
 end
 
 function rt_printout(a)
+    @assert !isa(a, STuple)
+    @assert !isa(a, Nothing)
     rtGlobal.last_printed = rt_copy_allow_tuple(a)
     println(rt_print(a))
 end
 
+function rt_printout(a::STuple)
+    n = length(a.list)
+    for i in 1:n
+        if i == n
+            rtGlobal.last_printed = rt_copy_allow_tuple(a.list[i])
+        end
+        println(rt_print(a.list[i]))
+    end
+end
+
 function rt_get_last_printed()
-    return rtGlobal.last_printed
+    return rt_ref(rtGlobal.last_printed)
 end
 
 # type ...; will call rt_printouttype. no idea how this is supposed to work
@@ -2509,8 +2527,17 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     # print
     b = Expr(:block, Expr(:(=), :s, ""))
     for i in 1:length(sp)
-        push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), "." * sp[i][2] * ":\n")))
-        push!(b.args, Expr(:(*=), :s, Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2]))))))
+        if i == 1
+            push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), newtypename * "." * sp[i][2] * ": ")))
+        else
+            push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), " "^length(newtypename) * "." * sp[i][2] * ": ")))
+        end
+        push!(b.args, Expr(:(*=), :s,
+                            Expr(:call, :rt_indent_string,
+                                    Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2])))),
+                                    length(newtypename) + 1 + length(sp[i][2]) + 2
+                                )
+                          ))
         if i < length(sp)
             push!(b.args, Expr(:(*=), :s, "\n"))
         end
