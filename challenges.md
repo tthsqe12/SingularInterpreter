@@ -924,6 +924,19 @@ proc f(int n)
 ```
 
 
+(27) Singular seems to have at least three different version of printing stuff.
+```
+> intmat s[2][2]=1,2,3,4;
+> print(s);
+     1     2
+     3     4
+> s;
+1,2,
+3,4 
+> string(s);
+1,2,3,4 
+```
+
 -------------------------------
 
 Conclusion: The Singular language is completely different from C or Julia.

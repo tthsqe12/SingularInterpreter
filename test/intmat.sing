@@ -40,5 +40,5 @@ ASSUME(0, 100+(m-100) == m);
 
 // print
 intmat s[2][2] = 1, 2, 3, 4;
-ASSUME(0, print(s) == "1, 2," + newline + "3, 4");
-ASSUME(0, print(s-1) == "0, 2," + newline + "3, 3");
+ASSUME(0, print(s) == "1 2" + newline + "3 4");
+ASSUME(0, print(s-1) == "0 2" + newline + "3 3");
