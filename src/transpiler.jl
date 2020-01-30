@@ -94,7 +94,7 @@ function make_tuple_array_nocopy(a::Array{Any})
     r = Any[]
     for b in a
         if isa(b, Expr) && b.head == :call && !isempty(b.args) && b.args[1] == :rt_maketuple
-            append!(r, b.args[2:end])
+            append!(r, b.args[2::end])
         elseif is_a_name(b)
             push!(r, Expr(:call, :rt_make, b))
         elseif we_know_splat_is_trivial(b)

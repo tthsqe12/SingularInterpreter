@@ -1296,7 +1296,7 @@ function rt_convert2bigint(a::BigInt)
     return a
 end
 
-function rt_convert2bigint(a)
+function rt_convert2bigint(a...)
     rt_error("cannot convert $a to a bigint")
     return BigInt(0)
 end
@@ -1309,18 +1309,22 @@ function rt_convert2string(a::SString)
     return a
 end
 
-function rt_convert2string(a)
-    rt_error("cannot convert `$(rt_typestring(a))` to `string`")
+function rt_convert2string(a...)
+    rt_error("cannot convert $a to a string")
     return SString("")
 end
 
-function rt_cast2string(a::STuple)
-    return SString(join([rt_print(i) for i in a.list], "\n"))
+function rt_cast2string(a::Int)
+    return SString(string(a))
+end
+
+function rt_cast2string(a::SProc)
+    return SString("proc "*string(a.name)) #TODO low priority: this is not how singular prints procs
 end
 
 function rt_cast2string(a...)
-    #TODO low priority: singular prints the bodies of proc's
-    return SString(join([rt_print(i) for i in a], "\n"))
+    error("cannot cast $a to a string")
+    return SString("")
 end
 
 #### intvec
@@ -1601,110 +1605,107 @@ end
 
 
 ############ printing #########################################################
-# Printing seems to be a mess in singular. For now we just have rt_printout,
-# rt_print, and rt_cast2string all produce nice 2-dimensional output
 
-function rt_indent_string(s::String, indent::Int)
-    join(split(s, r"\n|\r|\0"), "\n" * " "^indent)
-end
-
-function rt_format_matrix(a::Array{String, 2})
-    nrows, ncols = size(a)
-    b = map(s->split(s, r"\n|\r|\0"), a) # matrix of arrays of substrings
-    col_widths = [(j < ncols ? 1 : 0) + maximum([maximum(map(length, b[i,j])) for i in 1:nrows]) for j in 1:ncols]
-    row_heights = [maximum(map(length, b[i,1:end])) for i in 1:nrows]
-    r = String[]
-    for i in 1:nrows
-        for k in 1:row_heights[i]
-            for j in 1:ncols
-                push!(r, rpad(k <= length(b[i,j]) ? b[i,j][k] : "", col_widths[j]))
-            end
-            if i < nrows || k < row_heights[i]
-                push!(r, "\n")
-            end
-        end
-    end
-    return join(r)
-end
-
-function rt_print(a::Nothing)
+function rt_indenting_print(a::Nothing, indent::Int)
     return ""
 end
 
-function rt_print(a::SName)
-    return rt_print(rt_make(a))
+function rt_indenting_print(a::SName, indent::Int)
+    return rt_indenting_print(rt_make(a), indent)
 end
 
-function rt_print(a::SProc)
-    return "package:  " * string(a.package) * "\n" *
-           "procname: " * a.name
+function rt_indenting_print(a::SProc, indent::Int)
+    return " "^indent * "procname: " * string(a.name)
 end
 
-function rt_print(a::Union{Int, BigInt})
-    return string(a)
+function rt_indenting_print(a::Union{Int, BigInt}, indent::Int)
+    return " "^indent * string(a)
 end
 
-function rt_print(a::SString)
-    return a.string
+function rt_indenting_print(a::SString, indent::Int)
+    return " "^indent * a.string
 end
 
-function rt_print(a::Union{Array{Int, 2}, Array{BigInt, 2}})
-    return rt_format_matrix(map(string, a))
+function rt_indenting_print(A::Union{Array{Int, 2}, Array{BigInt, 2}}, indent::Int)
+    s = ""
+    nrows, ncols = size(A)
+    for i in 1:nrows
+        s *= " "^indent
+        for j in 1:ncols
+            s *= string(A[i,j])
+            if j < ncols
+                s *= ", " # TODO low priority: align columns
+            end
+        end
+        if i < nrows
+            s *= ",\n"
+        end
+    end
+    return s
 end
 
-function rt_print(a::Union{SIntMat, SBigIntMat})
-    return rt_print(rt_ref(a))
+function rt_indenting_print(a::Union{SIntMat, SBigIntMat}, indent::Int)
+    return rt_indenting_print(rt_ref(a), indent)
 end
 
-function rt_print(a::SIntVec)
-    return rt_print(a.vector)
+function rt_indenting_print(a::SIntVec, indent::Int)
+    return rt_indenting_print(a.vector, indent)
 end
 
-function rt_print(a::Vector{Int})
-    return join(map((x) -> string(x), a), ", ")
+function rt_indenting_print(a::Vector{Int}, indent::Int)
+    return " "^indent * join(map((x) -> string(x), a), ", ")
 end
 
-function rt_print(a::SList)
-    return rt_print(rt_ref(a))
+function rt_indenting_print(a::SList, indent::Int)
+    return rt_indenting_print(rt_ref(a), indent)
 end
 
-function rt_print(a::SListData)
+function rt_indenting_print(a::SListData, indent::Int)
     s = ""
     A = a.data
     first = true
     for i in 1:length(A)
-        h = (first ? "list[" : "    [") * string(i) * "]: "
-        s *= h
-        s *= rt_indent_string(rt_print(A[i]), length(h)) * (i < length(A) ? "\n" : "")
+        s *= " "^indent * (first ? "list[" : "    [") * string(i) * "]:\n"
+        if A[i] isa Nothing
+            continue
+        end
+        s *= rt_indenting_print(A[i], indent + 8)
+        if i < length(A)
+            s *= "\n"
+        end
         first = false
     end
     if first
-        s = "empty list"
+        s = " "^indent * "empty list"
     end
     return s
 end
 
-function rt_print(a::SRing)
-    return libSingular.rPrint_helper(a.ring_ptr)
+function rt_indenting_print(a::SRing, indent::Int)
+    s = libSingular.rPrint_helper(a.ring_ptr)
+    i = " "^indent
+    return i * join(split(s, r"\n|\r|\0"), "\n"*i)
 end
 
-function rt_print(a::SNumber)
+function rt_indenting_print(a::SNumber, indent::Int)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a number outside of basering")
     libSingular.StringSetS("")
     libSingular.n_Write(a.number_ptr, a.parent.ring_ptr)
-    return libSingular.StringEndS()
+    return " "^indent * libSingular.StringEndS()
 end
 
 
-function rt_print(a::SPoly)
+function rt_indenting_print(a::SPoly, indent::Int)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a polynomial outside of basering")
     s = libSingular.p_String(a.poly_ptr, a.parent.ring_ptr)
-    return s
+    return " "^indent * s
 end
 
-rt_print(a::SIdeal) = rt_print(a.ideal)
+function rt_indenting_print(a::SIdeal, indent::Int)
+    return rt_indenting_print(a.ideal, indent)
+end
 
-function rt_print(a::SIdealData)
+function rt_indenting_print(a::SIdealData, indent::Int)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing an ideal outside of basering")
     s = ""
     n = Int(libSingular.ngens(a.ideal_ptr))
@@ -1712,19 +1713,17 @@ function rt_print(a::SIdealData)
     for i in 1:n
         p = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.ring_ptr)
-        h = (first ? "ideal[" : "     [") * string(i) * "]: "
-        s *= h * t * (i < n ? "\n" : "")
+        s *= " "^indent * (first ? "ideal[" : "     [") * string(i) * "]: " * t * (i < n ? "\n" : "")
         first = false
     end
     if first
-        s = "empty ideal"
+        s = " "^indent * "empty ideal"
     end
     return s
 end
 
-# just for fun - rtprint and rt_printout have special cases for tuples
-function rt_print(a::STuple)
-    return join([rt_print(i) for i in a.list], "\n")
+function rt_indenting_print(a::STuple, indent::Int)
+    return join([rt_indenting_print(i, indent) for i in a.list], "\n")
 end
 
 # the "print" function in Singular returns a string and does not print
@@ -1733,12 +1732,7 @@ function rtprint(::Nothing)
 end
 
 function rtprint(a)
-    @assert !isa(a, STuple)
-    return SString(rt_print(a))
-end
-
-function rtprint(a::STuple)
-    return STuple([SString(rt_print(i)) for i in a.list])
+    return SString(rt_indenting_print(a, 0))
 end
 
 # the semicolon in Singular is the method to actually print something
@@ -1747,24 +1741,12 @@ function rt_printout(::Nothing)
 end
 
 function rt_printout(a)
-    @assert !isa(a, STuple)
-    @assert !isa(a, Nothing)
     rtGlobal.last_printed = rt_copy_allow_tuple(a)
-    println(rt_print(a))
-end
-
-function rt_printout(a::STuple)
-    n = length(a.list)
-    for i in 1:n
-        if i == n
-            rtGlobal.last_printed = rt_copy_allow_tuple(a.list[i])
-        end
-        println(rt_print(a.list[i]))
-    end
+    println(rt_indenting_print(a, 0))
 end
 
 function rt_get_last_printed()
-    return rt_ref(rtGlobal.last_printed)
+    return rtGlobal.last_printed
 end
 
 # type ...; will call rt_printouttype. no idea how this is supposed to work
@@ -2476,14 +2458,6 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     ))
 
     # rt_declare_T
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, Expr(:curly, :Vector, :SName))),
-        filter_lineno(quote
-            for i in a
-                $(Symbol("rt_declare_"*newtypename))(i)
-            end
-        end)
-    ))
-
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_declare_"*newtypename), Expr(:(::), :a, :SName)),
         filter_lineno(quote
             n = length(rtGlobal.callstack)
@@ -2491,7 +2465,7 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
                 rt_check_declaration_local(a.name, $(newtype))
                 push!(rtGlobal.local_vars, Pair(a.name, $(Symbol("rt_defaultconstructor_"*newtypename))()))
             else
-                d = rt_check_declaration_global_ring_indep(a.name, $(newtype))
+                d = rt_check_declaration_global_ring_indep(true, a.name, $(newtype))
                 d[a.name] = $(Symbol("rt_defaultconstructor_"*newtypename))()
             end
         end)
@@ -2531,28 +2505,23 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     # print
     b = Expr(:block, Expr(:(=), :s, ""))
     for i in 1:length(sp)
-        if i == 1
-            push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), newtypename * "." * sp[i][2] * ": ")))
-        else
-            push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), " "^length(newtypename) * "." * sp[i][2] * ": ")))
-        end
-        push!(b.args, Expr(:(*=), :s,
-                            Expr(:call, :rt_indent_string,
-                                    Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2])))),
-                                    length(newtypename) + 1 + length(sp[i][2]) + 2
-                                )
-                          ))
+        push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), Expr(:call, :(^), " ", :indent), "." * sp[i][2] * ":\n")))
+        push!(b.args, Expr(:(*=), :s, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2]))), Expr(:call, :(+), :indent, 3))))
         if i < length(sp)
             push!(b.args, Expr(:(*=), :s, "\n"))
         end
     end
     push!(b.args, Expr(:return, :s))
-    push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newreftype)),
+    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
+                                                Expr(:(::), :f, newreftype),
+                                                Expr(:(::), :indent, :Int)),
         b
     ))
 
-    push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newtype)),
-        Expr(:return, Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(:data))))
+    push!(r.args, Expr(:function, Expr(:call, :rt_indenting_print,
+                                                Expr(:(::), :f, newtype),
+                                                Expr(:(::), :indent, :Int)),
+        Expr(:return, Expr(:call, :rt_indenting_print, Expr(:(.), :f, QuoteNode(:data)), :indent))
     ))
 
     # rt_typedata

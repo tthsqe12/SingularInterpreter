@@ -440,47 +440,12 @@ function rt_get_rtimer()
 end
 
 
-function rtsystem(a::SString, b...)
+function rtsystem(a::SString, b)
     if a.string == "--ticks-per-sec"
-        return rtsystem_ticks_per_sec(b...)
-    elseif a.string == "install"
-        return rtsystem_install(b...)
+        # TODO adjust rtimer_base as well
+        rtGlobal.rtimer_scale = div(UInt64(1000000000), UInt64(abs(rt_convert2int(b))))
     else
         rt_error("system($(a.name), ...) not implemented")
-    end
-    return nothing
-end
-
-function rtsystem_ticks_per_sec(b...)
-    if isempty(b)
-        return Int(div(UInt64(10)^9, rtGlobal.rtimer_scale))
-    else
-        # TODO adjust rtimer_base as well
-        b1 = rt_convert2int(b[1])
-        @error_check(b1 > 0, "--ticks-per-sec must be larger than 0")
-        rtGlobal.rtimer_scale = max(1, div(UInt64(10)^9, UInt64(b1)))
-        return nothing
-    end
-end
-
-function rtsystem_install(typ_::SString, cmd_::SString, proc::SProc, nargs::Int)
-    typ = typ_.string
-    cmd = cmd_.string
-    if cmd == "print" && nargs == 1
-        newreftype  = Symbol(newstructrefprefix * typ)
-        eval(Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newreftype)),
-                    Expr(:return,
-                        Expr(:(.),
-                            Expr(:call,
-                                :rt_convert2string,
-                                Expr(:call, proc.func, :f)
-                                ),
-                            QuoteNode(:string)
-                            )
-                        )
-                 ))
-    else
-        rt_error("system install failed")
     end
     return nothing
 end
