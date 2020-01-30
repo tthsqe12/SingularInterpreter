@@ -869,7 +869,6 @@ function scan_assignment(left::AstNode, env::AstEnv)
         elseif a.rule == @RULE_elemexpr(9)
         elseif a.rule == @RULE_elemexpr(6)
             scan_elemexpr_name_call(a, env)
-            env.everything_is_screwed = true
         end
     elseif left.rule == @RULE_extendedid(1)
         scan_add_appearance(left.child[1]::String, env)
@@ -878,7 +877,6 @@ function scan_assignment(left::AstNode, env::AstEnv)
         env.everything_is_screwed = true
     elseif left.rule == @RULE_extendedid(3)
         scan_extendedid_name_call(left, env)
-        env.everything_is_screwed = true
     elseif left.rule == @RULE_expr(3)
         scan_expr(left.child[1], env)
         scan_expr(left.child[2], env)
@@ -947,7 +945,7 @@ function push_assignment!(rest::Symbol, last::Bool, out::Expr, left::AstNode, ri
             push!(out.args, Expr(:(=), rest, Expr(:call, Symbol("rt_set_" * system_var_to_string[t]), right)))
         elseif a.rule == @RULE_elemexpr(6)
             @assert isempty(env.declared_identifiers)
-            s = make_nocopy(convert_elemexpr_name_call(a, env))
+            s = convert_elemexpr_name_call(a, env)
             if last
                 push!(out.args, Expr(:call, :rtassign_names_last, s, right))
             else
@@ -1072,6 +1070,12 @@ function rt_declare_assign_ring(a::SName, b::SRing)
     return
 end
 
+function rt_declare_assign_ring(a::Vector{SName}, b::SRing)
+    @error_check(length(a) == 1, "ring construction expects one indexed name")
+    rt_declare_assign_ring(a[1], b)
+    return
+end
+
 function scan_assign_qring(a::AstNode, b::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_extendedid(0) < 100
     @assert 0 < b.rule - @RULE_exprlist(0) < 100
@@ -1081,8 +1085,10 @@ function scan_assign_qring(a::AstNode, b::AstNode, env::AstEnv)
         scan_add_declaration(a.child[1]::String, "ring", env)
     elseif a.rule == @RULE_extendedid(2)
         scan_expr(b.child[1], env)
+    elseif a.rule == @RULE_extendedid(3)
+        scan_extendedid_name_call(a, env)
     else
-        throw(TranspileError("invalid qring name"))
+        throw(TranspileError("internal error in scan_assign_qring"))
     end
 end
 
@@ -1093,17 +1099,15 @@ function convert_assign_qring(a::AstNode, b::AstNode, env::AstEnv)
     r = Expr(:block)
     @assert isempty(env.declared_identifiers)   # change of basering
     if a.rule == @RULE_extendedid(1)
-        var = a.child[1]::String
-        push!(r.args, Expr(:call, :rt_declare_assign_ring,
-                                    makeunknown(var),
-                                    Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
+        lhs = makeunknown(a.child[1]::String)
     elseif a.rule == @RULE_extendedid(2)
-        push!(r.args, Expr(:call, :rt_declare_assign_ring,
-                                        Expr(:call, :rt_backtick, make_nocopy(convert_expr(a.child[1], env))),
-                                        Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
+        lhs = Expr(:call, :rt_backtick, make_nocopy(convert_expr(a.child[1], env)))
+    elseif a.rule == @RULE_extendedid(3)
+        lhs = convert_extendedid_name_call(a, env)
     else
         throw(TranspileError("internal error in convert_assign_qring"))
     end
+    push!(r.args, Expr(:call, :rt_declare_assign_ring, lhs, Expr(:call, :rt_make_qring, make_tuple_array_nocopy(rhs)...)))
     push!(r.args, :nothing)
     return r
 end
@@ -1564,6 +1568,8 @@ function scan_ringcmd_lhs(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_elemexpr(98)
         scan_expr(a.child[1], env)
         env.everything_is_screwed = 1
+    elseif a.rule == @RULE_elemexpr(6)
+        scan_elemexpr_name_call(a, env)
     else
         throw(TranspileError("bad name of ring"))
     end
@@ -1582,6 +1588,8 @@ function convert_ringcmd_lhs(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_elemexpr(98)
         @assert isempty(env.declared_identifiers)
         return Expr(:call, :rt_backtick, make_nocopy(convert_expr(a.child[1], env))), false
+    elseif a.rule == @RULE_elemexpr(6)
+        return convert_elemexpr_name_call(a, env), false
     else
         throw(TranspileError("bad name of ring"))
     end
@@ -1629,7 +1637,6 @@ function convert_ringcmd(a::AstNode, env::AstEnv)
         push!(r.args, Expr(:(=), var, ring))
         push!(r.args, Expr(:call, :rt_set_current_ring, var))
     else
-        @assert is_a_name(var)
         push!(r.args, Expr(:call, :rt_declare_assign_ring, var, ring))
     end
     return r
@@ -1819,7 +1826,6 @@ function scan_declared_var(v::AstNode, typ::String, env::AstEnv)
         env.everything_is_screwed = true
     elseif v.rule == @RULE_extendedid(3)
         scan_extendedid_name_call(v, env)
-        env.everything_is_screwed = true
     else
         throw(TranspileError("internal error in scan_declared_var"*string(v.rule)))
     end

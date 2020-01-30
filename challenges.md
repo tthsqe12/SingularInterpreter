@@ -892,6 +892,37 @@ Auf Wiedersehen.
    ? `l` is undefined
    ? error occurred in or before STDIN line 11: `l;
 ```
+The following function creates an arbitrary number `n` of ring independent local variables called `l`.
+```
+proc f(int n)
+{
+    int i;
+    for (i = n; i > 0; i--)
+    {
+        "creating ring " + string(i);
+        ring r(i) = 0, x(i), lp;
+        list l = x(i), 0;
+    }
+
+    for (i = n; i > 0; i--)
+    {
+        "setting ring " + string(i);
+        setring(r(i));
+        l[1] = i;
+    }
+
+    // we now have n ring indep lists called l
+
+    for (i = n; i > 0; i--)
+    {
+        "killing l = " + string(l);
+        kill l;
+    }
+
+    "defined(l) = " + string(defined(l));
+}
+```
+
 
 -------------------------------
 
