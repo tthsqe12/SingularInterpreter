@@ -1,0 +1,13 @@
+ring r;
+number n;
+
+ASSUME(0, n == 0);
+n = 3;
+ASSUME(0, n == 3);
+n = bigint(12);
+ASSUME(0, n == 12);
+ASSUME(0, typeof(n) == "number");
+
+number m = -3;
+ASSUME(0, typeof(m) == "number");
+ASSUME(0, m == -3);

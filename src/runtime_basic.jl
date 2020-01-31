@@ -217,6 +217,8 @@ rt_ref(a::SRing) = a
 
 rt_ref(a::SPoly) = a
 
+rt_ref(a::SNumber) = a
+
 rt_ref(a::SIdealData) = a
 rt_ref(a::SIdeal) = a.ideal
 
@@ -1472,9 +1474,10 @@ function rt_convert2number(a::SNumber)
 end
 
 function rt_convert2number(a::Union{Int, BigInt})
-    rtGlobal.currentring.valid || rt_error("cannot convert to a number when no basering is active")
-    r1 = libSingular.n_Init(a.number_ptr, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+    R = rt_basering()
+    @error_check(R.valid, "cannot convert to a number when no basering is active")
+    r1 = libSingular.n_Init(a, R.ring_ptr)
+    return SNumber(r1, R)
 end
 
 function rt_convert2number(a)
@@ -1810,9 +1813,9 @@ rt_typestring(a) = rt_typedata_to_string(rt_typedata(a))
 # --------------+-----------------------------
 #  a = b        | a = rt_assign_last(a, b)
 # --------------+--------------------
-#  a, b, c = d  | t = rt_assign_more(a, d)
-#               | t = rt_assign_more(b, t)
-#               | rt_assign_last(c, t)
+#  a, b, c = d  | a, t = rt_assign_more(a, d)
+#               | b, t = rt_assign_more(b, t)
+#               | c = rt_assign_last(c, t)
 
 # The assignment to any variable "a" declared "def" must pass through rt_assign because:
 #   (1) The initial value of "a" is nothing
@@ -2298,6 +2301,20 @@ end
 function rt_assign_last(a::SPoly, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_convert2poly(b.list[1])
+end
+
+#### assignment to number
+rt_assign_more(s::SNumber, b) = rt_convert2number(b), empty_tuple
+rt_assign_last(s::SNumber, b) = rt_convert2number(b)
+
+function rt_assign_more(a::SNumber, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
+    return rt_convert2number(popfirst!(b.list)), b
+end
+
+function rt_assign_last(a::SNumber, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2number(b.list[1])
 end
 
 #### assignment to ideal
