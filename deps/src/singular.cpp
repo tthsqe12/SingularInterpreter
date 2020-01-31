@@ -186,12 +186,13 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                     });
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
-    Singular.method("get_leftv_res", [] {
-                                         void *res = (void*)lvres.Data();
-                                         rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
-                                                                // this can check for its validity
-                                         return res;
-                                     });
+    Singular.method("get_leftv_res",
+                    [] {
+                        void *res = (void*)lvres.Data();
+                        rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
+                        // this can check for its validity
+                        return res;
+                    });
 
     Singular.method("get_leftv_res_next",
                     [] {
@@ -232,16 +233,28 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
                         rChangeCurrRing(NULL);
                     });
 
-    Singular.method("iiExprArith1", [](int op) {
-                                        lvres_next = &lvres;
-                                        return iiExprArith1(&lvres, &lv1, op);
-                                    });
+    Singular.method("iiExprArith1",
+                    [](int op) {
+                        lvres_next = &lvres;
+                        int err = iiExprArith1(&lvres, &lv1, op);
+                        if (err) {
+                            errorreported = 0;
+                            rChangeCurrRing(NULL); // done somewhere else when !err
+                        }
+                        return err;
+                    });
 
-    Singular.method("iiExprArith2", [](int op) {
-                                        lvres_next = &lvres;
-                                        // TODO: check what is the default proccall argument
-                                        return iiExprArith2(&lvres, &lv1, op, &lv2);
-                                    });
+    Singular.method("iiExprArith2",
+                    [](int op) {
+                        lvres_next = &lvres;
+                        // TODO: check what is the default proccall argument
+                        int err = iiExprArith2(&lvres, &lv1, op, &lv2);
+                        if (err) {
+                            errorreported = 0;
+                            rChangeCurrRing(NULL);
+                        }
+                        return err;
+                    });
 
     Singular.method("rChangeCurrRing", [](ring r) {
                                            ring old = currRing;

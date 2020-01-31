@@ -4,7 +4,8 @@ using SingularInterpreter
 using SingularInterpreter: rtcolon, rtequalequal, rtnot, rtand, rtor, SIntVec, SString
 
 for a in ["assign", "int", "intvec", "intmat", "bigintmat", "list",
-          "tuple", "proc", "poly", "ideal", "ring", "commands", "string"]
+          "tuple", "proc", "poly", "ideal", "ring", "commands", "string",
+          "sleftv"]
     SingularInterpreter.reset_runtime()
     jlfile = joinpath(dirname(@__FILE__), a * ".jl")
     if isfile(jlfile)
@@ -12,10 +13,13 @@ for a in ["assign", "int", "intvec", "intmat", "bigintmat", "list",
         include(jlfile)
     end
 
-    for opt in (false, true)
-        SingularInterpreter.reset_runtime()
-        SingularInterpreter.rtGlobal.optimize_locals = opt
-        println("running ", a, ".sing [optimize_locals = $opt]")
-        execute(read(joinpath(dirname(@__FILE__), a * ".sing"), String))
+    singfile = joinpath(dirname(@__FILE__), a * ".sing")
+    if isfile(singfile)
+        for opt in (false, true)
+            SingularInterpreter.reset_runtime()
+            SingularInterpreter.rtGlobal.optimize_locals = opt
+            println("running ", a, ".sing [optimize_locals = $opt]")
+            execute(read(singfile, String))
+        end
     end
 end

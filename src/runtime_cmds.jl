@@ -357,9 +357,17 @@ end
 
 get_res(::Type{SString}) = SString(unsafe_string(Ptr{Cchar}(get_res())))
 
+function maybe_get_res(err, T)
+    if err == 0
+        get_res(T...)
+    else
+        rt_error("failed operation")
+    end
+end
+
 # return true when no-error
-cmd1(cmd::Union{CMDS,Char}) = libSingular.iiExprArith1(Int(cmd)) == 0
-cmd2(cmd::Union{CMDS,Char}) = libSingular.iiExprArith2(Int(cmd)) == 0
+cmd1(cmd::Union{CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith1(Int(cmd)), T)
+cmd2(cmd::Union{CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith2(Int(cmd)), T)
 
 result_type(::_IntVec, ::_IntVec) = SIntVec
 result_type(::_IntVec, ::Int) = SIntVec
@@ -375,8 +383,7 @@ rtlead(a::STuple) = STuple(Any[rtlead(i) for i in a.list])
 
 function rtlead(x::Union{SPoly, _Ideal})
     set_arg1(x, withcopy=true)
-    cmd1(LEAD_CMD)
-    get_res(typeof(x), sing_ring(x))
+    cmd1(LEAD_CMD, typeof(x), sing_ring(x))
 end
 
 ### rvar ###
@@ -385,21 +392,18 @@ rtrvar(a::STuple) = STuple(Any[rtrvar(i) for i in a.list])
 
 function rtrvar(x)
     set_arg1(x, withcopy=!(x isa SRing)) # needs to be copied! (except for rings)
-    cmd1(IS_RINGVAR)
-    get_res(Int)
+    cmd1(IS_RINGVAR, Int)
 end
 
 function rtminus(x)
     set_arg1(x, withcopy=!(x isa SRing))
-    cmd1('-')
-    get_res(typeof(x))
+    cmd1('-', typeof(x))
 end
 
 function rtminus(x, y)
         set_arg1(x, withcopy=!(x isa SRing))
         set_arg2(y, withcopy=!(y isa SRing))
-        cmd2('-')
-        get_res(result_type(x, y))
+        cmd2('-', result_type(x, y))
 end
 
 ### comparisons ###
@@ -412,20 +416,14 @@ for (op, code) in (:rtless => '<',
     @eval function $op(x, y)
         set_arg1(x, withcopy=!(x isa SRing))
         set_arg2(y, withcopy=!(y isa SRing))
-        cmd2($code)
-        get_res(Int)
+        cmd2($code, Int)
     end
 end
 
 function rtgetindex(x::SString, y)
     set_arg1(x, withname=(y isa _IntVec))
     set_arg2(y, withcopy=!(y isa SRing))
-    cmd2('[') || rt_error("command errored")
-    if y isa _IntVec
-        get_res(STuple)
-    else
-        get_res(SString)
-    end
+    cmd2('[', y isa _IntVec ? STuple : SString)
 end
 
 ##################### system stuff ########################
