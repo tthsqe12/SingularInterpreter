@@ -235,12 +235,6 @@ function rtncols(a::_Ideal)
     return Int(libSingular.id_ncols(rt_ref(a).ideal_ptr))
 end
 
-function rtncols(a)
-    rt_error("ncols(`$(rt_typestring(a))`) failed")
-    return 0
-end
-
-
 #### nvars ####
 
 function rtnvars(a::STuple)
@@ -251,12 +245,6 @@ function rtnvars(a::SRing)
     return Int(libSingular.rVar(a.ring_ptr))
 end
 
-function rtnvars(a)
-    rt_error("nvars(`$(rt_typestring(a))`) failed, expected nvars(`ring`)")
-    return 0
-end
-
-
 #### leadexp ####
 
 function rtleadexp(a::STuple)
@@ -265,11 +253,6 @@ end
 
 function rtleadexp(a::SPoly)
     return SIntVec(libSingular.p_leadexp(a.poly_ptr, a.parent.ring_ptr))
-end
-
-function rtleadexp(a)
-    rt_error("leadexp(`$(rt_typestring(a))`) failed, expected leadexp(`poly`)")
-    return 0
 end
 
 
@@ -320,7 +303,7 @@ set_arg2(x; withcopy=false, withname=false) = set_arg(x, 2; withcopy=withcopy, w
 
 get_res() = libSingular.get_leftv_res()
 
-get_res(::Type{Int}) = Int(get_res())
+get_res(::Type{Int}, ring=nothing) = Int(get_res())
 
 get_res(::Type{SPoly}, r::SRing) =
     SPoly(libSingular.internal_void_to_poly_helper(get_res()), r)
@@ -328,21 +311,21 @@ get_res(::Type{SPoly}, r::SRing) =
 get_res(::Type{<:_Ideal}, r::SRing) =
     SIdeal(SIdealData(libSingular.internal_void_to_ideal_helper(get_res()), r))
 
-function get_res(::Type{<:_IntVec})
+function get_res(::Type{<:_IntVec}, ring=nothing)
     d = libSingular.lvres_array_get_dim(1)
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv)
     SIntVec(iv)
 end
 
-function get_res(::Type{<:_IntMat})
+function get_res(::Type{<:_IntMat}, ring=nothing)
     d = libSingular.lvres_array_get_dim.((1, 2))
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im))
     SIntMat(im)
 end
 
-function get_res(::Type{STuple})
+function get_res(::Type{STuple}, ring=nothing)
     a = Any[]
     while true
         t, p = libSingular.get_leftv_res_next()
@@ -355,7 +338,7 @@ function get_res(::Type{STuple})
     end
 end
 
-get_res(::Type{SString}) = SString(unsafe_string(Ptr{Cchar}(get_res())))
+get_res(::Type{SString}, ring=nothing) = SString(unsafe_string(Ptr{Cchar}(get_res())))
 
 function maybe_get_res(err, T)
     if err == 0
@@ -366,8 +349,8 @@ function maybe_get_res(err, T)
 end
 
 # return true when no-error
-cmd1(cmd::Union{CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith1(Int(cmd)), T)
-cmd2(cmd::Union{CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith2(Int(cmd)), T)
+cmd1(cmd::Union{Int,CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith1(Int(cmd)), T)
+cmd2(cmd::Union{Int,CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith2(Int(cmd)), T)
 
 result_type(::_IntVec, ::_IntVec) = SIntVec
 result_type(::_IntVec, ::Int) = SIntVec
@@ -381,24 +364,9 @@ result_type(::Int, ::_IntMat) = SIntMat
 
 rtlead(a::STuple) = STuple(Any[rtlead(i) for i in a.list])
 
-function rtlead(x::Union{SPoly, _Ideal})
-    set_arg1(x, withcopy=true)
-    cmd1(LEAD_CMD, typeof(x), sing_ring(x))
-end
-
 ### rvar ###
 
 rtrvar(a::STuple) = STuple(Any[rtrvar(i) for i in a.list])
-
-function rtrvar(x)
-    set_arg1(x, withcopy=!(x isa SRing)) # needs to be copied! (except for rings)
-    cmd1(IS_RINGVAR, Int)
-end
-
-function rtminus(x)
-    set_arg1(x, withcopy=!(x isa SRing))
-    cmd1('-', typeof(x))
-end
 
 function rtminus(x, y)
         set_arg1(x, withcopy=!(x isa SRing))
@@ -424,6 +392,63 @@ function rtgetindex(x::SString, y)
     set_arg1(x, withname=(y isa _IntVec))
     set_arg2(y, withcopy=!(y isa SRing))
     cmd2('[', y isa _IntVec ? STuple : SString)
+end
+
+# types which can currently be sent/fetched as sleftv to/from Singular
+const convertible_types = Dict(
+    INT_CMD => Int,
+    BIGINT_CMD => BigInt,
+    STRING_CMD => SString,
+    INTVEC_CMD => _IntVec,
+    INTMAT_CMD => _IntMat,
+    RING_CMD => SRing,
+    NUMBER_CMD => SNumber,
+    POLY_CMD => SPoly,
+    IDEAL_CMD => _Ideal,
+)
+# TODO: check more closely what `ANY_TYPE` means
+push!(convertible_types, ANY_TYPE => Union{values(convertible_types)...})
+
+const error_expected_types = Dict(
+    "nvars" => "ring",
+    "leadexp" => "poly",
+)
+
+let seen = Set{Int}()
+    for (cmd, res, arg) in dArith1
+        cmd == Int(TYPEOF_CMD) && continue # handled differently
+
+        name = something(get(cmd_to_string, cmd, nothing),
+                         get(op_to_string, cmd, nothing),
+                         "")
+        name == "" && continue
+
+        Sres = get(convertible_types, res, nothing)
+        Sarg = get(convertible_types, arg, nothing)
+        Sres !== nothing && Sarg !== nothing || continue
+
+        rtname = Symbol(:rt, name)
+        rtauto = Symbol(:rt, name, :_auto)
+        expected = get(error_expected_types, name, "")
+        if expected != ""
+            expected = ", expected $name(`$expected`)"
+        end
+
+        if !(cmd in seen)
+            # fall-back to rtauto so that definitions here don't overwrite
+            # these which are manually implemented
+            @eval begin
+                $rtname(x) = $rtauto(x)
+                $rtauto(x) = rt_error(string($name, "(`$(rt_typestring(x))`) failed", $expected))
+            end
+            push!(seen, cmd)
+        end
+
+        @eval function $rtauto(x::$Sarg)
+            set_arg1(x, withcopy=(x isa Union{SPoly,_Ideal}))
+            cmd1($cmd, $Sres, sing_ring(x))
+        end
+    end
 end
 
 ##################### system stuff ########################
