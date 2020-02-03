@@ -368,6 +368,9 @@ rtlead(a::STuple) = STuple(Any[rtlead(i) for i in a.list])
 
 rtrvar(a::STuple) = STuple(Any[rtrvar(i) for i in a.list])
 
+# defined on ANY_TYPE
+rtrvar_auto(a) = 0
+
 function rtminus(x, y)
         set_arg1(x, withcopy=!(x isa SRing))
         set_arg2(y, withcopy=!(y isa SRing))
@@ -416,7 +419,7 @@ const error_expected_types = Dict(
 
 let seen = Set{Int}()
     for (cmd, res, arg) in dArith1
-        cmd == Int(TYPEOF_CMD) && continue # handled differently
+        arg == ANY_TYPE && continue # handled differently
 
         name = something(get(cmd_to_string, cmd, nothing),
                          get(op_to_string, cmd, nothing),
@@ -439,7 +442,10 @@ let seen = Set{Int}()
             # these which are manually implemented
             @eval begin
                 $rtname(x) = $rtauto(x)
-                $rtauto(x) = rt_error(string($name, "(`$(rt_typestring(x))`) failed", $expected))
+
+                if !($name in ("rvar",)) # TODO: fix this ugly hack (`rtrvar_auto` already implemented manually)
+                    $rtauto(x) = rt_error(string($name, "(`$(rt_typestring(x))`) failed", $expected))
+                end
             end
             push!(seen, cmd)
         end
