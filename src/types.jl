@@ -177,6 +177,8 @@ end
 ############################ ring dependent types ############################
 # The constructor for T takes ownership of a raw pointer and stores in the member T_ptr
 
+sing_ring(x) = nothing
+
 #### singular type "number"     immutable in the singular language
 mutable struct SNumber
     number_ptr::libSingular.number
