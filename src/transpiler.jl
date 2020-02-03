@@ -285,6 +285,8 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_elemexpr(6)
         scan_elemexpr(a.child[1], env)
         scan_exprlist(a.child[2], env)
+    elseif a.rule == @RULE_elemexpr(7)
+        scan_exprlist(a.child[1], env)
     elseif a.rule == @RULE_elemexpr(8)
     elseif a.rule == @RULE_elemexpr(9)
     elseif a.rule == @RULE_elemexpr(10)
@@ -380,6 +382,9 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         return Expr(:call, :rtcall, nested,
                                     convert_elemexpr(c, env, c.rule == @RULE_elemexpr(6)),
                                     make_tuple_array_nocopy(b)...)
+    elseif a.rule == @RULE_elemexpr(7)
+        b = convert_exprlist(a.child[1], env)::Array{Any}
+        return Expr(:call, :rt_bracket_constructor, make_tuple_array_nocopy(b)...)
     elseif a.rule == @RULE_elemexpr(8)
         x = parse(BigInt, a.child[1])
         if typemin(Int) <= x <= typemax(Int)

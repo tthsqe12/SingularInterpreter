@@ -201,7 +201,7 @@ end
 
 #### singular type "poly"       immutable in the singular language
 mutable struct SPoly
-    poly_ptr::libSingular.poly
+    poly_ptr::libSingular.poly      # singly linked list of terms
     parent::SRing
 
     function SPoly(poly_ptr_::libSingular.poly, parent_::SRing)
@@ -222,9 +222,32 @@ function rt_poly_finalizer(a::SPoly)
 end
 
 
-#### singular type "ideal"      mutable like a list in the singular language
+#### singular type "vector"     immutable in the singular language
+mutable struct SVector
+    vector_ptr::libSingular.poly    # singly linked list of terms*gens(i)
+    parent::SRing
+
+    function SVector(vector_ptr_::libSingular.poly, parent_::SRing)
+        a = new(vector_ptr_, parent_)
+        finalizer(rt_vector_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
+end
+
+sing_ring(p::SVector) = p.parent
+sing_ptr(p::SVector) = p.vector_ptr
+
+function rt_vector_finalizer(a::SVector)
+    libSingular.p_Delete(a.vector_ptr, a.parent.ring_ptr)
+    rt_ring_finalizer(a.parent)
+end
+
+
+#### singular type "ideal"      mutable like a list polys in the singular language
 mutable struct SIdealData
-    ideal_ptr::libSingular.ideal
+    ideal_ptr::libSingular.ideal    # dense 1d array of poly
     parent::SRing
 
     function SIdealData(ideal_ptr_::libSingular.ideal, parent_::SRing)

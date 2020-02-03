@@ -162,6 +162,9 @@ rt_copy_allow_tuple(a::SNumber) = a
 rt_copy(a::SPoly) = a
 rt_copy_allow_tuple(a::SPoly) = a
 
+rt_copy(a::SVector) = a
+rt_copy_allow_tuple(a::SVector) = a
+
 rt_copy(a::SIdealData) = SIdeal(deepcopy(a))
 rt_copy(a::SIdeal) = a
 rt_copy_allow_tuple(a::SIdealData) = SIdeal(deepcopy(a))
@@ -217,6 +220,8 @@ rt_ref(a::SRing) = a
 
 rt_ref(a::SPoly) = a
 
+rt_ref(a::SVector) = a
+
 rt_ref(a::SNumber) = a
 
 rt_ref(a::SIdealData) = a
@@ -251,6 +256,8 @@ rt_promote(a::SList) = a
 rt_promote(a::SRing) = a
 
 rt_promote(a::SPoly) = a
+
+rt_promote(a::SVector) = a
 
 rt_promote(a::SIdealData) = SIdeal(a)
 rt_promote(a::SIdeal) = a
@@ -1193,6 +1200,49 @@ function rt_parameter_poly(a::SName, b)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2poly(b)))
 end
 
+#### vector
+function rt_defaultconstructor_vector()
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct a vector when no basering is active")
+    r1 = libSingular.p_null_helper()
+    return SVector(r1, R)
+end
+
+# special constructor via [poly...]
+function rt_bracket_constructor(v...)
+    R = rt_basering()
+    r = SVector(libSingular.p_null_helper(), R)
+    for i in 1:length(v)
+        p = rt_convert2poly_ptr(v[i], R)
+        libSingular.p_SetCompP(p, i, R.ring_ptr)                            # mutate p inplace
+        r.vector_ptr = libSingular.p_Add_q(r.vector_ptr, p, R.ring_ptr)     # consume both summands
+    end
+    return r
+end
+
+function rt_declare_vector(a::Vector{SName})
+    for i in a
+        rt_declare_vector(i)
+    end
+end
+
+function rt_declare_vector(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(a.name, SVector)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_vector()))
+    else
+        d = rt_check_declaration_global_ring_dep(a.name, SVector)
+        d[a.name] = rt_defaultconstructor_vector()
+    end
+    return nothing
+end
+
+function rt_parameter_vector(a::SName, b)
+    @expensive_assert !rt_local_identifier_exists(a.name)
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2vector(b)))
+end
+
 #### ideal
 function rt_defaultconstructor_ideal()
     R = rt_basering()
@@ -1506,7 +1556,7 @@ function rt_convert2poly_ptr(a::SPoly, R::SRing)
 end
 
 function rt_convert2poly_ptr(a, R::SRing)
-    rt_error("cannot convert $(rt_typestring(a)) to a poly")
+    rt_error("cannot convert `$(rt_typestring(a))` to `poly`")
     return libSingular.p_null_helper()
 end
 
@@ -1521,16 +1571,40 @@ function rt_convert2poly(a::Union{Int, BigInt})
 end
 
 function rt_convert2poly(a::SNumber)
-    @warn_check(a.apprent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a polynomial outside of basering")
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a polynomial outside of basering")
     r1 = rt_convert2poly_ptr(a, a.parent)
     return SPoly(r1, a.parent)
 end
 
 function rt_convert2poly(a)
-    rt_error("cannot convert $(rt_typestring(a)) to a poly")
+    rt_error("cannot convert `$(rt_typestring(a))` to `poly`")
     return rt_defaultconstructor_poly()
 end
 
+#### vector
+
+function rt_convert2vector(a::Union{Int, BigInt})
+    R = rt_basering()
+    r1 = rt_convert2poly_ptr(a, R.parent)
+    libSingular.p_SetCompP(r1, 1, R.parent.ring_ptr)    # mutate r1 in place
+    return SVector(r1, R)
+end
+
+function rt_convert2vector(a::Union{SNumber, SPoly})
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a vector outside of basering")
+    r1 = rt_convert2poly_ptr(a, a.parent)
+    libSingular.p_SetCompP(r1, 1, a.parent.ring_ptr)    # mutate r1 in place
+    return SVector(r1, a.parent)
+end
+
+function rt_convert2vector(a::SVector)
+    return a
+end
+
+function rt_convert2vector(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to a vector")
+    return rt_defaultconstructor_vector()
+end
 
 #### ideal
 
@@ -1698,10 +1772,15 @@ function rt_print(a::SNumber)
     return libSingular.StringEndS()
 end
 
-
 function rt_print(a::SPoly)
     @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a polynomial outside of basering")
     s = libSingular.p_String(a.poly_ptr, a.parent.ring_ptr)
+    return s
+end
+
+function rt_print(a::SVector)
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a vector outside of basering")
+    s = libSingular.p_String(a.vector_ptr, a.parent.ring_ptr)
     return s
 end
 
@@ -1789,6 +1868,7 @@ rt_typedata(::_List)       = "list"
 rt_typedata(::SRing)       = "ring"
 rt_typedata(::SNumber)     = "number"
 rt_typedata(::SPoly)       = "poly"
+rt_typedata(::SVector)     = "vector"
 rt_typedata(::_Ideal)      = "ideal"
 rt_typedata(a::STuple) = String[rt_typedata(i) for i in a.list]
 
@@ -2282,6 +2362,20 @@ function rt_assign_last(a::SRing, b::STuple)
     return rt_convert2ring(b.list[1])
 end
 
+#### assignment to number
+rt_assign_more(s::SNumber, b) = rt_convert2number(b), empty_tuple
+rt_assign_last(s::SNumber, b) = rt_convert2number(b)
+
+function rt_assign_more(a::SNumber, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
+    return rt_convert2number(popfirst!(b.list)), b
+end
+
+function rt_assign_last(a::SNumber, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2number(b.list[1])
+end
+
 #### assignment to poly
 function rt_assign_more(a::SPoly, b)
     @assert !isa(b, STuple)
@@ -2303,18 +2397,25 @@ function rt_assign_last(a::SPoly, b::STuple)
     return rt_convert2poly(b.list[1])
 end
 
-#### assignment to number
-rt_assign_more(s::SNumber, b) = rt_convert2number(b), empty_tuple
-rt_assign_last(s::SNumber, b) = rt_convert2number(b)
-
-function rt_assign_more(a::SNumber, b::STuple)
-    @error_check(!isempty(b), "argument mismatch in assignment")
-    return rt_convert2number(popfirst!(b.list)), b
+#### assignment to vector
+function rt_assign_more(a::SVector, b)
+    @assert !isa(b, STuple)
+    return rt_convert2vector(b), empty_tuple
 end
 
-function rt_assign_last(a::SNumber, b::STuple)
+function rt_assign_more(a::SVector, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
+    return rt_convert2vector(popfirst!(b.list)), b
+end
+
+function rt_assign_last(a::SVector, b)
+    @assert !isa(b, STuple)
+    return rt_convert2vector(b)
+end
+
+function rt_assign_last(a::SVector, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
-    return rt_convert2number(b.list[1])
+    return rt_convert2vector(b.list[1])
 end
 
 #### assignment to ideal

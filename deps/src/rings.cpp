@@ -382,6 +382,11 @@ void singular_define_rings(jlcxx::Module & Singular)
         number n = n_Init(c, r);
         return p_SetCoeff0(p, n, r);
     });
+
+    Singular.method("p_SetCompP", [](poly p, int i, ring r) {
+        p_SetCompP(p, i, r);
+    });
+
     Singular.method("pLDeg", [](spolyrec * a, ip_sring * r) {
         long res;
         int  dummy;
