@@ -1030,13 +1030,9 @@ function push_exprlist_expr!(l::Array{AstNode}, a::AstNode, env::AstEnv)
     end
 end
 
-function rt_make_ring_from_ringlist(a::SListData)
+function rt_make_ring_from_ringlist(a::Slist)
     error("rt_make_ring_from_ringlist not implement")
     return rtInvalidRing
-end
-
-function rt_make_ring_from_ringlist(a::SList)
-    return rt_make_ring_from_ringlist(a.data)
 end
 
 function rt_make_ring(coeff, var, ord)
@@ -1044,38 +1040,36 @@ function rt_make_ring(coeff, var, ord)
     var = rt_parse_var(var)
     @error_check(length(ord) > 0, "bad ordering specification")
     ord = [rt_parse_ord(a) for a in ord]
-    return SRing(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
+    return Sring(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
 end
 
-rt_make_qring(a::SRing) = a
+rt_make_qring(a::Sring) = a
 
-rt_make_qring(a::SIdeal) = rt_make_qring(rt_ref(a))
-
-function rt_make_qring(a::SIdealData)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "constructing qring outside of basering")
-    r = libSingular.new_qring(a.ideal_ptr, a.parent.ring_ptr)
+function rt_make_qring(a::Sideal)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "constructing qring outside of basering")
+    r = libSingular.new_qring(a.value, a.parent.value)
     if r == C_NULL
         rt_error("qring construction failed")
         return rtInvalidRing
     else
-        return SRing(true, r, length(rtGlobal.callstack))
+        return Sring(true, r, length(rtGlobal.callstack))
     end
 end
 
-function rt_declare_assign_ring(a::SName, b::SRing)
+function rt_declare_assign_ring(a::SName, b::Sring)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SRing)
+        rt_check_declaration_local(a.name, Sring)
         push!(rtGlobal.local_vars, Pair(a.name, b))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SRing)
+        d = rt_check_declaration_global_ring_indep(a.name, Sring)
         d[a.name] = b
     end
     rt_set_current_ring(b)
     return
 end
 
-function rt_declare_assign_ring(a::Vector{SName}, b::SRing)
+function rt_declare_assign_ring(a::Vector{SName}, b::Sring)
     @error_check(length(a) == 1, "ring construction expects one indexed name")
     rt_declare_assign_ring(a[1], b)
     return
