@@ -1923,8 +1923,8 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
             return r
         elseif a.rule == @RULE_declare_ip_variable(5) || a.rule == @RULE_declare_ip_variable(6)
             if a.rule == @RULE_declare_ip_variable(5)
-                numrows = convert_expr(a.child[3], env)
-                numcols = convert_expr(a.child[4], env)
+                numrows = make_nocopy(convert_expr(a.child[3], env))
+                numcols = make_nocopy(convert_expr(a.child[4], env))
             else
                 numrows = numcols = 1 # default matrix size is 1x1
             end

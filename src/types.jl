@@ -224,7 +224,7 @@ end
 
 #### singular type "vector"     immutable in the singular language
 mutable struct SVector
-    vector_ptr::libSingular.poly    # singly linked list of terms*gens(i)
+    vector_ptr::libSingular.poly    # singly linked list of terms*gens(i), like a sparse array of poly
     parent::SRing
 
     function SVector(vector_ptr_::libSingular.poly, parent_::SRing)
@@ -245,7 +245,7 @@ function rt_vector_finalizer(a::SVector)
 end
 
 
-#### singular type "ideal"      mutable like a list polys in the singular language
+#### singular type "ideal"      mutable like a 1d array of polys in the singular language
 mutable struct SIdealData
     ideal_ptr::libSingular.ideal    # dense 1d array of poly
     parent::SRing
@@ -274,12 +274,35 @@ end
 sing_ptr(i::SIdeal) = sing_ptr(i.ideal)
 sing_ring(i::SIdeal) = sing_ring(i.ideal)
 
-#### singular type "matrix"
-mutable struct SMatrix
-#    value::libSingular.matrix
+
+#### singular type "matrix"     mutable like a 2d array of polys in the singular language
+mutable struct SMatrixData
+    matrix_ptr::libSingular.matrix      # dense 2d array of poly
     parent::SRing
+
+    function SMatrixData(matrix_ptr_::libSingular.matrix, parent_::SRing)
+        a = new(matrix_ptr_, parent_)
+        finalizer(rt_matrix_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
 end
 
+sing_ptr(a::SMatrixData) = a.matrix_ptr
+sing_ring(a::SMatrixData) = a.parent
+
+function rt_matrix_finalizer(a::SMatrixData)
+    libSingular.mp_Delete(a.matrix_ptr, a.parent.ring_ptr)
+    rt_ring_finalizer(a.parent)
+end
+
+struct SMatrix
+    matrix::SMatrixData
+end
+
+sing_ptr(a::SMatrix) = sing_ptr(a.matrix)
+sing_ring(a::SMatrix) = sing_ring(a.matrix)
 
 # the underscore types include the underlying mutable containers
 const _IntVec    = Union{SIntVec, Vector{Int}}
@@ -287,6 +310,7 @@ const _IntMat    = Union{SIntMat, Array{Int, 2}}
 const _BigIntMat = Union{SBigIntMat, Array{BigInt, 2}}
 const _List      = Union{SList, SListData}
 const _Ideal     = Union{SIdeal, SIdealData}
+const _Matrix    = Union{SMatrix, SMatrixData}
 
 # it is almost useless to have a list of singular types because of newstruct
 #const SingularType = Union{Nothing, SProc, Int, BigInt, SString,
@@ -295,10 +319,10 @@ const _Ideal     = Union{SIdeal, SIdealData}
 
 # the set of possible ring dependent types is finite because newstruct creates ring indep types
 # all ring dependent types have a .parent member for the ring
-const SingularRingType = Union{SList, SNumber, SPoly, SIdeal}
+const SingularRingType = Union{SList, SNumber, SPoly, SIdeal, SMatrix}
 
 # the types that are always ring dependent
-const _SingularRingType = Union{SNumber, SPoly, SIdeal, SIdealData}
+const _SingularRingType = Union{SNumber, SPoly, SIdeal, SIdealData, SMatrixData}
 
 # this function is broken now
 function type_is_ring_dependent(t::String)

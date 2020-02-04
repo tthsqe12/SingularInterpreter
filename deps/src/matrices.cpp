@@ -2,6 +2,8 @@
 
 void singular_define_matrices(jlcxx::Module & Singular)
 {
+    Singular.method("mpNew", &mpNew);
+
     Singular.method("ncols", [](matrix I) { return (int)MATCOLS(I); });
 
     Singular.method("nrows", [](matrix I) { return (int)MATROWS(I); });

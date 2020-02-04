@@ -91,6 +91,10 @@ function Base.deepcopy_internal(a::SPoly, dict::IdDict)
     return a
 end
 
+function Base.deepcopy_internal(a::SVector, dict::IdDict)
+    return a
+end
+
 function Base.deepcopy_internal(a::SIdealData, dict::IdDict)
     id = libSingular.id_Copy(a.ideal_ptr, a.parent.ring_ptr)
     return SIdealData(id, a.parent)
@@ -98,6 +102,15 @@ end
 
 function Base.deepcopy_internal(a::SIdeal, dict::IdDict)
     return SIdeal(deepcopy(a.ideal))
+end
+
+function Base.deepcopy_internal(a::SMatrixData, dict::IdDict)
+    id = libSingular.mp_Copy(a.matrix_ptr, a.parent.ring_ptr)
+    return SMatrixData(id, a.parent)
+end
+
+function Base.deepcopy_internal(a::SMatrix, dict::IdDict)
+    return SMatrix(deepcopy(a.matrix))
 end
 
 # copiers returning SingularType, usually so that we can assign it somewhere
@@ -170,6 +183,12 @@ rt_copy(a::SIdeal) = a
 rt_copy_allow_tuple(a::SIdealData) = SIdeal(deepcopy(a))
 rt_copy_allow_tuple(a::SIdeal) = a
 
+rt_copy(a::SMatrixData) = SMatrix(deepcopy(a))
+rt_copy(a::SMatrix) = a
+rt_copy_allow_tuple(a::SMatrixData) = SMatrix(deepcopy(a))
+rt_copy_allow_tuple(a::SMatrix) = a
+
+
 rt_copy(a::STuple) = error("internal error: The tuple $a leaked through. Please report this.")
 rt_copy_allow_tuple(a::STuple) = a
 
@@ -227,6 +246,9 @@ rt_ref(a::SNumber) = a
 rt_ref(a::SIdealData) = a
 rt_ref(a::SIdeal) = a.ideal
 
+rt_ref(a::SMatrixData) = a
+rt_ref(a::SMatrix) = a.matrix
+
 # unsafe promotion
 
 rt_promote(a::Nothing) = a
@@ -262,6 +284,8 @@ rt_promote(a::SVector) = a
 rt_promote(a::SIdealData) = SIdeal(a)
 rt_promote(a::SIdeal) = a
 
+rt_promote(a::SMatrixData) = SMatrix(a)
+rt_promote(a::SMatrix) = a
 
 
 # rt_ringof has to be used for .r_... members of newstruct, which are read-only
@@ -1282,6 +1306,37 @@ function rt_parameter_ideal(a::SName, b)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ideal(b)))
 end
 
+#### matrix
+function rt_defaultconstructor_matrix(nrows::Int = 1, ncols::Int = 1)
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct a matrix when no basering is active")
+    m = libSingular.mpNew(nrows, ncols)
+    return SMatrix(SMatrixData(m, R))
+end
+
+function rt_declare_matrix(a::Vector{SName}, nrows::Int = 1, ncols::Int = 1)
+    for i in a
+        rt_declare_matrix(i, nrows, ncols)
+    end
+end
+
+function rt_declare_matrix(a::SName, nrows::Int = 1, ncols::Int = 1)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(a.name, SMatrix)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_matrix(nrows, ncols)))
+    else
+        d = rt_check_declaration_global_ring_indep(a.name, SMatrix)
+        d[a.name] = rt_defaultconstructor_matrix(nrows, ncols)
+    end
+end
+
+function rt_parameter_matrix(a::SName, b)
+    @expensive_assert !rt_local_identifier_exists(a.name)
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2matrix(b)))
+end
+
+
 ########### type conversions ##################################################
 # each rt_convert2T(a) returns an object of type T, usually for an assignment
 # each rt_convert2T(a) is a UNIARY function with no known exceptions
@@ -1677,6 +1732,19 @@ function rt_convert2ideal(a)
 end
 
 
+#### matrix
+
+function rt_convert2matrix(a...)
+    rt_error("matrix conversion not implemented")
+    return rt_defaultconstructor_matrix()
+end
+
+function rt_cast2matrix(a...)
+    rt_error("matrix cast not implemented")
+    return rt_defaultconstructor_matrix()
+end
+
+
 ############ printing #########################################################
 # Printing seems to be a mess in singular. For now we just have rt_printout,
 # rt_print, and rt_cast2string all produce nice 2-dimensional output
@@ -1804,6 +1872,29 @@ function rt_print(a::SIdealData)
     return s
 end
 
+rt_print(a::SMatrix) = rt_print(a.matrix)
+
+function rt_print(a::SMatrixData)
+    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing an ideal outside of basering")
+    s = ""
+    nrows = libSingular.nrows(a.matrix_ptr)
+    ncols = libSingular.ncols(a.matrix_ptr)
+    first = true
+    for i in 1:nrows
+        for j in 1:ncols
+            p = libSingular.getindex(a.matrix_ptr, i, j)
+            t = libSingular.p_String(p, a.parent.ring_ptr)
+            h = (first ? "matrix[" : "      [") * string(i) *", " * string(j) * "]: "
+            s *= h * t * ((i < nrows || j < ncols) ? "\n" : "")
+            first = false
+        end
+    end
+    if first
+        s = "empty matrix"
+    end
+    return s
+end
+
 # just for fun - rtprint and rt_printout have special cases for tuples
 function rt_print(a::STuple)
     return join([rt_print(i) for i in a.list], "\n")
@@ -1870,6 +1961,7 @@ rt_typedata(::SNumber)     = "number"
 rt_typedata(::SPoly)       = "poly"
 rt_typedata(::SVector)     = "vector"
 rt_typedata(::_Ideal)      = "ideal"
+rt_typedata(::_Matrix)     = "matrix"
 rt_typedata(a::STuple) = String[rt_typedata(i) for i in a.list]
 
 rt_typedata_to_singular(a::String) = SString(a)
@@ -2452,6 +2544,27 @@ function rt_assign_last(a::SIdeal, b::STuple)
     return r
 end
 
+#### assignment to matrix
+function rt_assign_more(a::SMatrix, b)
+    @assert !isa(b, STuple)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix(), empty_tuple
+end
+
+function rt_assign_more(a::SMatrix, b::STuple)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix(), empty_tuple
+end
+
+function rt_assign_last(a::SMatrix, b)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix()
+end
+
+function rt_assign_last(a::SMatrix, b::STuple)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix()
+end
 
 
 ########################### newstruct installer ###############################
