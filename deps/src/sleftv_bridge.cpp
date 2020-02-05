@@ -3,11 +3,199 @@
 
 typedef ssize_t jint; // julia Int
 
+// for calling interpreter routines from SingularInterpreter
+static sleftv lv1;
+static sleftv lv2;
+static sleftv lvres;
+static leftv lvres_next;
+static const char* lv_string_names[3] = {"", "__string_name_1", "__string_name_2"};
+
+static idhdl string_idhdls[3] = {NULL, NULL, NULL};
+
+static idhdl string_idhdl(int i) {
+    assert(1 <= i && i <=2);
+    idhdl x = string_idhdls[i];
+    if (x == NULL) {
+        x = IDROOT->set(lv_string_names[i], 0, STRING_CMD, false);
+        string_idhdls[i] = x;
+    }
+    return x;
+}
+
 static void singular_define_table_h(jlcxx::Module & Singular);
 
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
+
+    Singular.method("set_leftv_arg_i", [](jint x, int i) {
+                                           assert(0 <= i && i <= 2);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = (void*)x;
+                                           lv.rtyp = INT_CMD;
+                                       });
+
+    Singular.method("set_leftv_arg_i", [](poly x, int i, bool copy) {
+                                           assert(0 <= i && i <= 2);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = copy ? pCopy(x) : x;
+                                           lv.rtyp = POLY_CMD;
+                                       });
+
+    Singular.method("set_leftv_arg_i", [](ideal x, int i, bool copy) {
+                                           assert(0 <= i && i <= 2);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = copy ? idCopy(x) : x;
+                                           lv.rtyp = IDEAL_CMD;
+                                       });
+
+    // experimental
+    Singular.method("set_leftv_arg_i", [](void *x, int i, bool copy) {
+                                           assert(0 <= i && i <= 2);
+                                           assert(!copy);
+                                           auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                                           lv.Init();
+                                           lv.data = x;
+                                           lv.rtyp = ANY_TYPE;
+                                       });
+
+
+    Singular.method("set_leftv_arg_i",
+                    [](const std::string& x, int i, bool withname) {
+                        // TODO (or not): avoid copying this poor string 2 or 3 times
+                        assert(0 <= i && i <= 2);
+                        auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                        lv.Init();
+                        if (withname) {
+                            idhdl id = string_idhdl(i);
+                            IDDATA(id) = omStrDup(x.c_str());
+                            lv.data = id;
+                            lv.name = id->id; // Hans says it's necessary to have the name both in the
+                                              // idhdl and as the name field of the sleftv, but they can
+                                              // be the same pointer
+                            lv.rtyp = IDHDL;
+                        }
+                        else {
+                            lv.data = (void*)(omStrDup(x.c_str()));
+                            lv.rtyp = STRING_CMD;
+                        }
+                    });
+
+
+    // for `Vector{Int}`
+    Singular.method("set_leftv_arg_i",
+                    [](jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2, int i) {
+                        assert(1 <= i && i <= 2);
+                        assert(d1 * d2 == a.size());
+                        assert(ismatrix || d2 == 1);
+                        auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                        lv.Init();
+                        intvec *iv; // cannot use a global intvec, Singular
+                                    // then sometimes tries to de-allocate it
+                        if (ismatrix) {
+                            iv = new intvec(d1, d2, 0);
+                            // iv and a use row-major and column-major formats respectively
+                            for (int i=0, i2=1; i2<=d2; ++i2)
+                                for (int i1=1; i1<=d1; ++i1)
+                                    IMATELEM(*iv, i1, i2) = a[i++];
+                        }
+                        else {
+                            iv = new intvec(d1);
+                            for (int i=0; i<a.size(); ++i)
+                                (*iv)[i] = a[i];
+                        }
+                        lv.data = (void*)iv;
+                        lv.rtyp = ismatrix ? (int)INTMAT_CMD : (int)INTVEC_CMD;
+                    });
+
+    // TODO: check if lvres must be somehow de-allocated / does not leak
+    Singular.method("get_leftv_res",
+                    [] {
+                        void *res = (void*)lvres.Data();
+                        rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
+                        // this can check for its validity
+                        return res;
+                    });
+
+    Singular.method("get_leftv_res_next",
+                    [] {
+                        if (lvres_next == NULL) {
+                            rChangeCurrRing(NULL);
+                            return std::make_tuple(0, (void*)NULL);
+                        }
+                        else {
+                            auto r = std::make_tuple(lvres_next->Typ(), lvres_next->Data());
+                            lvres_next = lvres_next->next;
+                            return r;
+                        }
+                    });
+
+    Singular.method("get_leftv_res_typ", [] { return lvres.Typ(); });
+
+    Singular.method("lvres_array_get_dim",
+                    [](int d) {
+                        assert(1 <= d && d <= 2);
+                        assert(lvres.rtyp == INTVEC_CMD || lvres.rtyp == INTMAT_CMD);
+                        intvec *iv = (intvec*)lvres.data;
+                        return d == 1 ? iv->rows() : iv->cols();
+                    });
+
+    Singular.method("lvres_to_jlarray",
+                    [](jlcxx::ArrayRef<ssize_t> a){
+                        assert(lvres.rtyp == INTVEC_CMD || lvres.rtyp == INTMAT_CMD);
+                        intvec &iv = *(intvec*)lvres.data;
+                        assert(a.size() == iv.length());
+                        int d1 = iv.rows(), d2 = iv.cols();
+                        if (lvres.rtyp == INTMAT_CMD)
+                            for (int i=0, i2=1; i2<=d2; ++i2)
+                                for (int i1=1; i1<=d1; ++i1)
+                                    a[i++] = IMATELEM(iv, i1, i2);
+                        else
+                            for (int i=0; i<iv.length(); ++i)
+                                a[i] = iv[i];
+                        rChangeCurrRing(NULL);
+                    });
+
+    Singular.method("iiExprArith1",
+                    [](int op) {
+                        lvres_next = &lvres;
+                        int err = iiExprArith1(&lvres, &lv1, op);
+                        if (err) {
+                            errorreported = 0;
+                            rChangeCurrRing(NULL); // done somewhere else when !err
+                        }
+                        return err;
+                    });
+
+    Singular.method("iiExprArith2",
+                    [](int op) {
+                        lvres_next = &lvres;
+                        // TODO: check what is the default proccall argument
+                        int err = iiExprArith2(&lvres, &lv1, op, &lv2);
+                        if (err) {
+                            errorreported = 0;
+                            rChangeCurrRing(NULL);
+                        }
+                        return err;
+                    });
+
+    Singular.method("rChangeCurrRing", [](ring r) {
+                                           ring old = currRing;
+                                           rChangeCurrRing(r);
+                                           return old;
+                                       });
+
+    Singular.method("internal_void_to_ideal_helper",
+                      [](void * x) { return reinterpret_cast<ideal>(x); });
+
+    Singular.method("internal_to_void_helper",
+                      [](ring x) { return reinterpret_cast<void*>(x); });
+
     singular_define_table_h(Singular);
 }
+
+// below: only singular_define_table_h stuff
 
 #define IPARITH // necessary in order for table.h to include its content
 
