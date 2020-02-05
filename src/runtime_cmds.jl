@@ -418,7 +418,18 @@ const error_expected_types = Dict(
 )
 
 let seen = Set{Int}()
-    for (cmd, res, arg) in dArith1
+    i = 0
+    valid_types = Int.(keys(convertible_types))
+    while true
+        (cmd, res, arg) = libSingular.dArith1(i)
+        cmd == 0 && break # end of dArith1
+        i += 1
+
+        res in valid_types && arg in valid_types || continue
+
+        res = CMDS(res)
+        arg = CMDS(arg)
+
         arg == ANY_TYPE && continue # handled differently
 
         name = something(get(cmd_to_string, cmd, nothing),
@@ -426,9 +437,8 @@ let seen = Set{Int}()
                          "")
         name == "" && continue
 
-        Sres = get(convertible_types, res, nothing)
-        Sarg = get(convertible_types, arg, nothing)
-        Sres !== nothing && Sarg !== nothing || continue
+        Sres = convertible_types[res]
+        Sarg = convertible_types[arg]
 
         rtname = Symbol(:rt, name)
         rtauto = Symbol(:rt, name, :_auto)

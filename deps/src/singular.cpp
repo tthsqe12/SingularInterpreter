@@ -6,6 +6,8 @@
 #include "matrices.h"
 #include "coeff_rings.h"
 
+void singular_define_sleftv_bridge(jlcxx::Module & Singular);
+
 static std::string singular_return;
 static std::string singular_error;
 static std::string singular_warning;
@@ -101,6 +103,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
     singular_define_ideals(Singular);
     singular_define_matrices(Singular);
     singular_define_coeff_rings(Singular);
+    singular_define_sleftv_bridge(Singular);
 
     Singular.method("set_leftv_arg_i", [](julia_int x, int i) {
                                            assert(0 <= i && i <= 2);
