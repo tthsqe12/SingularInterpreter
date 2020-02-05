@@ -114,7 +114,7 @@ function rt_copy_tmp(a::Slist)
     if rt_istmp(a)
         return a
     else
-        return Slist(map(rt_copy_own, a.value), a.parent, a.ring_dep_count, a.back, true)
+        return Slist(map(rt_copy_own, a.value), a.parent, a.ring_dep_count, nothing, true)
     end
 end
 
@@ -123,7 +123,7 @@ function rt_copy_own(a::Slist)
         a.tmp = false
         return a
     else
-        return Slist(map(rt_copy_own, a.value), a.parent, a.ring_dep_count, a.back, false)
+        return Slist(map(rt_copy_own, a.value), a.parent, a.ring_dep_count, nothing, false)
     end
 end
 

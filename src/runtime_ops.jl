@@ -37,96 +37,88 @@ the transpiler DOES NOT produce names for any arguments of these functions
 
 #### list get/setindex ####
 
-rtgetindex(a::_List, i::Union{Int, _IntVec}) = rtgetindex(rt_ref(a), rt_ref(i))
-
-function rtgetindex(a::SListData, i::Int)
+function rtgetindex(a::Slist, i::Int)
     @expensive_assert object_is_ok(a)
-    b = a.data[i]
-    if isa(b, SList)
-        r = b.list
-        r.back = a
-        return r
-    else
-        return rt_ref(b)
+    b = a.value[i]
+    if isa(b, Slist)
+        b.back = a
     end
+    @expensive_assert object_is_own(b)
+    return b
 end
 
-function rtgetindex(a::SListData, i::Vector{Int})
-    r = Any[rtgetindex(a, t) for t in i]
-    return length(r) == 1 ? r[1] : STuple(r)
+function rtgetindex(a::Slist, i::Sintvec)
+    r = Any[rtgetindex(a, t) for t in i.value]
+    return length(r) == 1 ? r[1] : STuple(map(rt_copy_tmp, r))
 end
 
 
-rtsetindex_more(a::_List, i::Union{Int, _IntVec}, b)= rtsetindex_more(rt_ref(a), rt_ref(i), b)
-
-function rtsetindex_more(a::SListData, i::Int, b)
+function rtsetindex_more(a::Slist, i::Int, b)
     @assert !isa(b, STuple)
     rt_setindex(a, i, b)
     return empty_tuple
 end
 
-function rtsetindex_more(a::SListData, i::Int, b::STuple)
+function rtsetindex_more(a::Slist, i::Int, b::STuple)
     @error_check(!isempty(b.list), "argument mismatch in assignment")
     rt_setindex(a, i, popfirst!(b.list))
     return b
 end
 
-function rtsetindex_more(a::SListData, i::Vector{Int}, b)
+function rtsetindex_more(a::Slist, i::Sintvec, b)
     @assert !isa(b, STuple)
-    if length(i) == 1
-        rt_setindex(a, i[1], b)
+    if length(i.value) == 1
+        rt_setindex(a, i.value[1], b)
         return empty_tuple
     else
-        @error_check(isempty(i), "argument mismatch in assignment")
+        @error_check(isempty(i.value), "argument mismatch in assignment")
         return b
     end
 end
 
-function rtsetindex_more(a::SListData, i::Vector{Int}, b::STuple)
-    n = length(i)
+function rtsetindex_more(a::Slist, i::Sintvec, b::STuple)
+    n = length(i.value)
     @error_check(length(b.list) >= n, "argument mismatch in assignment")
     for t in 1:n
-        rt_setindex(a, i[t], b.list[t])
+        rt_setindex(a, i.value[t], b.list[t])
     end
     deleteat!(b.list, 1:n)
     return b
 end
 
-rtsetindex_last(a::_List, i::Union{Int, _IntVec}, b)= rtsetindex_more(rt_ref(a), rt_ref(i), b)
-
-function rtsetindex_last(a::SListData, i::Int, b)
+function rtsetindex_last(a::Slist, i::Int, b)
     @assert !isa(b, STuple)
     rt_setindex(a, i, b)
     return
 end
 
-function rtsetindex_last(a::SListData, i::Int, b::STuple)
+function rtsetindex_last(a::Slist, i::Int, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     rt_setindex(a, i, b.list[1])
     return
 end
 
-function rtsetindex_last(a::SListData, i::Vector{Int}, b)
+function rtsetindex_last(a::Slist, i::Sintvec, b)
     @assert !isa(b, STuple)
-    if length(i) == 1
-        rt_setindex(a, i[1], b)
+    if length(i.value) == 1
+        rt_setindex(a, i.value[1], b)
     else
-        @error_check(isempty(i), "argument mismatch in assignment")
+        @error_check(isempty(i.value), "argument mismatch in assignment")
     end
     return
 end
 
-function rtsetindex_last(a::SListData, i::Vector{Int}, b::STuple)
-    n = length(i)
+function rtsetindex_last(a::Slist, i::Sintvec, b::STuple)
+    n = length(i.value)
     @error_check(length(b.list) == n, "argument mismatch in assignment")
     for t in 1:n
-        rt_setindex(a, i[t], b.list[t])
+        rt_setindex(a, i.value[t], b.list[t])
     end
     return
 end
 
 
-function rt_setindex(a::SListData, i::Int, b)
+function rt_setindex(a::Slist, i::Int, b)
     @expensive_assert object_is_ok(a)
     bcopy = rt_copy(b) # copy before the possible resize
     r = a.data
@@ -164,13 +156,13 @@ function rt_setindex(a::SListData, i::Int, b)
 end
 
 # we should at least maintain the integrity of the list data structure
-function rt_fix_setindex(a::SListData, count_change::Int)
+function rt_fix_setindex(a::Slist, count_change::Int)
     new_parent = a.parent
     a.ring_dep_count += count_change
     if a.ring_dep_count > 0
         if !new_parent.valid
             new_parent = rt_basering()  # try to get a valid ring from somewhere
-            new_parent.valid || rt_warn("list has ring dependent elements but no basering")
+            @warn_check(new_parent.valid, "list has ring dependent elements but no basering")
         end
     else
         new_parent = rtInvalidRing
@@ -193,12 +185,10 @@ function rt_fix_setindex(a::Symbol, count_change::Int)
         for p in (rtGlobal.callstack[end].current_package, :Top)
             if haskey(rtGlobal.vars, p) && haskey(rtGlobal.vars[p], a)
                 b = rtGlobal.vars[p][a]
-                if isa(b, SList)
+                if isa(b, Slist)
                     R = rt_basering()
                     if R.valid
-                        if haskey(R.vars, a)
-                            rt_warn("overwriting name " * string(a.name) * " when moving global list into basering")
-                        end
+                        @warn_check(!haskey(R.vars, a), "overwriting name " * string(a.name) * " when moving global list into basering")
                         R.vars[a] = b
                         delete!(rtGlobal.vars[p], a)
                         return
@@ -224,9 +214,7 @@ function rt_fix_setindex(a::Symbol, count_change::Int)
                 p = rtGlobal.callstack[end].current_package
                 if haskey(rtGlobal.vars, p)
                     d = rtGlobal.vars[p]
-                    if haskey(d, a)
-                        rt_warn("overwriting name " * string(a.name) * " when moving global list out of basering")
-                    end
+                    @warn_check(!haskey(d, a), "overwriting name " * string(a.name) * " when moving global list out of basering")
                     d[a] = b
                 else
                     rtGlobal.vars[p] = Dict{Symbol, Any}[a => b]
@@ -253,84 +241,80 @@ end
 
 #### intvec get/setindex ####
 
-rtgetindex(a::_IntVec, i::Union{Int, _IntVec}) = rtgetindex(rt_ref(a), rt_ref(i))
-
-function rtgetindex(a::Vector{Int}, i::Int)
-    return a[i]
+function rtgetindex(a::Sintvec, i::Int)
+    return a.value[i]
 end
 
-function rtgetindex(a::Vector{Int}, i::Vector{Int})
-    r = Any[a[t] for t in i]
+function rtgetindex(a::Sintvec, i::Sintvec)
+    r = Any[a.value[t] for t in i.value]
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
-rtsetindex_more(a::_IntVec, i::Union{Int, _IntVec}, b) = rtsetindex_more(rt_ref(a), rt_ref(i), b)
-
-function rtsetindex_more(a::Vector{Int}, i::Int, b)
+function rtsetindex_more(a::Sintvec, i::Int, b)
     @assert !isa(b, STuple)
-    a[i] = rt_convert2int(b)
+    a.value[i] = rt_convert2int(b)
     return empty_tuple
 end
 
-function rtsetindex_more(a::Vector{Int}, i::Int, b::STuple)
+function rtsetindex_more(a::Sintvec, i::Int, b::STuple)
     @error_check(!isempty(b.list), "argument mismatch in assignment")
-    a[i] = rt_convert2int(popfirst!(b.list))
+    a.value[i] = rt_convert2int(popfirst!(b.list))
     return b
 end
 
-function rtsetindex_more(a::Vector{Int}, i::Vector{Int}, b)
+function rtsetindex_more(a::Sintvec, i::Sintvec, b)
     @assert !isa(b, STuple)
-    if length(i) == 1
-        a[i[1]] = rt_convert2int(b)
+    if length(i.value) == 1
+        a[i.value[1]] = rt_convert2int(b)
         return empty_tuple
     else
-        @error_check(isempty(i), "argument mismatch in assignment")
+        @error_check(isempty(i.value), "argument mismatch in assignment")
         return b
     end
 end
 
-function rtsetindex_more(a::Vector{Int}, i::Vector{Int}, b::STuple)
-    n = length(i)
+function rtsetindex_more(a::Sintvec, i::Sintvec, b::STuple)
+    iv = i.value
+    n = length(iv)
     @error_check(length(b.data) >= n, "argument mismatch in assignment")
     if a === i
-        i = deepcopy(i)
+        iv = copy(i.value)
     end
     for t in 1:n
-        a[i[t]] = rt_convert2int(b.list[t])
+        a.value[iv[t]] = rt_convert2int(b.list[t])
     end
     deleteat!(b.list, 1:n)
     return b
 end
 
-rtsetindex_last(a::_IntVec, i::Union{Int, _IntVec}, b) = rtsetindex_last(rt_ref(a), rt_ref(i), b)
-
-function rtsetindex_last(a::Vector{Int}, i::Int, b)
+function rtsetindex_last(a::Sintvec, i::Int, b)
     @assert !isa(b, STuple)
-    a[i] = rt_convert2int(b)
+    a.value[i] = rt_convert2int(b)
     return
 end
 
-function rtsetindex_last(a::Vector{Int}, i::Int, b::STuple)
+function rtsetindex_last(a::Sintvec, i::Int, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
-    a[i] = rt_convert2int(b.list[1])
+    a.value[i] = rt_convert2int(b.list[1])
     return
 end
 
-function rtsetindex_last(a::Vector{Int}, i::Vector{Int}, b)
+function rtsetindex_last(a::Sintvec, i::Sintvec, b)
     @assert !isa(b, STuple)
-    @error_check(length(i) == 1, "argument mismatch in assignment")
-    a[i[1]] = rt_convert2int(b)
+    @error_check(length(i.value) == 1, "argument mismatch in assignment")
+    a.value[i.value[1]] = rt_convert2int(b)
     return
 end
 
-function rtsetindex_last(a::Vector{Int}, i::Vector{Int}, b::STuple)
-    n = length(i)
+function rtsetindex_last(a::Sintvec, i::Sintvec, b::STuple)
+    iv = i.value
+    n = length(iv)
     @error_check(length(b.list) == n, "argument mismatch in assignment")
     if a === i
-        i = deepcopy(i)
+        iv = copy(i.value)
     end
     for t in 1:n
-        a[i[t]] = rt_convert2int(b.list[t])
+        a.value[iv[t]] = rt_convert2int(b.list[t])
     end
     return
 end
@@ -339,43 +323,34 @@ end
 
 #### intmat/bigintmat get/setindex ####
 
-rtgetindex(a::Union{_IntMat, _BigIntMat},
-           i::Union{Int, _IntVec},
-           j::Union{Int, _IntVec}) =
-    rtgetindex(rt_ref(a), rt_ref(i), rt_ref(j))
+indexvalues(i::Sintvec) = i.value
+indexvalues(i::Int) = i
 
-function rtgetindex(a::Union{Array{Int, 2}, Array{BigInt, 2}},
-                    i::Union{Int, Vector{Int}},
-                    j::Union{Int, Vector{Int}})
+function rtgetindex(a::Union{Sintmat, Sbigintmat},
+                    i::Union{Int, Sintvec},
+                    j::Union{Int, Sintvec})
     r = Any[]
-    for s in i
-        for t in j
-            push!(r, a[s, t])
+    for s in indexvalues(i)
+        for t in indexvalues(j)
+            push!(r, a.value[s, t])
         end
     end
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
-
-rtsetindex_more(a::Union{_IntMat, _BigIntMat},
-                i::Union{Int, _IntVec},
-                j::Union{Int, _IntVec},
-                b) =
-    rtsetindex_more(rt_ref(a), rt_ref(i), rt_ref(j), b)
-
-function rtsetindex_more(a::Union{Array{Int, 2}, Array{BigInt, 2}},
-                         i::Union{Int, Vector{Int}},
-                         j::Union{Int, Vector{Int}},
+function rtsetindex_more(a::Union{Sintmat, Sbigintmat},
+                         i::Union{Int, Sintvec},
+                         j::Union{Int, Sintvec},
                          b)
     @assert !isa(b, STuple)
     first = true
-    for s in i
-        for t in j
+    for s in indexvalues(i)
+        for t in indexvalues(j)
             @error_check(first, "argument mismatch in assignment")
-            if isa(a, Array{Int, 2})
-                a[s, t] = rt_convert2int(b)
+            if isa(a, Sintmat)
+                a.value[s, t] = rt_convert2int(b)
             else
-                a[s, t] = rt_convert2bigint(b)
+                a.value[s, t] = rt_convert2bigint(b)
             end
             first = false
         end
@@ -383,42 +358,36 @@ function rtsetindex_more(a::Union{Array{Int, 2}, Array{BigInt, 2}},
     return first ? b : empty_tuple
 end
 
-function rtsetindex_more(a::Union{Array{Int, 2}, Array{BigInt, 2}},
-                    i::Union{Int, Vector{Int}},
-                    j::Union{Int, Vector{Int}},
+function rtsetindex_more(a::Union{Sintmat, Sbigintmat},
+                    i::Union{Int, Sintvec},
+                    j::Union{Int, Sintvec},
                     b::STuple)
-    for s in i
-        for t in j
+    for s in indexvalues(i)
+        for t in indexvalues(j)
             @error_check(!isempty(b.list), "argument mismatch in assignment")
-            if isa(a, Array{Int, 2})
-                a[s, t] = rt_convert2int(popfirst!(b.list))
+            if isa(a, Sintmat)
+                a.value[s, t] = rt_convert2int(popfirst!(b.list))
             else
-                a[s, t] = rt_convert2bigint(popfirst!(b.list))
+                b.value[s, t] = rt_convert2bigint(popfirst!(b.list))
             end
         end
     end
     return b
 end
 
-rtsetindex_last(a::Union{_IntMat, _BigIntMat},
-                i::Union{Int, _IntVec},
-                j::Union{Int, _IntVec},
-                b) =
-    rtsetindex_last(rt_ref(a), rt_ref(i), rt_ref(j), b)
-
-function rtsetindex_last(a::Union{Array{Int, 2}, Array{BigInt, 2}},
-                         i::Union{Int, Vector{Int}},
-                         j::Union{Int, Vector{Int}},
+function rtsetindex_last(a::Union{Sintmat, Sbigintmat},
+                         i::Union{Int, Sintvec},
+                         j::Union{Int, Sintvec},
                          b)
     @assert !isa(b, STuple)
     first = true
-    for s in i
-        for t in j
+    for s in indexvalues(i)
+        for t in indexvalues(j)
             @error_check(first, "argument mismatch in assignment")
-            if isa(a, Array{Int, 2})
-                a[s, t] = rt_convert2int(b)
+            if isa(a, Sintmat)
+                a.value[s, t] = rt_convert2int(b)
             else
-                a[s, t] = rt_convert2bigint(b)
+                a.value[s, t] = rt_convert2bigint(b)
             end
             first = false
         end
@@ -427,17 +396,17 @@ function rtsetindex_last(a::Union{Array{Int, 2}, Array{BigInt, 2}},
     return
 end
 
-function rtsetindex_last(a::Union{Array{Int, 2}, Array{BigInt, 2}},
-                    i::Union{Int, Vector{Int}},
-                    j::Union{Int, Vector{Int}},
-                    b::STuple)
-    for s in i
-        for t in j
+function rtsetindex_last(a::Union{Sintmat, Sbigintmat},
+                         i::Union{Int, Sintvec},
+                         j::Union{Int, Sintvec},
+                         b::STuple)
+    for s in indexvalues(i)
+        for t in indexvalues(j)
             @error_check(!isempty(b.list), "argument mismatch in assignment")
-            if isa(a, Array{Int, 2})
-                a[s, t] = rt_convert2int(popfirst!(b.list))
+            if isa(a, Sintmat)
+                a.value[s, t] = rt_convert2int(popfirst!(b.list))
             else
-                a[s, t] = rt_convert2bigint(popfirst!(b.list))
+                a.value[s, t] = rt_convert2bigint(popfirst!(b.list))
             end
         end
     end
@@ -449,89 +418,83 @@ end
 
 #### ideal get/setindex ####
 
-rtgetindex(a::_Ideal, i::Union{Int, _IntVec}) = rtgetindex(rt_ref(a), rt_ref(i))
-
-function rtgetindex(a::SIdealData, i::Int)
-    n = Int(libSingular.ngens(a.ideal_ptr))
+function rtgetindex(a::Sideal, i::Int)
+    n = Int(libSingular.ngens(a.value))
     @error_check(1 <= i <= n, "ideal index out of range")
-    r1 = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
-    r2 = libSingular.p_Copy(r1, a.parent.ring_ptr)
+    r1 = libSingular.getindex(a.value, Cint(i - 1))
+    r2 = libSingular.p_Copy(r1, a.parent.value)
     return SPoly(r2, a.parent)
 end
 
-function rtgetindex(a::SIdealData, i::Vector{Int})
-    r = Any[rtgetindex(a, t) for t in i]
+function rtgetindex(a::Sideal, i::Sintvec)
+    r = Any[rtgetindex(a, t) for t in i.value]
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
-function rt_setindex(a::SIdealData, i::Int, b)
+function rt_setindex(a::Sideal, i::Int, b)
     @assert !isa(b, STuple)    
     @error_check(i > 0, "ideal index must be positive for assignment")
-    libSingular.id_setindex_fancy(a.ideal_ptr, Cint(i), rt_convert2poly_ptr(b, a.parent), a.parent.ring_ptr)
+    libSingular.id_setindex_fancy(a.value, Cint(i), rt_convert2poly_ptr(b, a.parent), a.parent.value)
     return
 end
 
-rtsetindex_more(a::_Ideal, i::Union{Int, _IntVec}, b) = rtsetindex_more(rt_ref(a), rt_ref(i), b)
-
-function rtsetindex_more(a::SIdealData, i::Int, b)
+function rtsetindex_more(a::Sideal, i::Int, b)
     @assert !isa(b, STuple)
     rt_setindex(a, i, b)
     return empty_tuple
 end
 
-function rtsetindex_more(a::SIdealData, i::Int, b::STuple)
+function rtsetindex_more(a::Sideal, i::Int, b::STuple)
     @error_check(!isempty(b.list), "argument mismatch in assignment")
     rt_setindex(a, i, popfirst!(b.list))
     return b
 end
 
-function rtsetindex_more(a::SIdealData, i::Vector{Int}, b)
+function rtsetindex_more(a::Sideal, i::Sintvec, b)
     @assert !isa(b, STuple)
-    if length(i) == 1
-        rt_setindex(a, i, b)
+    if length(i.value) == 1
+        rt_setindex(a, i.value[1], b)
         return empty_tuple
     else
-        @error_check(isempty(i), "argument mismatch in assignment")
+        @error_check(isempty(i.value), "argument mismatch in assignment")
         return b
     end
 end
 
-function rtsetindex_more(a::SIdealData, i::Vector{Int}, b::STuple)
-    n = length(i)
-    @error_check(length(b.data) >= n, "argument mismatch in assignment")
+function rtsetindex_more(a::Sideal, i::Sintvec, b::STuple)
+    n = length(i.value)
+    @error_check(length(b.list) >= n, "argument mismatch in assignment")
     for t in 1:n
-        rt_setindex(a, i[t], b.list[t])
+        rt_setindex(a, i.value[t], b.list[t])
     end
     deleteat!(b.list, 1:n)
     return b
 end
 
-rtsetindex_last(a::_Ideal, i::Union{Int, _IntVec}, b) = rtsetindex_last(rt_ref(a), rt_ref(i), b)
-
-function rtsetindex_last(a::SIdealData, i::Int, b)
+function rtsetindex_last(a::Sideal, i::Int, b)
     @assert !isa(b, STuple)
     rt_setindex(a, i, b)
     return
 end
 
-function rtsetindex_last(a::SIdealData, i::Int, b::STuple)
+function rtsetindex_last(a::Sideal, i::Int, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     rt_setindex(a, i, b.list[1])
     return
 end
 
-function rtsetindex_last(a::SIdealData, i::Vector{Int}, b)
+function rtsetindex_last(a::Sideal, i::Sintvec, b)
     @assert !isa(b, STuple)
-    @error_check(length(i) == 1, "argument mismatch in assignment")
-    rt_setindex(a, i[1], b)
+    @error_check(length(i.value) == 1, "argument mismatch in assignment")
+    rt_setindex(a, i.value[1], b)
     return
 end
 
-function rtsetindex_last(a::SIdealData, i::Vector{Int}, b::STuple)
-    n = length(i)
-    @error_check(length(b.data) == n, "argument mismatch in assignment")
+function rtsetindex_last(a::Sideal, i::Sintvec, b::STuple)
+    n = length(i.value)
+    @error_check(length(b.list) == n, "argument mismatch in assignment")
     for t in 1:n
-        rt_setindex(a, i[t], b.list[t])
+        rt_setindex(a, i.value[t], b.list[t])
     end
 end
 
@@ -541,17 +504,16 @@ end
 #########################################
 
 
-function rtplus(a::_List, b::_List)
-    A = rt_edit(a)
-    B = rt_edit(b)
-    if A.parent.valid
-        newparent = A.parent
-        @warn_check(!B.parent.valid || newparent == B.parent, "funny thing happened while adding lists")
+function rtplus(a::Slist, b::Slist)
+    if a.parent.valid
+        newparent = a.parent
+        @warn_check(!b.parent.valid || newparent == b.parent, "funny thing happened while adding lists")
     else
-        newparent = B.parent
+        newparent = b.parent
     end
-    return SList(SListData(vcat(A.data, B.data), newparent,
-                                 A.ring_dep_count + B.ring_dep_count, nothing))
+    A = rt_istmp(a) ? a.value : map(rt_copy_own, a.value)
+    B = rt_istmp(b) ? b.value : map(rt_copy_own, b.value)
+    return Slist(vcat(A, B), newparent, a.ring_dep_count + b.ring_dep_count, nothing)
 end
 
 rtplus(a::Int, b::Int) = Base.checked_add(a, b)
@@ -574,300 +536,287 @@ rttimes(a::BigInt, b::BigInt) = a * b
 
 # op(number, number)
 
-function rtplus(a::SNumber, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "cannot add from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    r1 = libSingular.n_Add(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+function rtplus(a::Snumber, b::Snumber)
+    @error_check_rings(a.parent, rt_basering(), "cannot add from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    r1 = libSingular.n_Add(a.value, b.value, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rtminus(a::SNumber)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "negating outside of basering")
-    r1 = libSingular.n_Neg(a.number_ptr, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+function rtminus(a::Snumber)
+    @warn_check_rings(a.parent, rt_basering(), "negating outside of basering")
+    r1 = libSingular.n_Neg(a.value, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rtminus(a::SNumber, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
-    r1 = libSingular.n_Sub(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+function rtminus(a::Snumber, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot subtract from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "subtracting outside of basering")
+    r1 = libSingular.n_Sub(a.value, b.value, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rttimes(a::SNumber, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    r1 = libSingular.n_Mult(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+function rttimes(a::Snumber, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot multiply from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    r1 = libSingular.n_Mult(a.parent, b.parent, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
 # op(poly, poly)
 
-function rtplus(a::SPoly, b::SPoly)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.p_Copy(b.poly_ptr, b.parent.ring_ptr)
-    r1 = libSingular.p_Add_q(a1, b1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtplus(a::Spoly, b::Spoly)
+    @error_check_rings(a.parent, b.parent, "cannot add from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.p_Copy(b.value, b.parent.value)
+    r1 = libSingular.p_Add_q(a1, b1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rtminus(a::SPoly)
-    a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object ||
-        rt_warn("negating outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    r1 = libSingular.p_Neg(a1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtminus(a::Spoly)
+    @warn_check_rings(a.parent, rt_basering(), "negating outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    r1 = libSingular.p_Neg(a1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rtminus(a::SPoly, b::SPoly)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.p_Copy(b.poly_ptr, b.parent.ring_ptr)
-    r1 = libSingular.p_Sub(a1, b1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtminus(a::Spoly, b::Spoly)
+    @error_check_rings(a.parent, b.parent, "cannot subtract from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "subtracting outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.p_Copy(b.value, b.parent.value)
+    r1 = libSingular.p_Sub(a1, b1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rttimes(a::SPoly, b::SPoly)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    r1 = libSingular.pp_Mult_qq(a.poly_ptr, b.poly_ptr, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rttimes(a::Spoly, b::Spoly)
+    @error_check_rings(a.parent, b.parent, "cannot multiply from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    r1 = libSingular.pp_Mult_qq(a.value, b.value, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
 # op(ideal, ideal)
 
-function rtplus(a::_Ideal, b::_Ideal)
-    A::SIdealData = rt_ref(a)
-    B::SIdealData = rt_ref(b)
-    @error_check(A.parent.ring_ptr.cpp_object == B.parent.ring_ptr.cpp_object, "cannot add from different basering")
-    @warn_check(A.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    r1 = libSingular.id_Add(A.ideal_ptr, B.ideal_ptr, A.parent.ring_ptr)
-    return SIdeal(SIdealData(r1, a.parent))
+function rtplus(a::Sideal, b::Sideal)
+    @error_check_rings(a.parent, b.parent, "cannot add from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    r1 = libSingular.id_Add(a.value, b.value, a.parent.value)
+    return Sideal(r1, a.parent, true)
 end
 
-function rtminus(a::_Ideal)
+function rtminus(a::Sideal)
     return rttimes(a, -1)
 end
 
-function rtminus(a::_Ideal, b::_Ideal)
+function rtminus(a::Sideal, b::Sideal)
     rt_error("cannot subtract ideals")
     return rt_defaultconstructor_ideal()
 end
 
-function rttimes(a::_Ideal, b::_Ideal)
-    A::SIdealData = rt_ref(a)
-    B::SIdealData = rt_ref(b)
-    @error_check(A.parent.ring_ptr.cpp_object == B.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
-    @warn_check(A.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    r1 = libSingular.id_Mult(A.ideal_ptr, B.ideal_ptr, A.parent.ring_ptr)
-    return SIdeal(SIdealData(r1, A.parent))
+function rttimes(a::Sideal, b::Sideal)
+    @error_check_rings(a.parent, b.parent, "cannot multiply from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    r1 = libSingular.id_Mult(a.value, b.value, a.parent.value)
+    return Sideal(r1, a.parent, true)
 end
 
 # op(ideal, number|poly)
 
-function rtplus(a::SIdeal, b::Union{BigInt, Int, SNumber, SPoly})
-    return rtplus(a.ideal, b)
-end
-
-function rtplus(a::SIdealData, b::Union{BigInt, Int, SNumber, SPoly})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
+function rtplus(a::Sideal, b::Union{BigInt, Int, Snumber, Spoly})
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
     b1 = rt_convert2poly_ptr(b, a.parent)
     b2 = libSingular.idInit(1,1)
     libSingular.setindex_internal(b2, b1, 0) # b1 is consumed
-    r1 = libSingular.id_Add(a.ideal_ptr, b2, a.parent.ring_ptr)
-    libSingular.id_Delete(b2, a.parent.ring_ptr) # id_Add did not consume b2
-    return SIdeal(SIdealData(r1, a.parent))
+    r1 = libSingular.id_Add(a.value, b2, a.parent.value)
+    libSingular.id_Delete(b2, a.parent.value) # id_Add did not consume b2
+    return Sideal(r1, a.parent, true)
 end
 
-function rttimes(a::SIdeal, b::Union{BigInt, Int, SNumber, SPoly})
-    return rttime(a.ideal, b)
-end
-
-function rttimes(a::SIdealData, b::Union{BigInt, Int, SNumber, SPoly})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
+function rttimes(a::Sideal, b::Union{BigInt, Int, Snumber, Spoly})
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
     b1 = rt_convert2poly_ptr(b, a.parent)
     b2 = libSingular.idInit(1,1)
     libSingular.setindex_internal(b2, b1, 0) # b1 is consumed
-    r1 = libSingular.id_Mult(a.ideal_ptr, b2, a.parent.ring_ptr)
-    libSingular.id_Delete(b2, a.parent.ring_ptr) # id_Mult did not consume b2
-    return SIdeal(SIdealData(r1, a.parent))
+    r1 = libSingular.id_Mult(a.value, b2, a.parent.ring_ptr)
+    libSingular.id_Delete(b2, a.parent.value) # id_Mult did not consume b2
+    return Sideal(r1, a.parent, true)
 end
 
 
 # op(number, int)
 
-function rtplus(a::SNumber, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    r1 = libSingular.n_Add(a.number_ptr, b1, a.parent.ring_ptr)
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+function rtplus(a::Snumber, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.value)
+    r1 = libSingular.n_Add(a.value, b1, a.parent.value)
+    libSingular.n_Delete(b1, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rtminus(a::SNumber, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
+function rtminus(a::Snumber, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "subtracting outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    r1 = libSingular.n_Sub(a.number_ptr, b1, a.parent.ring_ptr)
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+    r1 = libSingular.n_Sub(a.value, b1, a.parent.value)
+    libSingular.n_Delete(b1, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rttimes(a::SNumber, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
+function rttimes(a::Snumber, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
     b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    r1 = libSingular.n_Mult(a.number_ptr, b1, a.parent.ring_ptr)
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+    r1 = libSingular.n_Mult(a.value, b1, a.parent.value)
+    libSingular.n_Delete(b1, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
 # op(int, number)
 
-function rtplus(b::Union{Int, BigInt}, a::SNumber)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    r1 = libSingular.n_Add(b1, a.number_ptr, a.parent.ring_ptr)
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+function rtplus(b::Union{Int, BigInt}, a::Snumber)
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.value)
+    r1 = libSingular.n_Add(b1, a.value, a.parent.value)
+    libSingular.n_Delete(b1, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rtminus(b::Union{Int, BigInt}, a::SNumber)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    r1 = libSingular.n_Sub(b1, a.number_ptr, a.parent.ring_ptr)
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+function rtminus(b::Union{Int, BigInt}, a::Snumber)
+    @warn_check_rings(a.parent, rt_basering(), "subtracting outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.value)
+    r1 = libSingular.n_Sub(b1, a.value, a.parent.value)
+    libSingular.n_Delete(b1, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rttimes(b::Union{Int, BigInt}, a::SNumber)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    r1 = libSingular.n_Mult(b1, a.number_ptr, a.parent.ring_ptr)
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
+function rttimes(b::Union{Int, BigInt}, a::Snumber)
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.value)
+    r1 = libSingular.n_Mult(b1, a.value, a.parent.value)
+    libSingular.n_Delete(b1, a.parent.value)
     return SNumber(r1, a.parent)
 end
 
 # op(poly, int)
 
-function rtplus(a::SPoly, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Add_q(a1, b2, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtplus(a::Spoly, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
+    r1 = libSingular.p_Add_q(a1, b2, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rtminus(a::SPoly, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Sub(a1, b2, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtminus(a::Spoly, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "subtracting outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
+    r1 = libSingular.p_Sub(a1, b2, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rttimes(a::SPoly, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Mult_q(a1, b2, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rttimes(a::Spoly, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
+    r1 = libSingular.p_Mult_q(a1, b2, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
 # op(poly, number)
 
-function rtplus(a::SPoly, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Add_q(a1, b2, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtplus(a::Spoly, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot add from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Copy(b.value, b.parent.value)
+    b2 = libSingular.p_NSet(b1, b.parent.value)
+    r1 = libSingular.p_Add_q(a1, b2, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rtminus(a::SPoly, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting from outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Sub(a1, b2, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtminus(a::Spoly, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot subtract from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "subtracting from outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Copy(b.value, b.parent.value)
+    b2 = libSingular.p_NSet(b1, b.parent.value)
+    r1 = libSingular.p_Sub(a1, b2, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rttimes(a::SPoly, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying from outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Mult_q(a1, b2, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rttimes(a::Spoly, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot multiply from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "multiplying from outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Copy(b.value, b.parent.value)
+    b2 = libSingular.p_NSet(b1, b.parent.value)
+    r1 = libSingular.p_Mult_q(a1, b2, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
 # op(int, poly)
 
-function rtplus(b::Union{Int, BigInt}, a::SPoly)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Add_q(b2, a1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtplus(b::Union{Int, BigInt}, a::Spoly)
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
+    r1 = libSingular.p_Add_q(b2, a1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rtminus(b::Union{Int, BigInt}, a::SPoly)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Sub(b2, a1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtminus(b::Union{Int, BigInt}, a::Spoly)
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
+    r1 = libSingular.p_Sub(b2, a1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rttimes(b::Union{Int, BigInt}, a::SPoly)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r1 = libSingular.p_Mult_q(b2, a1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rttimes(b::Union{Int, BigInt}, a::Spoly)
+    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
+    r1 = libSingular.p_Mult_q(b2, a1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
 # op(number, poly)
 
-function rtplus(b::SNumber, a::SPoly)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot add from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "adding outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Add_q(b2, a1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtplus(b::Snumber, a::Spoly)
+    @error_check_rings(a.parent, b.parent, "cannot add from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Copy(b.value, b.parent.value)
+    b2 = libSingular.p_NSet(b1, b.parent.value)
+    r1 = libSingular.p_Add_q(b2, a1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rtminus(b::SNumber, a::SPoly)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot subtract from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "subtracting from outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Sub(b2, a1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rtminus(b::Snumber, a::Spoly)
+    @error_check_rings(a.parent, b.parent, "cannot subtract from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "subtracting from outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Copy(b.value, b.parent.value)
+    b2 = libSingular.p_NSet(b1, b.parent.value)
+    r1 = libSingular.p_Sub(b2, a1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rttimes(b::SNumber, a::SPoly)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot multiply from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "multiplying from outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
-    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r1 = libSingular.p_Mult_q(b2, a1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+function rttimes(b::Snumber, a::Spoly)
+    @error_check_rings(a.parent, b.parent, "cannot multiply from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "multiplying from outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
+    b1 = libSingular.n_Copy(b.value, b.parent.value)
+    b2 = libSingular.p_NSet(b1, b.parent.value)
+    r1 = libSingular.p_Mult_q(b2, a1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
 
@@ -875,67 +824,67 @@ end
 
 function rtplus(a::STuple, b)
     @assert !isa(b, STuple)
-    a.list[1] = rt_copy(rtplus(a.list[1], b))
+    a.list[1] = rt_copy_tmp(rtplus(a.list[1], b))
     return a
 end
 
 function rtplus(a, b::STuple)
     @assert !isa(a, STuple)
-    b.list[1] = rt_copy(rtplus(a, b.list[1]))
+    b.list[1] = rt_copy_tmp(rtplus(a, b.list[1]))
     return b
 end
 
 function rtplus(a::STuple, b::STuple)
-    return STuple(Any[rt_copy(rtplus(a.list[i], b.list[i])) for i in 1:min(length(a.list), length(b.list))])
+    return STuple(Any[rt_copy_tmp(rtplus(a.list[i], b.list[i])) for i in 1:min(length(a.list), length(b.list))])
 end
 
-function rtplus(a::_IntVec, b::_IntVec)
-    A = rt_ref(a)
-    B = rt_ref(b)
-    return SIntVec([Base.checked_add(i <= length(A) ? A[i] : 0,
+function rtplus(a::Sintvec, b::Sintvec)
+    A = a.value
+    B = b.value
+    return SIintvec([Base.checked_add(i <= length(A) ? A[i] : 0,
                                      i <= length(B) ? B[i] : 0)
-                                   for i in 1:max(length(A), length(B))])
+                                   for i in 1:max(length(A), length(B))], true)
 end
 
-function rtplus(a::_IntVec, b::Int)
-    A = rt_ref(a)
-    return SIntVec([rtplus(A[i], b) for i in 1:length(A)])
+function rtplus(a::Sintvec, b::Int)
+    A = a.value
+    return Sintvec([Base.checked_add(A[i], b) for i in 1:length(A)], true)
 end
 
-rtplus(a::Int, b::_IntVec) = rtplus(b, a)
-
-function rtplus(a::_IntMat, b::Int)
-    A = rt_edit(a)
-    nrows, ncols = size(A)
+function rtplus(a::Sintmat, b::Int)
+    A = rt_copy_tmp(a)
+    nrows, ncols = size(A.value)
     for i in 1:min(nrows, ncols)
-        A[i, i] = rtplus(A[i, i], b)
+        A.value[i, i] = Base.checked_add(A.value[i, i], b)
     end
-    return SIntMat(A)
+    return A
 end
 
-function rtplus(a::Int, b::_IntMat)
-    B = rt_edit(b)
-    nrows, ncols = size(B)
+function rtplus(a::Int, b::Sintmat)
+    B = rt_copy_tmp(b)
+    nrows, ncols = size(B.value)
     for i in 1:min(nrows, ncols)
-        B[i, i] = rtplus(a, B[i, i])
+        B.value[i, i] = rtplus(a, B.value[i, i])
     end
-    return SIntMat(B)
+    return B
 end
 
-function rtplus(a::_IntMat, b::_IntMat)
-    return SIntMat(rt_ref(a) + rt_ref(b))
+function rtplus(a::Sintmat, b::Sintmat)
+    return Sintmat(a.value + b.value, true)
 end
 
-function rtplus(a::SString, b::SString)
-    return SString(a.string * b.string)
+function rtplus(a::Sstring, b::Sstring)
+    return Sstring(a.value * b.value)
 end
 
-function stimes(a::_BigIntMat, b::_BigIntMat)
-    return SBigIntMat(rt_ref(a) * rt_ref(b))
+function stimes(a::Sbigintmat, b::Sbigintmat)
+    return Sbigintmat(a.value * b.value, true)
 end
 
-function stimes(a::Int, b::_BigIntMat)
-    return SBigIntMat(a*rt_ref(b))
+function stimes(a::Int, b::Sbigintmat)
+    B = rt_copy_tmp(b)
+    B.value .*= a
+    return B
 end
 
 rtpower(a::Int, b::Int) = a ^ b
@@ -943,92 +892,88 @@ rtpower(a::Int, b::BigInt) = a ^ b
 rtpower(a::BigInt, b::Int) = a ^ b
 rtpower(a::BigInt, b::BigInt) = a ^ b
 
-function rtpower(a::SNumber, b::Int)
+function rtpower(a::Snumber, b::Int)
     absb = abs(b)
     @error_check(absb <= typemax(Cint), "number power is out of range")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "powering outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "powering outside of basering")
     if b < 0
-        @error_check(!libSingular.n_IsZero(a.number_ptr, a.parent.ring_ptr), "cannot divide by zero")
-        ai = libSingular.n_Invers(a.number_ptr, a.parent.ring_ptr)
-        r1 = libSingular.n_Power(ai, Cint(absb), a.parent.ring_ptr)
-        libSingular.n_Delete(ai, a.parent.ring_ptr)
+        @error_check(!libSingular.n_IsZero(a.value, a.parent.value), "cannot divide by zero")
+        ai = libSingular.n_Invers(a.value, a.parent.value)
+        r1 = libSingular.n_Power(ai, Cint(absb), a.parent.value)
+        libSingular.n_Delete(ai, a.parent.value)
     else
-        r1 = libSingular.n_Power(a.number_ptr, Cint(absb), a.parent.ring_ptr)
+        r1 = libSingular.n_Power(a.value, Cint(absb), a.parent.value)
     end
-    return SNumber(r1, a.parent)
+    return Snumber(r1, a.parent)
 end
 
-function rtpower(a::SPoly, b::Int)
+function rtpower(a::Spoly, b::Int)
     @error_check(0 <= b <= typemax(Cint), "polynomial power is out of range")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "powering outside of basering")
-    a1 = libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
+    @warn_check_rings(a.parent, rt_basering(), "powering outside of basering")
+    a1 = libSingular.p_Copy(a.value, a.parent.value)
     b1 = Cint(b)
-    r1 = libSingular.p_Power(a1, b1, a.parent.ring_ptr)
-    return SPoly(r1, a.parent)
+    r1 = libSingular.p_Power(a1, b1, a.parent.value)
+    return Spoly(r1, a.parent)
 end
 
-function rtpower(a::SIdeal, b::Int)
-    return rtpower(a.ideal, b)
-end
-
-function rtpower(a::SIdealData, b::Int)
+function rtpower(a::Sideal, b::Int)
     @error_check(0 <= b <= typemax(Cint), "ideal power is out of range")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "powering outside of basering")
-    r1 = libSingular.id_Power(a.ideal_ptr, Cint(b), a.parent.ring_ptr)
-    return SIdeal(SIdealData(r1, a.parent))
+    @warn_check_rings(a.parent, rt_basering(), "powering outside of basering")
+    r1 = libSingular.id_Power(a.value, Cint(b), a.parent.value)
+    return Sideal(r1, a.parent, true)
 end
 
 
 function rtdivide(a::Union{Int, BigInt}, b::Union{Int, BigInt})
     R = rt_basering()
     @error_check(R.valid, "integer division using `/` without a basering; use `div` instead")
-    b1 = libSingular.n_Init(b, R.ring_ptr)
-    if libSingular.n_IsZero(b1, R.ring_ptr)
-        libSingular.n_Delete(b1, R.ring_ptr)
+    b1 = libSingular.n_Init(b, R.value)
+    if libSingular.n_IsZero(b1, R.value)
+        libSingular.n_Delete(b1, R.value)
         rt_error("cannot divide be zero")
         return rt_defaultconstructor_number()
     end
-    a1 = libSingular.n_Init(a, R.ring_ptr)
-    r1 = libSingular.n_Div(a1, b1, R.ring_ptr)
-    libSingular.n_Delete(a1, R.ring_ptr)
-    libSingular.n_Delete(b1, R.ring_ptr)
-    return SNumber(r1, R)
+    a1 = libSingular.n_Init(a, R.value)
+    r1 = libSingular.n_Div(a1, b1, R.value)
+    libSingular.n_Delete(a1, R.value)
+    libSingular.n_Delete(b1, R.value)
+    return Snumber(r1, R)
 end
 
-function rtdivide(a::Union{Int, BigInt}, b::SNumber)
-    @warn_check(b.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "dividing outside of basering")
-    if libSingular.n_IsZero(b.number_ptr, b.parent.ring_ptr)
+function rtdivide(a::Union{Int, BigInt}, b::Snumber)
+    @warn_check_rings(b.parent, rt_basering(), "dividing outside of basering")
+    if libSingular.n_IsZero(b.value, b.parent.value)
         rt_error("cannot divide by zero")
         return rt_defaultconstructor_number()
     end
-    a1 = libSingular.n_Init(a, b.parent.ring_ptr)
-    r1 = libSingular.n_Div(a1, b.number_ptr, b.parent.ring_ptr)
-    libSingular.n_Delete(a1, b.parent.ring_ptr)
-    return SNumber(r1, b.parent)
+    a1 = libSingular.n_Init(a, b.parent.value)
+    r1 = libSingular.n_Div(a1, b.value, b.parent.value)
+    libSingular.n_Delete(a1, b.parent.value)
+    return Snumber(r1, b.parent)
 end
 
-function rtdivide(a::SNumber, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "dividing outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    if libSingular.n_IsZero(b1, rt_basering().ring_ptr)
-        libSingular.n_Delete(b1, rt_basering().ring_ptr)
+function rtdivide(a::Snumber, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "dividing outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.value)
+    if libSingular.n_IsZero(b1, a.parent.value)
+        libSingular.n_Delete(b1, a.parent.value)
         rt_error("cannot divide by zero")
         return rt_defaultconstructor_number()
     end
-    r1 = libSingular.n_Div(a1, a.number_ptr, a.parent.ring_ptr)
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+    r1 = libSingular.n_Div(a1, a.value, a.parent.value)
+    libSingular.n_Delete(b1, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
-function rtdivide(a::SNumber, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot divide from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "dividing outside of basering")
-    if libSingular.n_IsZero(b.number_ptr, b.parent.ring_ptr)
+function rtdivide(a::Snumber, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot divide from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "dividing outside of basering")
+    if libSingular.n_IsZero(b.value, b.parent.value)
         rt_error("cannot divide by zero")
         return rt_defaultconstructor_number()
     end
-    r1 = libSingular.n_Div(a.number_ptr, b.number_ptr, a.parent.ring_ptr)
-    return SNumber(r1, a.parent)
+    r1 = libSingular.n_Div(a.value, b.value, a.parent.value)
+    return Snumber(r1, a.parent)
 end
 
 
@@ -1054,77 +999,73 @@ rtequalequal(a::Int, b::BigInt) = Int(a == b)
 rtequalequal(a::BigInt, b::Int) = Int(a == b)
 rtequalequal(a::BigInt, b::BigInt) = Int(a == b)
 
-rtequalequal(a::SString, b::SString) = Int(a.string == b.string)
+rtequalequal(a::Sstring, b::Sstring) = Int(a.value == b.value)
 
-rtequalequal(a::_IntVec, b::_IntVec) = Int(rt_ref(a) == rt_ref(b))
+rtequalequal(a::Sintvec, b::Sintvec) = Int(a.value == b.value)
 
-rtequalequal(a::Union{Int, BigInt}, b::SNumber) = rtequalequal(b, a)
+rtequalequal(a::Union{Int, BigInt}, b::Snumber) = rtequalequal(b, a)
 
-function rtequalequal(a::SNumber, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    r = Int(libSingular.n_Equal(a.number_ptr, b1, a.parent.ring_ptr))
-    libSingular.n_Delete(b1, a.parent.ring_ptr)
+function rtequalequal(a::Snumber, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "comparing outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.value)
+    r = Int(libSingular.n_Equal(a.value, b1, a.parent.value))
+    libSingular.n_Delete(b1, a.parent.value)
     return r
 end
 
-function rtequalequal(a::SNumber, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot compare from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
-    return Int(libSingular.n_Equal(a.number_ptr, b.number_ptr, a.parent.ring_ptr))
+function rtequalequal(a::Snumber, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot compare from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "comparing outside of basering")
+    return Int(libSingular.n_Equal(a.value, b.value, a.parent.value))
 end
 
-rtequalequal(a::Union{Int, BigInt, Number}, b::SPoly) = rtequalequal(b, a)
+rtequalequal(a::Union{Int, BigInt, Number}, b::Spoly) = rtequalequal(b, a)
 
-function rtequalequal(a::SPoly, b::Union{Int, BigInt})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
-    r = Int(libSingular.p_EqualPolys(a.poly_ptr, b2, a.parent.ring_ptr))
-    libSingular.p_Delete(b2, a.parent.ring_ptr)
+function rtequalequal(a::Spoly, b::Union{Int, BigInt})
+    @warn_check_rings(a.parent, rt_basering(), "comparing outside of basering")
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
+    r = Int(libSingular.p_EqualPolys(a.value, b2, a.parent.value))
+    libSingular.p_Delete(b2, a.parent.value)
     return r
 end
 
-function rtequalequal(a::SPoly, b::SNumber)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot compare from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
-    b1 = libSingular.n_Copy(b.number_ptr, b.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, b.parent.ring_ptr)
-    r = Int(libSingular.p_EqualPolys(a.poly_ptr, b2, a.parent.ring_ptr))
-    libSingular.p_Delete(b2, a.parent.ring_ptr)
+function rtequalequal(a::Spoly, b::Snumber)
+    @error_check_rings(a.parent, b.parent, "cannot compare from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "comparing outside of basering")
+    b1 = libSingular.n_Copy(b.value, b.parent.value)
+    b2 = libSingular.p_NSet(b1, b.parent.value)
+    r = Int(libSingular.p_EqualPolys(a.value, b2, a.parent.value))
+    libSingular.p_Delete(b2, a.parent.value)
     return r
 end
 
-function rtequalequal(a::SPoly, b::SPoly)
-    @error_check(a.parent.ring_ptr.cpp_object == b.parent.ring_ptr.cpp_object, "cannot compare from different basering")
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "comparing outside of basering")
-    return Int(libSingular.p_EqualPolys(a.poly_ptr, b.poly_ptr, a.parent.ring_ptr))
+function rtequalequal(a::Spoly, b::Spoly)
+    @error_check_rings(a.parent, b.parent, "cannot compare from different basering")
+    @warn_check_rings(a.parent, rt_basering(), "comparing outside of basering")
+    return Int(libSingular.p_EqualPolys(a.value, b.value, a.parent.value))
 end
 
-rtequalequal(a::SIdeal, b::Int) = rtequalequal(rt_ref(a), b)
-
-function rtequalequal(a::SIdealData, b::Union{Int, BigInt})
+function rtequalequal(a::Sideal, b::Union{Int, BigInt})
     # compare a and b as matrices!
     a1 = a.ideal_ptr
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
-    b2 = libSingular.p_NSet(b1, a.parent.ring_ptr)
+    b1 = libSingular.n_Init(b, a.parent.value)
+    b2 = libSingular.p_NSet(b1, a.parent.value)
     b3 = libSingular.idInit(1, 1)
     libSingular.setindex_internal(b3, b2, 0)
-    r = Int(libSingular.mp_Equal(a1, b3, a.parent.ring_ptr))
-    libSingular.id_Delete(b3, a.parent.ring_ptr)
+    r = Int(libSingular.mp_Equal(a1, b3, a.parent.value))
+    libSingular.id_Delete(b3, a.parent.value)
     return r
 end
 
 
-rtequalequal(a::_List, b::_List) = rtequalequal(rt_ref(a), rt_ref(b))
-
-function rtequalequal(a::SListData, b::SListData)
-    n = length(a.data)
-    if n != length(b.data)
+function rtequalequal(a::Slist, b::Slist)
+    n = length(a.value)
+    if n != length(b.value)
         return 0
     end
     for i in 1:n
-        if rtequalequal(a.data[i], b.data[i]) == 0
+        if rtequalequal(a.value[i], b.value[i]) == 0
             return 0
         end
     end

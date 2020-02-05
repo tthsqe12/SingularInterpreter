@@ -433,3 +433,12 @@ macro expensive_assert(cond)
     return nothing
 #    return :($(esc(cond)) ? nothing : rt_error("expensive assertion failed"))
 end
+
+macro error_check_rings(ringa, ringb, msg)
+    return :($(esc(ringa) === esc(ringb)) ? nothing : rt_error($(esc(msg))))
+
+end
+macro warn_check_rings(ringa, ringb, msg)
+    return :($(esc(ringa) === esc(ringb)) ? nothing : rt_warn($(esc(msg))))
+
+end
