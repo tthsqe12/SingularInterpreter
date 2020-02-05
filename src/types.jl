@@ -29,7 +29,7 @@ fails in the Singular interpreter because the right hand side has length 3. The 
     a, b, c = 1, f(), 1;
 fails in the Singular interpreter because something on the "right side is not a datum".
 
-The Julia interpreter will fail in the first example because the length of the rhs tuple is checked before assignment.
+The Julia interpreter will fail in the first example because the length of the rhs tuple is checked.
 The Julia interpreter will fail in the second example because the assignment to b is done via
     b = convert2T(..)       # T is the stored type of b
 and the convert2T will throw an error on :nothing (unless b is nothing, where T would behave like def)
@@ -62,9 +62,7 @@ There are no variables of type name.
 
 #### singular type expression list
 # note: expression lists cannot have expression lists as elements: everything is
-#       always auto splatted. Like the list type SListData below, elements
-#       of an STuple must own their data. Hence, for example, no element should
-#       have type Array{Int, 2}, but rather SIntMat.
+#       always auto splatted. See the function object_is_ok for a precise definition.
 struct STuple
     list::Vector{Any}
 end
@@ -73,7 +71,7 @@ end
 # Nothing same
 
 #### singular type ?unknown type?
-# TODO possible make this the same as Symbol. makeunknown would become a quote
+# TODO: possibly make this the same as Symbol. makeunknown would become a quote
 struct SName
     name::Symbol
 end
@@ -116,6 +114,10 @@ struct Sintvec
     tmp::Bool
 end
 
+function Sintvec(value::Vector{Int})
+    return Sintvec(value, true)
+end
+
 sing_array(x::Sintvec) = x.value
 
 #### singular type "intmat"     mutable in the singular language
@@ -124,12 +126,20 @@ struct Sintmat
     tmp::Bool
 end
 
+function Sintmat(value::Array{Int, 2})
+    return Sintmat(value, true)
+end
+
 sing_array(x::Sintmat) = x.value
 
 #### singular type "bigintmat"  mutable in the singular language
 struct Sbigintmat
     value::Array{BigInt, 2}
     tmp::Bool
+end
+
+function Sbigintmat(value::Array{BigInt, 2})
+    return Sbigintmat(value, true)
 end
 
 sing_array(x::Sbigintmat) = x.value
@@ -141,7 +151,7 @@ mutable struct Sring
     refcount::Int
     level::Int                  # 1->created at global, 2->created in fxn called from global, ect..
     vars::Dict{Symbol, Any}     # global ring vars
-    valid::Bool                 # valid==false <=> ring_ptr==NULL
+    valid::Bool                 # valid==false <=> value==NULL
 
     function Sring(valid_::Bool, value_::libSingular.ring, level::Int)
         r = new(value_, 1, level, Dict{Symbol, Any}(), valid_)
@@ -185,7 +195,7 @@ mutable struct Snumber
     parent::Sring
 
     function Snumber(value_::libSingular.number, parent_::Sring)
-        a = new(value_, parent_, tmp_)
+        a = new(value_, parent_)
         finalizer(rt_number_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -205,7 +215,7 @@ mutable struct Spoly
     parent::Sring
 
     function Spoly(value_::libSingular.poly, parent_::Sring)
-        a = new(value_, parent_, tmp_)
+        a = new(value_, parent_)
         finalizer(rt_poly_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -224,11 +234,11 @@ end
 
 #### singular type "vector"     immutable in the singular language
 mutable struct Svector
-    vector_ptr::libSingular.poly    # singly linked list of terms*gens(i), like a sparse array of poly
+    vector_ptr::libSingular.poly    # singly linked list of terms*gen(i), like a sparse array of poly
     parent::Sring
 
     function SVector(value_::libSingular.poly, parent_::Sring)
-        a = new(value_, parent_, tmp_)
+        a = new(value_, parent_)
         finalizer(rt_vector_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -251,7 +261,7 @@ mutable struct Sideal
     parent::Sring
     tmp::Bool
 
-    function SIdealData(value_::libSingular.ideal, parent_::Sring, tmp_::Bool)
+    function Sideal(value_::libSingular.ideal, parent_::Sring, tmp_::Bool)
         a = new(value_, parent_, tmp_)
         finalizer(rt_ideal_finalizer, a)
         parent_.refcount += 1
@@ -287,34 +297,32 @@ sing_ptr(a::Smatrix) = a.value
 sing_ring(a::Smatrix) = a.parent
 
 function rt_matrix_finalizer(a::Smatrix)
-    libSingular.mp_Delete(a.value, a.parent.ring_ptr)
+    libSingular.mp_Delete(a.value, a.parent.value)
     rt_ring_finalizer(a.parent)
 end
 
 
-# it is almost useless to have a list of singular types because of newstruct
-#const SingularType = Union{Nothing, SProc, Int, BigInt, SString,
-#                           SIntVec, SIntMat, SBigIntMat, SList,
-#                           Sring, SNumber, SPoly, SIdeal}
+# the types that are always ring dependent, i.e. the .parent member is always valid
+# Slist is not included. lists are just special.
+const SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smatrix}
 
-# the set of possible ring dependent types is finite because newstruct creates ring indep types
-# all ring dependent types have a .parent member for the ring
-const SingularRingType = Union{Slist, Snumber, Spoly, Svector, Sideal, Smatrix}
 
-# the types that are always ring dependent
-const _SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smatrix}
+# TODO: a SingularType encompassing all types including newstruct's
 
-# this function is broken now
-function type_is_ring_dependent(t::String)
-    return t == "number" || t == "poly" || t == "ideal" || t == "matrix"
+
+######################### user defined types ##################################
+
+const newstructprefix = "Snewstruct_"
+
+function is_valid_newstruct_member(s::String)
+    if match(r"^[a-zA-Z][a-zA-Z0-9]*$", s) == nothing
+        return false
+    else
+        return true
+    end
 end
 
-
-#const _SingularType = Union{SingularType,
-#                           Vector{Int}, Array{Int, 2}, Array{BigInt, 2}, SListData,
-#                           SIdealData}
-
-
+###############################################################################
 ########################## transpiler types ###################################
 
 struct AstNode
@@ -434,11 +442,11 @@ macro expensive_assert(cond)
 #    return :($(esc(cond)) ? nothing : rt_error("expensive assertion failed"))
 end
 
-macro error_check_rings(ringa, ringb, msg)
-    return :($(esc(ringa) === esc(ringb)) ? nothing : rt_error($(esc(msg))))
-
-end
 macro warn_check_rings(ringa, ringb, msg)
-    return :($(esc(ringa) === esc(ringb)) ? nothing : rt_warn($(esc(msg))))
-
+    return :($(esc(ringa)) === $(esc(ringb)) ? nothing : rt_warn($(esc(msg))))
 end
+
+macro error_check_rings(ringa, ringb, msg)
+    return :($(esc(ringa)) === $(esc(ringb)) ? nothing : rt_error($(esc(msg))))
+end
+

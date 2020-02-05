@@ -120,33 +120,33 @@ end
 
 function rt_setindex(a::Slist, i::Int, b)
     @expensive_assert object_is_ok(a)
-    bcopy = rt_copy(b) # copy before the possible resize
-    r = a.data
+    B = rt_copy_own(b) # copy before the possible resize
+    A = a.value
     count_change = 0
-    if isa(bcopy, Nothing)
-        if i > length(r)
+    if isa(B, Nothing)
+        if i > length(A)
             return
         end
-        count_change = -Int(rt_is_ring_dep(r[i]))
-        r[i] = nothing
+        count_change = -Int(rt_is_ring_dep(A[i]))
+        A[i] = nothing
         # putting nothing at the end pops the list
-        while !isempty(r) && isa(r[end], Nothing)
+        while !isempty(A) && isa(A[end], Nothing)
             pop!(r)
         end
     else
         # nothing fills out a list when we assign past the end
-        org_len = length(r)
+        org_len = length(A)
         if i > org_len
-            resize!(r, i)
+            resize!(A, i)
             while org_len + 1 < i
-                r[org_len + 1] = nothing
+                A[org_len + 1] = nothing
                 org_len += 1
             end
-            count_change = Int(rt_is_ring_dep(bcopy))
+            count_change = Int(rt_is_ring_dep(B))
         else
-            count_change = Int(rt_is_ring_dep(bcopy)) - Int(rt_is_ring_dep(r[i]))
+            count_change = Int(rt_is_ring_dep(B)) - Int(rt_is_ring_dep(A[i]))
         end
-        r[i] = bcopy
+        A[i] = B
     end
     if count_change != 0
         rt_fix_setindex(a, count_change)
@@ -423,7 +423,7 @@ function rtgetindex(a::Sideal, i::Int)
     @error_check(1 <= i <= n, "ideal index out of range")
     r1 = libSingular.getindex(a.value, Cint(i - 1))
     r2 = libSingular.p_Copy(r1, a.parent.value)
-    return SPoly(r2, a.parent)
+    return Spoly(r2, a.parent)
 end
 
 function rtgetindex(a::Sideal, i::Sintvec)
@@ -511,9 +511,9 @@ function rtplus(a::Slist, b::Slist)
     else
         newparent = b.parent
     end
-    A = rt_istmp(a) ? a.value : map(rt_copy_own, a.value)
-    B = rt_istmp(b) ? b.value : map(rt_copy_own, b.value)
-    return Slist(vcat(A, B), newparent, a.ring_dep_count + b.ring_dep_count, nothing)
+    A = object_is_tmp(a) ? a.value : map(rt_copy_own, a.value)
+    B = object_is_tmp(b) ? b.value : map(rt_copy_own, b.value)
+    return Slist(vcat(A, B), newparent, a.ring_dep_count + b.ring_dep_count, nothing, true)
 end
 
 rtplus(a::Int, b::Int) = Base.checked_add(a, b)
@@ -639,7 +639,7 @@ function rttimes(a::Sideal, b::Union{BigInt, Int, Snumber, Spoly})
     b1 = rt_convert2poly_ptr(b, a.parent)
     b2 = libSingular.idInit(1,1)
     libSingular.setindex_internal(b2, b1, 0) # b1 is consumed
-    r1 = libSingular.id_Mult(a.value, b2, a.parent.ring_ptr)
+    r1 = libSingular.id_Mult(a.value, b2, a.parent.value)
     libSingular.id_Delete(b2, a.parent.value) # id_Mult did not consume b2
     return Sideal(r1, a.parent, true)
 end
@@ -657,7 +657,7 @@ end
 
 function rtminus(a::Snumber, b::Union{Int, BigInt})
     @warn_check_rings(a.parent, rt_basering(), "subtracting outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
+    b1 = libSingular.n_Init(b, a.parent.value)
     r1 = libSingular.n_Sub(a.value, b1, a.parent.value)
     libSingular.n_Delete(b1, a.parent.value)
     return Snumber(r1, a.parent)
@@ -665,7 +665,7 @@ end
 
 function rttimes(a::Snumber, b::Union{Int, BigInt})
     @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
-    b1 = libSingular.n_Init(b, a.parent.ring_ptr)
+    b1 = libSingular.n_Init(b, a.parent.value)
     r1 = libSingular.n_Mult(a.value, b1, a.parent.value)
     libSingular.n_Delete(b1, a.parent.value)
     return Snumber(r1, a.parent)
@@ -761,7 +761,7 @@ end
 # op(int, poly)
 
 function rtplus(b::Union{Int, BigInt}, a::Spoly)
-    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "adding outside of basering")
     a1 = libSingular.p_Copy(a.value, a.parent.value)
     b1 = libSingular.n_Init(b, a.parent.value)
     b2 = libSingular.p_NSet(b1, a.parent.value)
@@ -770,7 +770,7 @@ function rtplus(b::Union{Int, BigInt}, a::Spoly)
 end
 
 function rtminus(b::Union{Int, BigInt}, a::Spoly)
-    @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "subtracting outside of basering")
     a1 = libSingular.p_Copy(a.value, a.parent.value)
     b1 = libSingular.n_Init(b, a.parent.value)
     b2 = libSingular.p_NSet(b1, a.parent.value)
@@ -847,9 +847,15 @@ function rtplus(a::Sintvec, b::Sintvec)
 end
 
 function rtplus(a::Sintvec, b::Int)
-    A = a.value
-    return Sintvec([Base.checked_add(A[i], b) for i in 1:length(A)], true)
+    A = rt_copy_tmp(a)
+    for i in 1:length(A.value)
+        A.value[i] = Base.checked_add(A.value[i], b)
+    end
+    return A
 end
+
+rtplus(a::Int, b::Sintvec) = rtplus(b, a)
+
 
 function rtplus(a::Sintmat, b::Int)
     A = rt_copy_tmp(a)
@@ -1048,12 +1054,11 @@ end
 
 function rtequalequal(a::Sideal, b::Union{Int, BigInt})
     # compare a and b as matrices!
-    a1 = a.ideal_ptr
     b1 = libSingular.n_Init(b, a.parent.value)
     b2 = libSingular.p_NSet(b1, a.parent.value)
     b3 = libSingular.idInit(1, 1)
     libSingular.setindex_internal(b3, b2, 0)
-    r = Int(libSingular.mp_Equal(a1, b3, a.parent.value))
+    r = Int(libSingular.mp_Equal(a.value, b3, a.parent.value))
     libSingular.id_Delete(b3, a.parent.value)
     return r
 end
@@ -1102,11 +1107,11 @@ rtand(a::Int, b::Int) = a == 0 || b == 0 ? 0 : 1
 rtnot(a::Int) = a == 0 ? 1 : 0
 rtnot(a) = rt_error("not `$(rt_typestring(a))` failed, expected ! `int`")
 
-rtdotdot(a::Int, b::Int) = SIntVec(a <= b ? (a:1:b) : (a:-1:b))
+rtdotdot(a::Int, b::Int) = Sintvec(a <= b ? (a:1:b) : (a:-1:b), true)
 
 function rtcolon(a::Int, b::Int)
     b < 0 && rt_error("`$a : $b` failed, second argument must be >= 0")
-    SIntVec(collect(Iterators.repeated(a, b)))
+    Sintvec(collect(Iterators.repeated(a, b)), true)
 end
 
 for (fun, name) in [:rtor => "||", :rtand => "&&", :rtdotdot => "..", :rtcolon => ":"]

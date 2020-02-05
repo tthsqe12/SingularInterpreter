@@ -1,7 +1,7 @@
 using Test
 
 using SingularInterpreter
-using SingularInterpreter: rtcolon, rtequalequal, rtnot, rtand, rtor, SIntVec, SString
+using SingularInterpreter: rtcolon, rtequalequal, rtnot, rtand, rtor, Sintvec, Sstring
 
 for a in ["assign", "int", "intvec", "intmat", "bigintmat", "list",
           "tuple", "proc", "poly", "ideal", "ring", "commands", "string",
