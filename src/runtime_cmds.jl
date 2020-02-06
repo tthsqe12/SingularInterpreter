@@ -275,9 +275,9 @@ end
 
 set_arg(x::Int, i; kw...) = libSingular.set_leftv_arg_i(x, i)
 
-function set_arg(x::Union{SPoly,_Ideal}, i; withcopy, withname=false)
+function set_arg(x::Union{SPoly,SVector,_Ideal}, i; withcopy, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).ring_ptr)
-    libSingular.set_leftv_arg_i(sing_ptr(x), i, withcopy)
+    libSingular.set_leftv_arg_i(sing_ptr(x), Int(type_id(x)), i, withcopy)
 end
 
 function set_arg(x::SRing, i; withcopy=false, withname=false)
@@ -405,10 +405,31 @@ const convertible_types = Dict(
     RING_CMD => SRing,
     NUMBER_CMD => SNumber,
     POLY_CMD => SPoly,
+    VECTOR_CMD => SVector,
     IDEAL_CMD => _Ideal,
 )
-# TODO: check more closely what `ANY_TYPE` means
+# NOTE: ANY_TYPE is used only for result types automatically (this has to be done
+# on a case by case basis for input, as in most cases the name of the variable is
+# needed)
 push!(convertible_types, ANY_TYPE => Union{values(convertible_types)...})
+
+const _types_to_id = Dict(t => id for (id, t) in convertible_types)
+
+function type_id(x)
+    xt = get(_types_to_id, typeof(x), nothing)
+    if xt === nothing
+        for (t, id) in _types_to_id
+            id == ANY_TYPE && continue
+            if x isa t
+                _types_to_id[typeof(x)] = id
+                xt = id
+                break
+            end
+        end
+    end
+    @assert xt !== nothing
+    xt
+end
 
 const error_expected_types = Dict(
     "nvars" => "ring",
@@ -459,7 +480,7 @@ let seen = Set{Int}()
         end
 
         @eval function $rtauto(x::$Sarg)
-            set_arg1(x, withcopy=(x isa Union{SPoly,_Ideal,SRing}))
+            set_arg1(x, withcopy=(x isa Union{SPoly,_Ideal,SVector,SRing}))
             cmd1($cmd, $Sres, sing_ring(x))
         end
     end

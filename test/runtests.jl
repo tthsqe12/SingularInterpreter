@@ -4,7 +4,7 @@ using SingularInterpreter
 using SingularInterpreter: rtcolon, rtequalequal, rtnot, rtand, rtor, SIntVec, SString
 
 for a in ["assign", "int", "intvec", "intmat", "bigintmat", "list",
-          "tuple", "proc", "poly", "ideal", "ring", "commands", "string",
+          "tuple", "proc", "poly", "vector", "ideal", "ring", "commands", "string",
           "sleftv", "number"]
     SingularInterpreter.reset_runtime()
     jlfile = joinpath(dirname(@__FILE__), a * ".jl")

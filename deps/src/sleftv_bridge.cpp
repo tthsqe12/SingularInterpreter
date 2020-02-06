@@ -34,16 +34,18 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                                            lv.rtyp = INT_CMD;
                                        });
 
-    Singular.method("set_leftv_arg_i", [](poly x, int i, bool copy) {
+    Singular.method("set_leftv_arg_i", [](poly x, int type, int i, bool copy) {
                                            assert(0 <= i && i <= 2);
+                                           assert(type == POLY_CMD || type == VECTOR_CMD);
                                            auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
                                            lv.Init();
                                            lv.data = copy ? pCopy(x) : x;
-                                           lv.rtyp = POLY_CMD;
+                                           lv.rtyp = type;
                                        });
 
-    Singular.method("set_leftv_arg_i", [](ideal x, int i, bool copy) {
+    Singular.method("set_leftv_arg_i", [](ideal x, int type, int i, bool copy) {
                                            assert(0 <= i && i <= 2);
+                                           assert(type == IDEAL_CMD);
                                            auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
                                            lv.Init();
                                            lv.data = copy ? idCopy(x) : x;
