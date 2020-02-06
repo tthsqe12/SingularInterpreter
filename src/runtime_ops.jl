@@ -852,7 +852,7 @@ end
 function rtplus(a::Sintvec, b::Sintvec)
     A = a.value
     B = b.value
-    return SIintvec([Base.checked_add(i <= length(A) ? A[i] : 0,
+    return Sintvec([Base.checked_add(i <= length(A) ? A[i] : 0,
                                      i <= length(B) ? B[i] : 0)
                                    for i in 1:max(length(A), length(B))], true)
 end

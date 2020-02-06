@@ -2862,7 +2862,7 @@ function astprint_expr(a::AstNode, env::AstEnv, indent::Int)::String
     elseif a.rule == @RULE_expr(2)
         return astprint_elemexpr(a.child[1], env, indent)
     elseif a.rule == @RULE_expr(3)
-        return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * ", " * astprint_expr(a.child[1], env, 0) * "]"
+        return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * ", " * astprint_expr(a.child[3], env, 0) * "]"
     elseif a.rule == @RULE_expr(4)
         return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * "]"
     elseif @RULE_expr(5) <= a.rule <= @RULE_expr(9)

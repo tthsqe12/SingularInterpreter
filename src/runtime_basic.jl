@@ -177,7 +177,7 @@ rt_promote(a::BigInt) = a
 rt_promote(a::Sstring) = a
 
 function rt_promote(a::Union{Sintvec, Sintmat, Sbigintmat})
-    return Sintvec(a.value, true)
+    return typeof(a)(a.value, true)
 end
 
 rt_promote(a::Sring) = a
