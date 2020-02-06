@@ -1,3 +1,14 @@
+list l;
+l[10] = 1;
+ASSUME(0, size(l) == 10);
+l[10] = l[9];
+ASSUME(0, size(l) == 0);
+l = insert(l, 1, 9);
+ASSUME(0, size(l) == 10);
+ASSUME(0, l[10] == 1);
+ASSUME(0, size(insert(l, l[9], 10)) == 10);
+kill l;
+
 ring r = 0, (x(intvec(1,3,5))(intvec(2,4,6)), y, z), dp;
 list l = list(typeof(x(intvec(1))(intvec(2,4))));
 ASSUME(0, size(l) == 2);

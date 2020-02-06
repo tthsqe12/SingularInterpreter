@@ -238,6 +238,10 @@ function object_is_ok(a::Slist)
             return false
         end
     end
+    if !isempty(a.value) && isa(a.value[end], Nothing)
+        println("list has a nothing on the end")
+        return false
+    end
     if count != a.ring_dep_count
         println("list has incorrect count $(a.ring_dep_count); correct is $(count)")
         return false

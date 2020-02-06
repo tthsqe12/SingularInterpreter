@@ -1,18 +1,17 @@
 #### insert ####
 
+# insert(a, b, i) is supposed to return a tmp list with b inserted at position i+1
 function rtinsert(a::Slist, b, i::Int)
     @assert !isa(b, STuple)
+    @assert !isa(b, Nothing)
     B = rt_copy_own(b)
     A = rt_copy_tmp(a)
+    @expensive_assert object_is_ok(A)
     if i >= length(A.value)
-        append!(A.value, collect(Iterators.repeated(nothing, i - length(a.value))))
+        append!(A.value, collect(Iterators.repeated(nothing, i - length(A.value))))
         push!(A.value, B)
     else
         insert!(A.value, i + 1, B)
-    end
-    # should not have nothings on the end
-    while !isempty(A.value) && isa(A.value[end], Nothing)
-        pop!(A.value)
     end
     if rt_is_ring_dep(B)
         A.ring_dep_count += 1
@@ -20,6 +19,18 @@ function rtinsert(a::Slist, b, i::Int)
             A.parent = rt_basering()  # try to get a valid ring from somewhere
             @warn_check(A.parent.valid, "list has ring dependent elements but no basering")
         end
+    end
+    @expensive_assert object_is_ok(A)
+    return A
+end
+
+function rtinsert(a::Slist, b::Nothing, i::Int)
+    A = rt_copy_tmp(a)
+    @expensive_assert object_is_ok(A)
+    if i >= length(A.value)
+        return A
+    else
+        insert!(A.value, i + 1, B)
     end
     @expensive_assert object_is_ok(A)
     return A

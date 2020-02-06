@@ -120,10 +120,9 @@ end
 
 function rt_setindex(a::Slist, i::Int, b)
     @expensive_assert object_is_ok(a)
-    B = rt_copy_own(b) # copy before the possible resize
     A = a.value
-    count_change = 0
-    if isa(B, Nothing)
+    count_change = Int(rt_is_ring_dep(b))
+    if isa(b, Nothing)
         if i > length(A)
             return
         end
@@ -131,20 +130,20 @@ function rt_setindex(a::Slist, i::Int, b)
         A[i] = nothing
         # putting nothing at the end pops the list
         while !isempty(A) && isa(A[end], Nothing)
-            pop!(r)
+            pop!(A)
         end
     else
-        # nothing fills out a list when we assign past the end
+        B = rt_copy_own(b) # copy before the possible resize
         org_len = length(A)
         if i > org_len
+            # nothing fills out a list when we assign past the end
             resize!(A, i)
             while org_len + 1 < i
                 A[org_len + 1] = nothing
                 org_len += 1
             end
-            count_change = Int(rt_is_ring_dep(B))
         else
-            count_change = Int(rt_is_ring_dep(B)) - Int(rt_is_ring_dep(A[i]))
+            count_change -= Int(rt_is_ring_dep(A[i]))
         end
         A[i] = B
     end
