@@ -10,8 +10,13 @@ void singular_define_matrices(jlcxx::Module & Singular)
 
     Singular.method("id_Module2Matrix", &id_Module2Matrix);
 
-    Singular.method("getindex", [](matrix M, int i, int j) {
+    Singular.method("mp_getindex", [](matrix M, int i, int j) {
         return (poly)MATELEM(M, i, j);
+    });
+
+    Singular.method("mp_setindex", [](matrix M, int i, int j, poly p, ring r) {
+        p_Delete(&MATELEM(M, i, j), r);
+        MATELEM(M, i, j) = p;
     });
 
     Singular.method("mp_Copy",

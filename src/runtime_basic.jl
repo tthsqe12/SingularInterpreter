@@ -1793,7 +1793,7 @@ function rt_print(a::Smatrix)
     first = true
     for i in 1:nrows
         for j in 1:ncols
-            p = libSingular.getindex(a.value, i, j)
+            p = libSingular.mp_getindex(a.value, i, j)
             t = libSingular.p_String(p, a.parent.value)
             h = (first ? "matrix[" : "      [") * string(i) *", " * string(j) * "]: "
             s *= h * t * ((i < nrows || j < ncols) ? "\n" : "")

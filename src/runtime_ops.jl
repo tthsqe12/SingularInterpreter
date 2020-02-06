@@ -321,74 +321,90 @@ end
 
 
 
-#### intmat/bigintmat get/setindex ####
+#### intmat/bigintmat/matrix get/setindex ####
 
 indexvalues(i::Sintvec) = i.value
 indexvalues(i::Int) = i
 
-function rtgetindex(a::Union{Sintmat, Sbigintmat},
+Base.size(a::libSingular.matrix) = (libSingular.nrows(a), libSingular.ncols(a))
+
+function rtgetindex(a::Union{Sintmat, Sbigintmat, Smatrix},
                     i::Union{Int, Sintvec},
                     j::Union{Int, Sintvec})
+    nrows, ncols = size(a.value)
     r = Any[]
     for s in indexvalues(i)
         for t in indexvalues(j)
-            push!(r, a.value[s, t])
+            @error_check(1 <= s <= nrows && 1 <= t <= ncols, "matrix index out of range")
+            if isa(a, Smatrix)
+                r1 = libSingular.mp_getindex(a.value, s, t)
+                r2 = libSingular.p_Copy(r1, a.parent.value) # we did not own r1
+                push!(r, Spoly(r2, a.parent))
+            else
+                push!(r, a.value[s, t])
+            end
         end
     end
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
-function rtsetindex_more(a::Union{Sintmat, Sbigintmat},
+function rt_setindex(a::Sintmat, i::Int, j::Int, b)
+    a.value[i, j] = rt_convert2int(b)
+end
+
+function rt_setindex(a::Sbigintmat, i::Int, j::Int, b)
+    a.value[i, j] = rt_convert2bigint(b)
+end
+
+function rt_setindex(a::Smatrix, i::Int, j::Int, b)
+    libSingular.mp_setindex(a.value, i, j, rt_convert2poly_ptr(b, a.parent), a.parent.value)
+end
+
+function rtsetindex_more(a::Union{Sintmat, Sbigintmat, Smatrix},
                          i::Union{Int, Sintvec},
                          j::Union{Int, Sintvec},
                          b)
     @assert !isa(b, STuple)
+    nrows, ncols = size(a.value)
     first = true
     for s in indexvalues(i)
         for t in indexvalues(j)
             @error_check(first, "argument mismatch in assignment")
-            if isa(a, Sintmat)
-                a.value[s, t] = rt_convert2int(b)
-            else
-                a.value[s, t] = rt_convert2bigint(b)
-            end
+            @error_check(1 <= s <= nrows && 1 <= t <= ncols, "matrix index out of range")
+            rt_setindex(a, s, t, b)
             first = false
         end
     end
     return first ? b : empty_tuple
 end
 
-function rtsetindex_more(a::Union{Sintmat, Sbigintmat},
+function rtsetindex_more(a::Union{Sintmat, Sbigintmat, Smatrix},
                     i::Union{Int, Sintvec},
                     j::Union{Int, Sintvec},
                     b::STuple)
+    nrows, ncols = size(a.value)
     for s in indexvalues(i)
         for t in indexvalues(j)
             @error_check(!isempty(b.list), "argument mismatch in assignment")
-            if isa(a, Sintmat)
-                a.value[s, t] = rt_convert2int(popfirst!(b.list))
-            else
-                b.value[s, t] = rt_convert2bigint(popfirst!(b.list))
-            end
+            @error_check(1 <= s <= nrows && 1 <= t <= ncols, "matrix index out of range")
+            rt_setindex(a, s, t, popfirst!(b.list))
         end
     end
     return b
 end
 
-function rtsetindex_last(a::Union{Sintmat, Sbigintmat},
+function rtsetindex_last(a::Union{Sintmat, Sbigintmat, Smatrix},
                          i::Union{Int, Sintvec},
                          j::Union{Int, Sintvec},
                          b)
     @assert !isa(b, STuple)
+    nrows, ncols = size(a.value)
     first = true
     for s in indexvalues(i)
         for t in indexvalues(j)
             @error_check(first, "argument mismatch in assignment")
-            if isa(a, Sintmat)
-                a.value[s, t] = rt_convert2int(b)
-            else
-                a.value[s, t] = rt_convert2bigint(b)
-            end
+            @error_check(1 <= s <= nrows && 1 <= t <= ncols, "matrix index out of range")
+            rt_setindex(a, s, t, b)
             first = false
         end
     end
@@ -396,18 +412,16 @@ function rtsetindex_last(a::Union{Sintmat, Sbigintmat},
     return
 end
 
-function rtsetindex_last(a::Union{Sintmat, Sbigintmat},
+function rtsetindex_last(a::Union{Sintmat, Sbigintmat, Smatrix},
                          i::Union{Int, Sintvec},
                          j::Union{Int, Sintvec},
                          b::STuple)
+    nrows, ncols = size(a.value)
     for s in indexvalues(i)
         for t in indexvalues(j)
             @error_check(!isempty(b.list), "argument mismatch in assignment")
-            if isa(a, Sintmat)
-                a.value[s, t] = rt_convert2int(popfirst!(b.list))
-            else
-                a.value[s, t] = rt_convert2bigint(popfirst!(b.list))
-            end
+            @error_check(1 <= s <= nrows && 1 <= t <= ncols, "matrix index out of range")
+            rt_setindex(a, s, t, popfirst!(b.list))
         end
     end
     @error_check(isempty(b.list), "argument mismatch in assignment")
@@ -497,8 +511,6 @@ function rtsetindex_last(a::Sideal, i::Sintvec, b::STuple)
         rt_setindex(a, i.value[t], b.list[t])
     end
 end
-
-
 
 
 #########################################
