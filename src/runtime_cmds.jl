@@ -409,8 +409,29 @@ const convertible_types = Dict(
     POLY_CMD => SPoly,
     IDEAL_CMD => _Ideal,
 )
-# TODO: check more closely what `ANY_TYPE` means
+# NOTE: ANY_TYPE is used only for result types automatically (this has to be done
+# on a case by case basis for input, as in most cases the name of the variable is
+# needed
+# TODO: should contain all types, not only convertible ones
 push!(convertible_types, ANY_TYPE => Union{values(convertible_types)...})
+
+const _types_to_id = Dict(t => id for (id, t) in convertible_types)
+
+
+function type_id(x)
+    xt = get(_types_to_id, typeof(x), nothing)
+    if xt === nothing
+        for (t, id) in _types_to_id
+            if x isa t
+                _types_to_id[typeof(x)] = id
+                xt = id
+                break
+            end
+        end
+    end
+    @assert xt !== nothing
+    xt
+end
 
 const error_expected_types = Dict(
     "nvars" => "ring",

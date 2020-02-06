@@ -2,6 +2,12 @@ ring r;
 
 poly p = x^2+y;
 ideal id = (x, y^2+y);
+intvec iv = 1, 2;
+intmat im[2][2] = 1, 2, 3, 4;
+
+// betti (TODO: more testing)
+intmat im_betti[2][2] = 1, 1, 0, 1;
+ASSUME(0, betti(id) == im_betti);
 
 // lead
 ASSUME(0, lead(p) == x^2);
@@ -26,9 +32,7 @@ ASSUME(0, rvar("xy") == 0);
 ASSUME(0, rvar((x, "y")) == (1, 2));
 
 // transpose
-intvec iv = 1, 2;
 intmat ivt[1][2] = 1, 2;
-intmat im[2][2] = 1, 2, 3, 4;
 intmat imt[2][2] = 1, 3, 2, 4;
 
 ASSUME(0, transpose(iv) == ivt);

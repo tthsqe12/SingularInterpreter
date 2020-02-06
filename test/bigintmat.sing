@@ -33,3 +33,5 @@ ASSUME(0, m[3, 1] == 13);
 ASSUME(0, m[3, 2] == 14);
 ASSUME(0, m[3, 3] == 0);
 
+// TODO: implement:
+// ASSUME(bigintmat(m) == m);
