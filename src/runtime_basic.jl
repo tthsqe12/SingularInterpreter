@@ -114,7 +114,8 @@ function rt_copy_tmp(a::Slist)
     if object_is_tmp(a)
         return a
     else
-        return Slist(map(rt_copy_own, a.value), a.parent, a.ring_dep_count, nothing, true)
+        return Slist(Any[rt_copy_own(x) for x in a.value],
+                     a.parent, a.ring_dep_count, nothing, true)
     end
 end
 
@@ -123,7 +124,8 @@ function rt_copy_own(a::Slist)
         a.tmp = false
         return a
     else
-        return Slist(map(rt_copy_own, a.value), a.parent, a.ring_dep_count, nothing, false)
+        return Slist(Any[rt_copy_own(x) for x in a.value],
+                     a.parent, a.ring_dep_count, nothing, false)
     end
 end
 
@@ -1478,7 +1480,7 @@ function rt_convert2list(a::Union{Snumber, Spoly, Svector})
 end
 
 function rt_convert2list(a::STuple)
-    data::Vector{Any} = map(rt_copy_own, a.list)
+    data = Any[rt_copy_own(x) for x in a.list]
     count = 0
     for i in data
         count += rt_is_ring_dep(i)
@@ -1492,7 +1494,7 @@ function rt_convert2list(a)
 end
 
 function rt_cast2list(a...)
-    data::Vector{Any} = [rt_copy_own(j) for j in a]
+    data = Any[rt_copy_own(x) for x in a]
     count = 0
     for i in data
         count += rt_is_ring_dep(i)

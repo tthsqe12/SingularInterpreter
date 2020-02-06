@@ -48,8 +48,15 @@ function rtgetindex(a::Slist, i::Int)
 end
 
 function rtgetindex(a::Slist, i::Sintvec)
-    r = Any[rtgetindex(a, t) for t in i.value]
-    return length(r) == 1 ? r[1] : STuple(map(rt_copy_tmp, r))
+    if length(i.value) == 1
+        return rtgetindex(a, i.value[1])
+    else
+        # the singular code a[i][j] = b is transpiled as
+        #   rtsetindex_last(rtgetindex(a, i), j, b)
+        # and singular errs in this case. Therefore, it is ok to return an
+        # STuple and let julia err in rtsetindex_last(::STuple, ...) in this case
+        return STuple(Any[rt_copy_tmp(rtgetindex(a, t)) for t in i.value])
+    end
 end
 
 
@@ -522,8 +529,8 @@ function rtplus(a::Slist, b::Slist)
     else
         newparent = b.parent
     end
-    A = object_is_tmp(a) ? a.value : map(rt_copy_own, a.value)
-    B = object_is_tmp(b) ? b.value : map(rt_copy_own, b.value)
+    A = object_is_tmp(a) ? a.value : Any[rt_copy_own(x) for x in a.value]
+    B = object_is_tmp(b) ? b.value : Any[rt_copy_own(x) for x in b.value]
     return Slist(vcat(A, B), newparent, a.ring_dep_count + b.ring_dep_count, nothing, true)
 end
 
