@@ -281,9 +281,7 @@ function set_arg(x::Union{SPoly,_Ideal}, i; withcopy, withname=false)
 end
 
 function set_arg(x::SRing, i; withcopy=false, withname=false)
-    libSingular.rChangeCurrRing(x.ring_ptr)
-    v = libSingular.internal_to_void_helper(x.ring_ptr)
-    libSingular.set_leftv_arg_i(v, i, withcopy)
+    libSingular.set_leftv_arg_i(x.ring_ptr, i, withcopy)
 end
 
 function set_arg(x::SString, i; withcopy=false, withname=false)
@@ -461,7 +459,7 @@ let seen = Set{Int}()
         end
 
         @eval function $rtauto(x::$Sarg)
-            set_arg1(x, withcopy=(x isa Union{SPoly,_Ideal}))
+            set_arg1(x, withcopy=(x isa Union{SPoly,_Ideal,SRing}))
             cmd1($cmd, $Sres, sing_ring(x))
         end
     end
