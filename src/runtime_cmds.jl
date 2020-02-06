@@ -30,7 +30,7 @@ function rtinsert(a::Slist, b::Nothing, i::Int)
     if i >= length(A.value)
         return A
     else
-        insert!(A.value, i + 1, B)
+        insert!(A.value, i + 1, nothing)
     end
     @expensive_assert object_is_ok(A)
     return A
