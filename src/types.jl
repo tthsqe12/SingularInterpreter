@@ -283,8 +283,9 @@ end
 mutable struct Smatrix
     value::libSingular.matrix       # dense 2d array of poly
     parent::Sring
+    tmp::Bool
 
-    function SMatrixData(value_::libSingular.matrix, parent_::Sring, tmp_::Bool)
+    function Smatrix(value_::libSingular.matrix, parent_::Sring, tmp_::Bool)
         a = new(value_, parent_, tmp_)
         finalizer(rt_matrix_finalizer, a)
         parent_.refcount += 1
