@@ -1151,7 +1151,7 @@ function rt_bracket_constructor(v...)
     for i in 1:length(v)
         p = rt_convert2poly_ptr(v[i], R)
         libSingular.p_SetCompP(p, i, R.value)                            # mutate p inplace
-        r.vector_ptr = libSingular.p_Add_q(r.vector_ptr, p, R.value)     # consume both summands
+        r.value = libSingular.p_Add_q(r.value, p, R.value)     # consume both summands
     end
     return r
 end
@@ -2735,4 +2735,3 @@ function rt_maketuple(v...)
         return STuple(a)
     end
 end
-

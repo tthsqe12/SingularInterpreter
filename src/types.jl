@@ -191,7 +191,7 @@ sing_ring(x) = nothing
 
 #### singular type "number"     immutable in the singular language
 mutable struct Snumber
-    value::libSingular.number    
+    value::libSingular.number
     parent::Sring
 
     function Snumber(value_::libSingular.number, parent_::Sring)
@@ -208,6 +208,8 @@ function rt_number_finalizer(a::Snumber)
     rt_ring_finalizer(a.parent)
 end
 
+sing_ring(s::Snumber) = s.parent
+sing_ptr(s::Snumber) = s.number_ptr
 
 #### singular type "poly"       immutable in the singular language
 mutable struct Spoly
@@ -234,7 +236,7 @@ end
 
 #### singular type "vector"     immutable in the singular language
 mutable struct Svector
-    vector_ptr::libSingular.poly    # singly linked list of terms*gen(i), like a sparse array of poly
+    value::libSingular.poly    # singly linked list of terms*gen(i), like a sparse array of poly
     parent::Sring
 
     function Svector(value_::libSingular.poly, parent_::Sring)
@@ -450,4 +452,3 @@ end
 macro error_check_rings(ringa, ringb, msg)
     return :($(esc(ringa)) === $(esc(ringb)) ? nothing : rt_error($(esc(msg))))
 end
-

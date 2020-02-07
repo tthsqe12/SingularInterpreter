@@ -262,15 +262,13 @@ end
 
 set_arg(x::Int, i; kw...) = libSingular.set_leftv_arg_i(x, i)
 
-function set_arg(x::Union{Spoly, Sideal}, i; withcopy, withname=false)
+function set_arg(x::Union{Spoly,Svector,Sideal,Snumber}, i; withcopy, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).value)
-    libSingular.set_leftv_arg_i(x.value, i, withcopy)
+    libSingular.set_leftv_arg_i(x.value, Int(type_id(x)), i, withcopy)
 end
 
 function set_arg(x::Sring, i; withcopy=false, withname=false)
-    libSingular.rChangeCurrRing(x.value)
-    v = libSingular.internal_to_void_helper(x.value)
-    libSingular.set_leftv_arg_i(v, i, withcopy)
+    libSingular.set_leftv_arg_i(x.value, i, withcopy)
 end
 
 function set_arg(x::Sstring, i; withcopy=false, withname=false)
@@ -292,8 +290,11 @@ get_res() = libSingular.get_leftv_res()
 
 get_res(::Type{Int}, ring=nothing) = Int(get_res())
 
-get_res(::Type{Spoly}, r::Sring) =
-    Spoly(libSingular.internal_void_to_poly_helper(get_res()), r)
+get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
+    T(libSingular.internal_void_to_poly_helper(get_res()), r)
+
+get_res(::Type{Snumber}, r::Sring) =
+    Snumber(libSingular.internal_void_to_number_helper(get_res()), r)
 
 get_res(::Type{Sideal}, r::Sring) =
     Sideal(libSingular.internal_void_to_ideal_helper(get_res()), r, true)
@@ -386,18 +387,39 @@ end
 
 # types which can currently be sent/fetched as sleftv to/from Singular
 const convertible_types = Dict{CMDS, Type}(
-    INT_CMD => Int,
+    INT_CMD    => Int,
     BIGINT_CMD => BigInt,
     STRING_CMD => Sstring,
     INTVEC_CMD => Sintvec,
     INTMAT_CMD => Sintmat,
-    RING_CMD => Sring,
+    RING_CMD   => Sring,
     NUMBER_CMD => Snumber,
-    POLY_CMD => Spoly,
-    IDEAL_CMD => Sideal,
+    POLY_CMD   => Spoly,
+    IDEAL_CMD  => Sideal,
+    VECTOR_CMD => Svector,
 )
-# TODO: check more closely what `ANY_TYPE` means
+# NOTE: ANY_TYPE is used only for result types automatically (this has to be done
+# on a case by case basis for input, as in most cases the name of the variable is
+# needed)
 push!(convertible_types, ANY_TYPE => Union{values(convertible_types)...})
+
+const _types_to_id = Dict(t => id for (id, t) in convertible_types)
+
+function type_id(x)
+    xt = get(_types_to_id, typeof(x), nothing)
+    if xt === nothing
+        for (t, id) in _types_to_id
+            id == ANY_TYPE && continue
+            if x isa t
+                _types_to_id[typeof(x)] = id
+                xt = id
+                break
+            end
+        end
+    end
+    @assert xt !== nothing
+    xt
+end
 
 const error_expected_types = Dict(
     "nvars" => "ring",
@@ -405,7 +427,18 @@ const error_expected_types = Dict(
 )
 
 let seen = Set{Int}()
-    for (cmd, res, arg) in dArith1
+    i = 0
+    valid_types = Int.(keys(convertible_types))
+    while true
+        (cmd, res, arg) = libSingular.dArith1(i)
+        cmd == 0 && break # end of dArith1
+        i += 1
+
+        res in valid_types && arg in valid_types || continue
+
+        res = CMDS(res)
+        arg = CMDS(arg)
+
         arg == ANY_TYPE && continue # handled differently
 
         name = something(get(cmd_to_string, cmd, nothing),
@@ -413,9 +446,8 @@ let seen = Set{Int}()
                          "")
         name == "" && continue
 
-        Sres = get(convertible_types, res, nothing)
-        Sarg = get(convertible_types, arg, nothing)
-        Sres !== nothing && Sarg !== nothing || continue
+        Sres = convertible_types[res]
+        Sarg = convertible_types[arg]
 
         rtname = Symbol(:rt, name)
         rtauto = Symbol(:rt, name, :_auto)
@@ -438,7 +470,7 @@ let seen = Set{Int}()
         end
 
         @eval function $rtauto(x::$Sarg)
-            set_arg1(x, withcopy=(x isa Union{Spoly,Sideal}))
+            set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring}))
             cmd1($cmd, $Sres, sing_ring(x))
         end
     end
