@@ -306,6 +306,9 @@ get_res(::Type{Int}, ring=nothing) = Int(get_res())
 get_res(T::Type{<:Union{SPoly,SVector}}, r::SRing) =
     T(libSingular.internal_void_to_poly_helper(get_res()), r)
 
+get_res(::Type{SNumber}, r::SRing) =
+    SNumber(libSingular.internal_void_to_number_helper(get_res()), r)
+
 get_res(::Type{<:_Ideal}, r::SRing) =
     SIdeal(SIdealData(libSingular.internal_void_to_ideal_helper(get_res()), r))
 

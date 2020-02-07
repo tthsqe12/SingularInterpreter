@@ -14,3 +14,8 @@ ASSUME(0, m == -3);
 
 ASSUME(0, size(n) == 1);
 ASSUME(0, size(m) == 1);
+
+ASSUME(0, numerator(n) == 12);
+ASSUME(0, denominator(n) == 1);
+ASSUME(0, typeof(numerator(n)) == "number");
+ASSUME(0, typeof(denominator(n)) == "number");
