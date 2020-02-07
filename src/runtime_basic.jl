@@ -1141,7 +1141,7 @@ function rt_defaultconstructor_vector()
     R = rt_basering()
     @error_check(R.valid, "cannot construct a vector when no basering is active")
     r1 = libSingular.p_null_helper()
-    return SVector(r1, R)
+    return Svector(r1, R)
 end
 
 # special constructor via [poly...]
@@ -1583,14 +1583,14 @@ function rt_convert2vector(a::Union{Int, BigInt})
     R = rt_basering()
     r1 = rt_convert2poly_ptr(a, R.parent)
     libSingular.p_SetCompP(r1, 1, R.parent.value)       # mutate r1 in place
-    return SVector(r1, R)
+    return Svector(r1, R)
 end
 
 function rt_convert2vector(a::Union{Snumber, Spoly})
     @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "converting to a vector outside of basering")
     r1 = rt_convert2poly_ptr(a, a.parent)
     libSingular.p_SetCompP(r1, 1, a.parent.value)       # mutate r1 in place
-    return SVector(r1, a.parent)
+    return Svector(r1, a.parent)
 end
 
 function rt_convert2vector(a::Svector)
