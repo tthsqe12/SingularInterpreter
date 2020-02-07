@@ -3,9 +3,9 @@ using Test
 using SingularInterpreter
 using SingularInterpreter: rtcolon, rtequalequal, rtnot, rtand, rtor, Sintvec, Sstring
 
-for a in ["assign", "int", "intvec", "intmat", "bigintmat", "list",
-          "tuple", "proc", "poly", "ideal", "vector", "matrix", "ring", "commands", "string",
-          "sleftv", "number"]
+for a in ["assign", "string", "int", "intvec", "intmat", "bigintmat", "list",
+          "tuple", "proc", "number", "poly", "vector", "ideal", "matrix", "ring",
+          "commands", "sleftv"]
     SingularInterpreter.reset_runtime()
     jlfile = joinpath(dirname(@__FILE__), a * ".jl")
     if isfile(jlfile)

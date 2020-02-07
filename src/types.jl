@@ -236,7 +236,7 @@ end
 
 #### singular type "vector"     immutable in the singular language
 mutable struct Svector
-    value::libSingular.poly    # singly linked list of terms*gen(i), like a sparse array of poly
+    value::libSingular.poly     # singly linked list of terms*gen(i), like a sparse array of poly
     parent::Sring
 
     function Svector(value_::libSingular.poly, parent_::Sring)

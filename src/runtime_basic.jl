@@ -1150,8 +1150,8 @@ function rt_bracket_constructor(v...)
     r = Svector(libSingular.p_null_helper(), R)
     for i in 1:length(v)
         p = rt_convert2poly_ptr(v[i], R)
-        libSingular.p_SetCompP(p, i, R.value)                            # mutate p inplace
-        r.value = libSingular.p_Add_q(r.value, p, R.value)     # consume both summands
+        libSingular.p_SetCompP(p, i, R.value)               # mutate p inplace
+        r.value = libSingular.p_Add_q(r.value, p, R.value)  # consume both summands
     end
     return r
 end

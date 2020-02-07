@@ -1,13 +1,13 @@
-ring r;
+ring r = 0, (x, y, z), lp;
 
 vector v = [x, 0, x+y^2];
 vector v2 = [-x, 0, -x-y^2];
 
+ASSUME(0, typeof(v) == "vector");
 ASSUME(0, size(v) == 3);
 ASSUME(0, -v == -v);
 ASSUME(0, -(-v) == v);
 ASSUME(0, -v == v2);
-
 
 v = [x, 0, x*y^2];
 v2 = [-x, 0, -x*y^2];
