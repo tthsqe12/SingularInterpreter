@@ -330,14 +330,16 @@ end
 
 function get_res(::Type{STuple}, ring=nothing)
     a = Any[]
+    next = C_NULL
     while true
-        t, p = libSingular.get_leftv_res_next()
-        p == C_NULL && return STuple(a)
+        t, p, next = libSingular.get_leftv_res_next(next)
+        @assert p != C_NULL
         if t == Int(STRING_CMD)
             push!(a, Sstring(unsafe_string(Ptr{Cchar}(p))))
         else
             rt_error("unknown type in the result of last command")
         end
+        next == C_NULL && return STuple(a)
     end
 end
 

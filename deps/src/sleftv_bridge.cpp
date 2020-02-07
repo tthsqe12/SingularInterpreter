@@ -7,7 +7,7 @@ typedef ssize_t jint; // julia Int
 static sleftv lv1;
 static sleftv lv2;
 static sleftv lvres;
-static leftv lvres_next;
+
 static const char* lv_string_names[3] = {"", "__string_name_1", "__string_name_2"};
 
 static idhdl string_idhdls[3] = {NULL, NULL, NULL};
@@ -135,24 +135,20 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     [] {
                         void *res = (void*)lvres.Data();
                         rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
-                        // this can check for its validity
+                                               // this can check for its validity
                         return res;
                     });
 
     Singular.method("get_leftv_res_next",
-                    [] {
-                        if (lvres_next == NULL) {
+                    [](void *next) {
+                        if (next == NULL) // start the iteration
+                            next = &lvres;
+                        leftv lvres_next = (leftv)next;
+                        auto r = std::make_tuple(lvres_next->Typ(), lvres_next->Data(), (void*)lvres_next->next);
+                        if (lvres_next->next == NULL)
                             rChangeCurrRing(NULL);
-                            return std::make_tuple(0, (void*)NULL);
-                        }
-                        else {
-                            auto r = std::make_tuple(lvres_next->Typ(), lvres_next->Data());
-                            lvres_next = lvres_next->next;
-                            return r;
-                        }
+                        return r;
                     });
-
-    Singular.method("get_leftv_res_typ", [] { return lvres.Typ(); });
 
     Singular.method("lvres_array_get_dim",
                     [](int d) {
@@ -203,7 +199,6 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     Singular.method("iiExprArith1",
                     [](int op) {
-                        lvres_next = &lvres;
                         int err = iiExprArith1(&lvres, &lv1, op);
                         if (err) {
                             errorreported = 0;
@@ -214,7 +209,6 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     Singular.method("iiExprArith2",
                     [](int op) {
-                        lvres_next = &lvres;
                         // TODO: check what is the default proccall argument
                         int err = iiExprArith2(&lvres, &lv1, op, &lv2);
                         if (err) {
