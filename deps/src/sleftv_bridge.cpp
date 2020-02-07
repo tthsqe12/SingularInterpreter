@@ -53,6 +53,16 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                                        });
 
     Singular.method("set_leftv_arg_i",
+                    [](number x, int type, int i, bool copy) {
+                        assert(0 <= i && i <= 2);
+                        assert(type == NUMBER_CMD);
+                        auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                        lv.Init();
+                        lv.data = copy ? nCopy(x) : x;
+                        lv.rtyp = NUMBER_CMD;
+                    });
+
+    Singular.method("set_leftv_arg_i",
                     [](ring x, int i, bool copy) {
                         assert(0 <= i && i <= 2);
                         auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;

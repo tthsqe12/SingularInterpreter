@@ -11,3 +11,6 @@ ASSUME(0, typeof(n) == "number");
 number m = -3;
 ASSUME(0, typeof(m) == "number");
 ASSUME(0, m == -3);
+
+ASSUME(0, size(n) == 1);
+ASSUME(0, size(m) == 1);

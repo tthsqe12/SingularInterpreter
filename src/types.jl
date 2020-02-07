@@ -198,6 +198,8 @@ function rt_number_finalizer(a::SNumber)
     rt_ring_finalizer(a.parent)
 end
 
+sing_ring(s::SNumber) = s.parent
+sing_ptr(s::SNumber) = s.number_ptr
 
 #### singular type "poly"       immutable in the singular language
 mutable struct SPoly

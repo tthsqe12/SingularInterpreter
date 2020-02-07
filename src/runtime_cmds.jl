@@ -275,7 +275,7 @@ end
 
 set_arg(x::Int, i; kw...) = libSingular.set_leftv_arg_i(x, i)
 
-function set_arg(x::Union{SPoly,SVector,_Ideal}, i; withcopy, withname=false)
+function set_arg(x::Union{SPoly,SVector,_Ideal,SNumber}, i; withcopy, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).ring_ptr)
     libSingular.set_leftv_arg_i(sing_ptr(x), Int(type_id(x)), i, withcopy)
 end
