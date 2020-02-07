@@ -11,6 +11,16 @@ ideal g = std(ideal(x^2 - y^2, x - y));
 ASSUME(0, size(g) == 1);
 ASSUME(0, g[1] == x - y);
 
+list m = mstd(ideal(x^2 - y^2, x - y));
+ASSUME(0, size(m) == 2);
+ideal mi;
+int ii;
+for (ii=1; ii <= 2; ii++) {
+    mi = m[ii];
+    ASSUME(0, size(mi) == 1);
+    ASSUME(0, mi[1] == x - y);
+}
+
 kill r;
 kill basering; // kills a and b too
 ring r = (0, a, b), (x, y, z), lp;
@@ -57,4 +67,3 @@ ASSUME(0, j[9] == j[2]);
 ASSUME(0, j[10] == j[3]);
 ASSUME(0, j[11] == j[4]);
 ASSUME(0, j[12] == j[5]);
-

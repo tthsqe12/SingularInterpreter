@@ -296,8 +296,8 @@ get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
 get_res(::Type{Snumber}, r::Sring) =
     Snumber(libSingular.internal_void_to_number_helper(get_res()), r)
 
-get_res(::Type{Sideal}, r::Sring) =
-    Sideal(libSingular.internal_void_to_ideal_helper(get_res()), r, true)
+get_res(::Type{Sideal}, r::Sring, data=get_res()) =
+    Sideal(libSingular.internal_void_to_ideal_helper(data), r, true)
 
 function get_res(::Type{Sintvec}, ring=nothing)
     d = libSingular.lvres_array_get_dim(1)
@@ -311,6 +311,21 @@ function get_res(::Type{Sintmat}, ring=nothing)
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im))
     Sintmat(im, true)
+end
+
+function get_res(::Type{Slist}, ring=nothing)
+    n = libSingular.lvres_list_length()
+    a = Vector{Any}(undef, n)
+    cnt = 0
+    for i = 1:n
+        (t, d) = libSingular.lvres_list_elt_i(i)
+        @assert d != C_NULL
+        T = convertible_types[CMDS(t)]
+        a[i] = get_res(T, ring, d)
+        cnt += rt_is_ring_dep(a[i])
+    end
+
+    Slist(a, cnt == 0 ? rtInvalidRing : something(ring), cnt, nothing, true)
 end
 
 function get_res(::Type{STuple}, ring=nothing)
@@ -397,6 +412,7 @@ const convertible_types = Dict{CMDS, Type}(
     POLY_CMD   => Spoly,
     IDEAL_CMD  => Sideal,
     VECTOR_CMD => Svector,
+    LIST_CMD   => Slist,
 )
 # NOTE: ANY_TYPE is used only for result types automatically (this has to be done
 # on a case by case basis for input, as in most cases the name of the variable is
@@ -426,7 +442,8 @@ const error_expected_types = Dict(
     "leadexp" => "poly",
 )
 
-let seen = Set{Int}()
+let seen = Set{Int}([Int(PRINT_CMD)])
+    # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
     i = 0
     valid_types = Int.(keys(convertible_types))
     while true
