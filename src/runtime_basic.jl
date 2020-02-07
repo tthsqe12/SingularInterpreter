@@ -1141,7 +1141,7 @@ function rt_defaultconstructor_vector()
     R = rt_basering()
     @error_check(R.valid, "cannot construct a vector when no basering is active")
     r1 = libSingular.p_null_helper()
-    return SVector(r1, R)
+    return Svector(r1, R)
 end
 
 # special constructor via [poly...]
@@ -1150,8 +1150,8 @@ function rt_bracket_constructor(v...)
     r = Svector(libSingular.p_null_helper(), R)
     for i in 1:length(v)
         p = rt_convert2poly_ptr(v[i], R)
-        libSingular.p_SetCompP(p, i, R.value)                            # mutate p inplace
-        r.vector_ptr = libSingular.p_Add_q(r.vector_ptr, p, R.value)     # consume both summands
+        libSingular.p_SetCompP(p, i, R.value)               # mutate p inplace
+        r.value = libSingular.p_Add_q(r.value, p, R.value)  # consume both summands
     end
     return r
 end
