@@ -1,58 +1,63 @@
 #### insert ####
 
-rtinsert(a::_List, b, i::Int) = rtinsert(rt_ref(a), b, i)
-
-function rtinsert(a::SListData, b, i::Int)
+# insert(a, b, i) is supposed to return a tmp list with b inserted at position i+1
+function rtinsert(a::Slist, b, i::Int)
     @assert !isa(b, STuple)
-    bcopy = rt_copy(b)
-    r = rt_edit(a)
-    if i > length(r.data)
-        resize!(r.data, i + 1)
-        r.data[i + 1] = bcopy
+    @assert !isa(b, Nothing)
+    B = rt_copy_own(b)
+    A = rt_copy_tmp(a)
+    @expensive_assert object_is_ok(A)
+    if i >= length(A.value)
+        append!(A.value, collect(Iterators.repeated(nothing, i - length(A.value))))
+        push!(A.value, B)
     else
-        insert!(r.data, i + 1, bcopy)
+        insert!(A.value, i + 1, B)
     end
-    # should not have nothings on the end remove nothings on the end
-    @expensive_assert !isempty(r.data) && r.data[end] != nothing
-    if rt_is_ring_dep(bcopy)
-        r.ring_dep_count += 1
-        if !r.parent.valid
-            r.parent = rt_basering()  # try to get a valid ring from somewhere
-            @warn_check(r.parent.valid, "list has ring dependent elements but no basering")
+    if rt_is_ring_dep(B)
+        A.ring_dep_count += 1
+        if !A.parent.valid
+            A.parent = rt_basering()  # try to get a valid ring from somewhere
+            @warn_check(A.parent.valid, "list has ring dependent elements but no basering")
         end
     end
-    @expensive_assert object_is_ok(r)
-    return SList(r)
+    @expensive_assert object_is_ok(A)
+    return A
 end
 
-function rtinsert(a::_List, b::STuple, i::Int)
-    if length(b.list == 1)
-        return rtinsert(a, b.list[1], i)
+function rtinsert(a::Slist, b::Nothing, i::Int)
+    A = rt_copy_tmp(a)
+    @expensive_assert object_is_ok(A)
+    if i >= length(A.value)
+        return A
     else
-        rt_error("cannot insert a tuple into a list")
-        return rt_defaultconstructor_list()
+        insert!(A.value, i + 1, nothing)
     end
+    @expensive_assert object_is_ok(A)
+    return A
+end
+
+function rtinsert(a::Slist, b::STuple, i::Int)
+    @error_check(length(b.list == 1), "cannot insert a tuple into a list")
+    return rtinsert(a, b.list[1], i)
 end
 
 
 #### delete ####
 
-#rtdelete(a::_List, b, i::Int) = rtdelete(rt_ref(a), b, i)
-
-function rtdelete(a::_List, i::Int)
-    r = rt_edit(a)
-    change = Int(rt_is_ring_dep(r.data[i]))
-    deleteat!(r.data, i)
+function rtdelete(a::Slist, i::Int)
+    A = rt_copy_tmp(a)
+    change = Int(rt_is_ring_dep(A.value[i]))
+    deleteat!(A.value, i)
     # remove nothings on the end
-    while !isempty(r.data) && r.data[end] == nothing
-        pop!(r.data)
+    while !isempty(A.value) && isa(A.value[end], Nothing)
+        pop!(A.value)
     end
-    r.ring_dep_count -= change
-    if r.ring_dep_count <= 0
-        r.parent = rtInvalidRing
+    A.ring_dep_count -= change
+    if A.ring_dep_count <= 0
+        A.parent = rtInvalidRing
     end
-    @expensive_assert object_is_ok(r)
-    return SList(r)
+    @expensive_assert object_is_ok(A)
+    return A
 end
 
 
@@ -77,47 +82,47 @@ function rtdeg(a::STuple, b::STuple)
 end
 
 function rtdeg(a::Union{Int, BigInt})
-    r = rt_basering()
-    r.valid || rt_error("deg(`$(rt_typestring(a))`) failed without a basering")
-    a1 = libSingular.n_Init(a, r.ring_ptr)
-    a2 = libSingular.p_NSet(a1, r.ring_ptr)
-    d = Int(libSingular.pLDeg(a2, r.ring_ptr))
-    libSingular.p_Delete(a2, r.ring_ptr)
+    R = rt_basering()
+    @error_check(R.valid, "deg(`$(rt_typestring(a))`) failed without a basering")
+    a1 = libSingular.n_Init(a, R.value)
+    a2 = libSingular.p_NSet(a1, R.value)
+    d = Int(libSingular.pLDeg(a2, R.value))
+    libSingular.p_Delete(a2, R.value)
     return d
 end
 
-function rtdeg(a::SNumber)
-    a1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
-    a2 = libSingular.p_NSet(a1, a.parent.ring_ptr)
-    d = Int(libSingular.pLDeg(a2, a.ring_ptr))
-    libSingular.p_Delete(a2, a.ring_ptr)
+function rtdeg(a::Snumber)
+    a1 = libSingular.n_Copy(a.value, a.parent.value)
+    a2 = libSingular.p_NSet(a1, a.parent.value)
+    d = Int(libSingular.pLDeg(a2, a.value))
+    libSingular.p_Delete(a2, a.value)
     return d
 end
 
-function rtdeg(a::SPoly)
-    return Int(libSingular.pLDeg(a.poly_ptr, a.parent.ring_ptr))
+function rtdeg(a::Spoly)
+    return Int(libSingular.pLDeg(a.value, a.parent.value))
 end
 
-function rtdeg(a::Union{Int, BigInt}, b::_IntVec)
-    r = rt_basering()
-    r.valid || rt_error("deg(`$(rt_typestring(a))`) failed without a basering")
-    a1 = libSingular.n_Init(a, r.ring_ptr)
-    a2 = libSingular.p_NSet(a1, r.ring_ptr)
-    d = Int(libSingular.p_DegW(a2, rt_ref(b), r.ring_ptr))
-    libSingular.p_Delete(a2, r.ring_ptr)
+function rtdeg(a::Union{Int, BigInt}, b::Sintvec)
+    R = rt_basering()
+    @error_check(R.valid, "deg(`$(rt_typestring(a))`) failed without a basering")
+    a1 = libSingular.n_Init(a, R.value)
+    a2 = libSingular.p_NSet(a1, R.value)
+    d = Int(libSingular.p_DegW(a2, b.value, R.value))
+    libSingular.p_Delete(a2, R.value)
     return d
 end
 
-function rtdeg(a::SNumber, b::_IntVec)
-    a1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
-    a2 = libSingular.p_NSet(a1, a.parent.ring_ptr)
-    d = Int(libSingular.p_DegW(a2, rt_ref(b), a.ring_ptr))
-    libSingular.p_Delete(a2, a.parent.ring_ptr)
+function rtdeg(a::Snumber, b::Sintvec)
+    a1 = libSingular.n_Copy(a.value, a.parent.value)
+    a2 = libSingular.p_NSet(a1, a.parent.value)
+    d = Int(libSingular.p_DegW(a2, b.value, a.value))
+    libSingular.p_Delete(a2, a.parent.value)
     return d
 end
 
-function rtdeg(a::SPoly, b::_IntVec)
-    return Int(libSingular.p_DegW(a.poly_ptr, rt_ref(b), a.parent.ring_ptr))
+function rtdeg(a::Spoly, b::Sintvec)
+    return Int(libSingular.p_DegW(a.value, b.value, a.parent.value))
 end
 
 ### var ###
@@ -125,15 +130,14 @@ end
 rtvar(a::STuple) = STuple(Any[rtvar(i) for i in a.list])
 
 function rtvar(i::Int)
-    r = rt_basering()
-    r.valid || rt_error("var(`int`) failed without a basering")
-    r_ = r.ring_ptr
-    n::Int = libSingular.rVar(r_)
-    i in 1:n || rt_error("var number $i out of range 1..$n")
-    p = libSingular.p_One(r_)
-    libSingular.p_SetExp(p, i, 1, r_)
-    libSingular.p_Setm(p, r_)
-    SPoly(p, r)
+    R = rt_basering()
+    @error_check(R.valid, "var(`int`) failed without a basering")
+    n::Int = libSingular.rVar(R.value)
+    @error_check(1 <= i <= n, "var number $i out of range 1..$n")
+    p = libSingular.p_One(R.value)
+    libSingular.p_SetExp(p, i, 1, R.value)
+    libSingular.p_Setm(p, R.value)
+    return Spoly(p, R)
 end
 
 ### variables ###
@@ -144,24 +148,22 @@ end
 
 function rtvariables(a::Union{Int, BigInt})
     R = rt_basering()
-    R.valid || rt_error("variables(`$(rt_typestring(a))`) failed without a basering")
-    return SIdeal(SIdealData(libSingular.idInit(1,1), R))
+    @error_check(R.valid, "variables(`$(rt_typestring(a))`) failed without a basering")
+    return Sideal(libSingular.idInit(1,1), R, true)
 end
 
-function rtvariables(a::SNumber)
-    return SIdeal(SIdealData(libSingular.idInit(1,1), a.parent))
+function rtvariables(a::Snumber)
+    return Sideal(libSingular.idInit(1,1), a.parent, true)
 end
 
-function rtvariables(a::SPoly)
-    r = libSingular.p_Variables(a.poly_ptr, a.parent.ring_ptr)
-    return SIdeal(SIdealData(r, a.parent))
+function rtvariables(a::Spoly)
+    r = libSingular.p_Variables(a.value, a.parent.value)
+    return Sideal(r, a.parent, true)
 end
 
-rtvariables(a::SIdeal) = rtvariables(rt_ref(a))
-
-function rtvariables(a::SIdealData)
-    r = libSingular.id_Variables(a.ideal_ptr, a.parent.ring_ptr)
-    return SIdeal(SIdealData(r, a.parent))
+function rtvariables(a::Sideal)
+    r = libSingular.id_Variables(a.value, a.parent.value)
+    return Sideal(r, a.parent, true)
 end
 
 
@@ -173,18 +175,16 @@ end
 
 function rtmaxideal(a::Int)
     R = rt_basering()
-    R.valid || rt_error("maxideal(`int`) failed without a basering")
-    return SIdeal(SIdealData(libSingular.id_MaxIdeal(Cint(a), R.ring_ptr), R))
+    @error_check(R.valid, "maxideal(`int`) failed without a basering")
+    return Sideal(libSingular.id_MaxIdeal(Cint(a), R.value), R, true)
 end
 
 
 #### std ####
 
-rtstd(a::SIdeal) = rtstd(rt_ref(a))
-
-function rtstd(a::SIdealData)
-    r = libSingular.id_Std(a.ideal_ptr, a.parent.ring_ptr, false)
-    return SIdeal(SIdealData(r, a.parent))
+function rtstd(a::Sideal)
+    r = libSingular.id_Std(a.value, a.parent.value, false)
+    return Sideal(r, a.parent, true)
 end
 
 
@@ -198,25 +198,16 @@ function rtsize(a::BigInt)
     return Int(a.size)
 end
 
-function rtsize(a::_IntVec)
-    return Int(length(rt_ref(a)))
+function rtsize(a::Union{Sintvec, Sintmat, Sbigintmat, Slist})
+    return Int(length(a.value))
 end
 
-function rtsize(a::Union{_IntMat, _BigIntMat})
-    nrows, ncols = size(rt_ref(a))
-    return Int(nrows * ncols)
+function rtsize(a::Spoly)
+    return Int(libSingular.pLength(a.value))
 end
 
-function rtsize(a::_List)
-    return Int(length(rt_ref(a).data))
-end
-
-function rtsize(a::SPoly)
-    return Int(libSingular.pLength(a.poly_ptr))
-end
-
-function rtsize(a::_Ideal)
-    return Int(libSingular.idElem(rt_ref(a).ideal_ptr))
+function rtsize(a::Sideal)
+    return Int(libSingular.idElem(a.value))
 end
 
 
@@ -226,13 +217,13 @@ function rtncols(a::STuple)
     return STuple(Any[rtncols(i) for i in a.list])
 end
 
-function rtncols(a::Union{_IntMat, _BigIntMat})
-    nrows, ncols = size(rt_ref(a))
+function rtncols(a::Union{Sintmat, Sbigintmat})
+    nrows, ncols = size(a.value)
     return ncols
 end
 
-function rtncols(a::_Ideal)
-    return Int(libSingular.id_ncols(rt_ref(a).ideal_ptr))
+function rtncols(a::Sideal)
+    return Int(libSingular.id_ncols(a.value))
 end
 
 #### nvars ####
@@ -241,8 +232,8 @@ function rtnvars(a::STuple)
     return STuple(Any[rtnvars(i) for i in a.list])
 end
 
-function rtnvars(a::SRing)
-    return Int(libSingular.rVar(a.ring_ptr))
+function rtnvars(a::Sring)
+    return Int(libSingular.rVar(a.value))
 end
 
 #### leadexp ####
@@ -251,23 +242,19 @@ function rtleadexp(a::STuple)
     return STuple(Any[rtleadexp(i) for i in a.list])
 end
 
-function rtleadexp(a::SPoly)
-    return SIntVec(libSingular.p_leadexp(a.poly_ptr, a.parent.ring_ptr))
+function rtleadexp(a::Spoly)
+    return Sintvec(libSingular.p_leadexp(a.value, a.parent.value), true)
 end
 
 
 #### kbase ####
 
-rtkbase(a::SIdeal) = rtkbase(rt_ref(a))
-
-function rtkbase(a::SIdealData)
-    return SIdeal(SIdealData(libSingular.id_kbase(a.ideal_ptr, -1, a.parent.ring_ptr), a.parent))
+function rtkbase(a::Sideal)
+    return Sideal(libSingular.id_kbase(a.value, -1, a.parent.value), a.parent, true)
 end
 
-rtkbase(a::SIdeal, b::Int) = rtkbase(rt_ref(a), b)
-
-function rtkbase(a::SIdealData, b::Int)
-    return SIdeal(SIdealData(libSingular.id_kbase(a.ideal_ptr, Cint(b), a.parent.ring_ptr), a.parent))
+function rtkbase(a::Sideal, b::Int)
+    return Sideal(libSingular.id_kbase(a.value, Cint(b), a.parent.value), a.parent, true)
 end
 
 
@@ -275,26 +262,26 @@ end
 
 set_arg(x::Int, i; kw...) = libSingular.set_leftv_arg_i(x, i)
 
-function set_arg(x::Union{SPoly,_Ideal}, i; withcopy, withname=false)
-    libSingular.rChangeCurrRing(sing_ring(x).ring_ptr)
-    libSingular.set_leftv_arg_i(sing_ptr(x), i, withcopy)
+function set_arg(x::Union{Spoly, Sideal}, i; withcopy, withname=false)
+    libSingular.rChangeCurrRing(sing_ring(x).value)
+    libSingular.set_leftv_arg_i(x.value, i, withcopy)
 end
 
-function set_arg(x::SRing, i; withcopy=false, withname=false)
-    libSingular.rChangeCurrRing(x.ring_ptr)
-    v = libSingular.internal_to_void_helper(x.ring_ptr)
+function set_arg(x::Sring, i; withcopy=false, withname=false)
+    libSingular.rChangeCurrRing(x.value)
+    v = libSingular.internal_to_void_helper(x.value)
     libSingular.set_leftv_arg_i(v, i, withcopy)
 end
 
-function set_arg(x::SString, i; withcopy=false, withname=false)
+function set_arg(x::Sstring, i; withcopy=false, withname=false)
     # TODO: handle gracefully when basering is not valid
     # (not that Singular would handle that gracefully...)
-    libSingular.rChangeCurrRing(rt_basering().ring_ptr)
-    libSingular.set_leftv_arg_i(x.string, i, withname)
+    libSingular.rChangeCurrRing(rt_basering().value)
+    libSingular.set_leftv_arg_i(x.value, i, withname)
 end
 
-function set_arg(x::Union{_IntVec,_IntMat}, i; withcopy=false, withname=false)
-    x = sing_array(x)
+function set_arg(x::Union{Sintvec, Sintmat}, i; withcopy=false, withname=false)
+    x = x.value
     libSingular.set_leftv_arg_i(vec(x), x isa Matrix, size(x, 1), size(x, 2), i)
 end
 
@@ -305,24 +292,24 @@ get_res() = libSingular.get_leftv_res()
 
 get_res(::Type{Int}, ring=nothing) = Int(get_res())
 
-get_res(::Type{SPoly}, r::SRing) =
-    SPoly(libSingular.internal_void_to_poly_helper(get_res()), r)
+get_res(::Type{Spoly}, r::Sring) =
+    Spoly(libSingular.internal_void_to_poly_helper(get_res()), r)
 
-get_res(::Type{<:_Ideal}, r::SRing) =
-    SIdeal(SIdealData(libSingular.internal_void_to_ideal_helper(get_res()), r))
+get_res(::Type{Sideal}, r::Sring) =
+    Sideal(libSingular.internal_void_to_ideal_helper(get_res()), r, true)
 
-function get_res(::Type{<:_IntVec}, ring=nothing)
+function get_res(::Type{Sintvec}, ring=nothing)
     d = libSingular.lvres_array_get_dim(1)
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv)
-    SIntVec(iv)
+    Sintvec(iv, true)
 end
 
-function get_res(::Type{<:_IntMat}, ring=nothing)
+function get_res(::Type{Sintmat}, ring=nothing)
     d = libSingular.lvres_array_get_dim.((1, 2))
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im))
-    SIntMat(im)
+    Sintmat(im, true)
 end
 
 function get_res(::Type{STuple}, ring=nothing)
@@ -331,14 +318,14 @@ function get_res(::Type{STuple}, ring=nothing)
         t, p = libSingular.get_leftv_res_next()
         p == C_NULL && return STuple(a)
         if t == Int(STRING_CMD)
-            push!(a, SString(unsafe_string(Ptr{Cchar}(p))))
+            push!(a, Sstring(unsafe_string(Ptr{Cchar}(p))))
         else
             rt_error("unknown type in the result of last command")
         end
     end
 end
 
-get_res(::Type{SString}, ring=nothing) = SString(unsafe_string(Ptr{Cchar}(get_res())))
+get_res(::Type{Sstring}, ring=nothing) = Sstring(unsafe_string(Ptr{Cchar}(get_res())))
 
 function maybe_get_res(err, T)
     if err == 0
@@ -352,13 +339,13 @@ end
 cmd1(cmd::Union{Int,CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith1(Int(cmd)), T)
 cmd2(cmd::Union{Int,CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith2(Int(cmd)), T)
 
-result_type(::_IntVec, ::_IntVec) = SIntVec
-result_type(::_IntVec, ::Int) = SIntVec
-result_type(::Int, ::_IntVec) = SIntVec
+result_type(::Sintvec, ::Sintvec) = Sintvec
+result_type(::Sintvec, ::Int) = Sintvec
+result_type(::Int, ::Sintvec) = Sintvec
 
-result_type(::_IntMat, ::_IntMat) = SIntMat
-result_type(::_IntMat, ::Int) = SIntMat
-result_type(::Int, ::_IntMat) = SIntMat
+result_type(::Sintmat, ::Sintmat) = Sintmat
+result_type(::Sintmat, ::Int) = Sintmat
+result_type(::Int, ::Sintmat) = Sintmat
 
 ### lead ###
 
@@ -372,8 +359,8 @@ rtrvar(a::STuple) = STuple(Any[rtrvar(i) for i in a.list])
 rtrvar_auto(a) = 0
 
 function rtminus(x, y)
-        set_arg1(x, withcopy=!(x isa SRing))
-        set_arg2(y, withcopy=!(y isa SRing))
+        set_arg1(x, withcopy=!(x isa Sring))
+        set_arg2(y, withcopy=!(y isa Sring))
         cmd2('-', result_type(x, y))
 end
 
@@ -385,29 +372,29 @@ for (op, code) in (:rtless => '<',
                    :rtgreaterequal => GE,
                    :rtequalequal => EQUAL_EQUAL)
     @eval function $op(x, y)
-        set_arg1(x, withcopy=!(x isa SRing))
-        set_arg2(y, withcopy=!(y isa SRing))
+        set_arg1(x, withcopy=!(x isa Sring))
+        set_arg2(y, withcopy=!(y isa Sring))
         cmd2($code, Int)
     end
 end
 
-function rtgetindex(x::SString, y)
-    set_arg1(x, withname=(y isa _IntVec))
-    set_arg2(y, withcopy=!(y isa SRing))
-    cmd2('[', y isa _IntVec ? STuple : SString)
+function rtgetindex(x::Sstring, y)
+    set_arg1(x, withname=(y isa Sintvec))
+    set_arg2(y, withcopy=!(y isa Sring))
+    cmd2('[', y isa Sintvec ? STuple : Sstring)
 end
 
 # types which can currently be sent/fetched as sleftv to/from Singular
-const convertible_types = Dict(
+const convertible_types = Dict{CMDS, Type}(
     INT_CMD => Int,
     BIGINT_CMD => BigInt,
-    STRING_CMD => SString,
-    INTVEC_CMD => _IntVec,
-    INTMAT_CMD => _IntMat,
-    RING_CMD => SRing,
-    NUMBER_CMD => SNumber,
-    POLY_CMD => SPoly,
-    IDEAL_CMD => _Ideal,
+    STRING_CMD => Sstring,
+    INTVEC_CMD => Sintvec,
+    INTMAT_CMD => Sintmat,
+    RING_CMD => Sring,
+    NUMBER_CMD => Snumber,
+    POLY_CMD => Spoly,
+    IDEAL_CMD => Sideal,
 )
 # TODO: check more closely what `ANY_TYPE` means
 push!(convertible_types, ANY_TYPE => Union{values(convertible_types)...})
@@ -451,7 +438,7 @@ let seen = Set{Int}()
         end
 
         @eval function $rtauto(x::$Sarg)
-            set_arg1(x, withcopy=(x isa Union{SPoly,_Ideal}))
+            set_arg1(x, withcopy=(x isa Union{Spoly,Sideal}))
             cmd1($cmd, $Sres, sing_ring(x))
         end
     end
@@ -469,10 +456,10 @@ function rt_get_rtimer()
 end
 
 
-function rtsystem(a::SString, b...)
-    if a.string == "--ticks-per-sec"
+function rtsystem(a::Sstring, b...)
+    if a.value == "--ticks-per-sec"
         return rtsystem_ticks_per_sec(b...)
-    elseif a.string == "install"
+    elseif a.value == "install"
         return rtsystem_install(b...)
     else
         rt_error("system($(a.name), ...) not implemented")
@@ -492,19 +479,19 @@ function rtsystem_ticks_per_sec(b...)
     end
 end
 
-function rtsystem_install(typ_::SString, cmd_::SString, proc::SProc, nargs::Int)
-    typ = typ_.string
-    cmd = cmd_.string
+function rtsystem_install(typ_::Sstring, cmd_::Sstring, proc::Sproc, nargs::Int)
+    typ = typ_.value
+    cmd = cmd_.value
     if cmd == "print" && nargs == 1
-        newreftype  = Symbol(newstructrefprefix * typ)
-        eval(Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newreftype)),
+        newtype  = Symbol(newstructprefix * typ)
+        eval(Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newtype)),
                     Expr(:return,
                         Expr(:(.),
                             Expr(:call,
                                 :rt_convert2string,
                                 Expr(:call, proc.func, :f)
                                 ),
-                            QuoteNode(:string)
+                            QuoteNode(:value)
                             )
                         )
                  ))
@@ -527,9 +514,9 @@ function rtbasering()
     end
 end
 
-function rtread(a::SString)
+function rtread(a::Sstring)
     # this function is a can of worms
-    path = a.string
+    path = a.value
     @error_check(!isempty(path), "cannot read empty path")
     if path[1] != '.' || path[1] != '/' || !isfile(path)
         for s in rtGlobal.SearchPath
@@ -540,7 +527,7 @@ function rtread(a::SString)
         end
     end
     @error_check(isfile(path), "cannot find path $path")
-    return SString(read(path, String))
+    return Sstring(read(path, String))
 end
 
 
@@ -556,7 +543,7 @@ function rt_error(s::String)
 end
 
 
-function rtERROR(s::SString, leaving::String)
+function rtERROR(s::Sstring, leaving::String)
     @error s.string * "\nleaving " * leaving
     error("runtime error")
 end
@@ -577,7 +564,7 @@ end
 
 ################### call back to the transpiler ###############################
 
-function rtload(a::SString)
+function rtload(a::Sstring)
     rt_load(false, a.string)
 end
 
@@ -634,10 +621,10 @@ end
 # TODO: does rtexecute work well recursively?
 # SINGULAR      JULIA
 # execute(s)    a, b = execute(s); if b; return a; end;
-function rtexecute(s::SString)
+function rtexecute(s::Sstring)
     libpath = realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularparse." * Libdl.dlext))
     # the trailing semicolon may be omitted in exectue
-    ast::AstNode = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s.string*";"))
+    ast::AstNode = @eval ccall((:singular_parse, $libpath), Any, (Cstring,), $(s.value*";"))
     if ast.rule == @RULE_SYNTAX_ERROR
         rt_error("syntax error around line "*string(ast.child[1]::Int)*" of execute")
     else

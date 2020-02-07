@@ -1,3 +1,37 @@
+
+// returning intvec
+proc f(int a, int b)
+{
+    intvec t = a:b;
+    t = t + t;
+    return(t);
+}
+ASSUME(0, f(1, 5) == 2:5);
+kill f;
+
+// returning intmat
+proc f(int a, int b)
+{
+    intmat t[a][b];
+    t = t + 1;
+    return(t);
+}
+ASSUME(0, f(1, 2)[1, 1] == 1);
+ASSUME(0, f(1, 2)[1, 2] == 0);
+kill f;
+
+// returning bigintmat
+proc f(int a, int b)
+{
+    bigintmat t[a][b];
+    t[a, b] = 1;
+    return(t);
+}
+ASSUME(0, f(2, 2)[1, 2] == 0);
+ASSUME(0, f(3, 2)[3, 2] == 1);
+kill f;
+
+
 proc fib1(int n)
 {
     if (n <= 1)

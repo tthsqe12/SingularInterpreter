@@ -26,26 +26,26 @@ Base.iterate(a::SName) = iterate(a, 0)
 Base.iterate(a::SName, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Nothing) = iterate(a, 0)
 Base.iterate(a::Nothing, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SProc) = iterate(a, 0)
-Base.iterate(a::SProc, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SString) = iterate(a, 0)
-Base.iterate(a::SString, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SIntVec) = iterate(a, 0)
-Base.iterate(a::SIntVec, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SIntMat) = iterate(a, 0)
-Base.iterate(a::SIntMat, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SBigIntMat) = iterate(a, 0)
-Base.iterate(a::SBigIntMat, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SList) = iterate(a, 0)
-Base.iterate(a::SList, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SRing) = iterate(a, 0)
-Base.iterate(a::SRing, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SPoly) = iterate(a, 0)
-Base.iterate(a::SPoly, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SIdeal) = iterate(a, 0)
-Base.iterate(a::SIdeal, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::SMatrix) = iterate(a, 0)
-Base.iterate(a::SMatrix, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sproc) = iterate(a, 0)
+Base.iterate(a::Sproc, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sstring) = iterate(a, 0)
+Base.iterate(a::Sstring, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sintvec) = iterate(a, 0)
+Base.iterate(a::Sintvec, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sintmat) = iterate(a, 0)
+Base.iterate(a::Sintmat, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sbigintmat) = iterate(a, 0)
+Base.iterate(a::Sbigintmat, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Slist) = iterate(a, 0)
+Base.iterate(a::Slist, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sring) = iterate(a, 0)
+Base.iterate(a::Sring, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Spoly) = iterate(a, 0)
+Base.iterate(a::Spoly, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sideal) = iterate(a, 0)
+Base.iterate(a::Sideal, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Smatrix) = iterate(a, 0)
+Base.iterate(a::Smatrix, state) = (state == 0 ? (a, 1) : nothing)
 # special case for STuple, which iterates over its elements
 Base.iterate(a::STuple) = iterate(a.list)
 Base.iterate(a::STuple, state) = iterate(a.list, state)
@@ -54,258 +54,195 @@ Base.iterate(a::STuple, state) = iterate(a.list, state)
 
 ########################## copying, ect. ######################################
 
-# TODO: get rid of dictionary
-function Base.deepcopy_internal(a::SProc, dict::IdDict)
-    return a
-end
-
-function Base.deepcopy_internal(a::SIntVec, dict::IdDict)
-    return SIntVec(deepcopy(a.vector))
-end
-
-function Base.deepcopy_internal(a::SIntMat, dict::IdDict)
-    return SIntMat(deepcopy(a.matrix))
-end
-
-function Base.deepcopy_internal(a::SBigIntMat, dict::IdDict)
-    return SBigIntMat(deepcopy(a.matrix))
-end
-
-function Base.deepcopy_internal(a::SListData, dict::IdDict)
-    return SListData(deepcopy(a.data), a.parent, a.ring_dep_count, nothing)
-end
-
-function Base.deepcopy_internal(a::SList, dict::IdDict)
-    return SList(deepcopy(a.list))
-end
-
-function Base.deepcopy_internal(a::SRing, dict::IdDict)
-    return a
-end
-
-function Base.deepcopy_internal(a::SNumber, dict::IdDict)
-    return a
-end
-
-function Base.deepcopy_internal(a::SPoly, dict::IdDict)
-    return a
-end
-
-function Base.deepcopy_internal(a::SIdealData, dict::IdDict)
-    id = libSingular.id_Copy(a.ideal_ptr, a.parent.ring_ptr)
-    return SIdealData(id, a.parent)
-end
-
-function Base.deepcopy_internal(a::SIdeal, dict::IdDict)
-    return SIdeal(deepcopy(a.ideal))
-end
-
-# copiers returning SingularType, usually so that we can assign it somewhere
+# copiers returning tmp/own objects, usually so that we can put it in a tuple/assign it somewhere
 # we have to copy stuff, and usually the stuff to copy is allowed to be a tuple
-# rt_copy_allow_tuple will be called on stuff inside (), i.e. if the object (a,f(b),c)
+# rt_copy_tmp be called on stuff inside (), i.e. if the object (a,f(b),c)
 # needs to be constructed, it might be constructed in julia as
-# rt_maketuple(a, rt_copy_allow_tuple(f(b))..., c)
+# rt_maketuple(a, rt_copy_tmp(f(b))..., c)
 
-# if f(b) returns a tuple t, then rt_copy_allow_tuple(t) will simply return t
-# if f(b) returns a SBigIntMat m, then rt_copy_allow_tuple(m) will simply return m and the iterator is trivial
-# if f(b) returns a Array{BigInt, 2} m, then rt_copy_allow_tuple(m) makes a deepcopy and returns a SBigIntMat, whose iterator is trivial
+# if f(b) returns a tuple t, then rt_copy_tmp(t) will simply return t
+# if f(b) returns a temp intmat m, then rt_copy_tmp(m) will simply return m and the iterator is trivial
+# if f(b) returns an owned intmat m, then rt_copy_tmp(m) makes a deepcopy and returns a new temp intmat, which has a trivial iterator
 
-# rt_copy: copy with an error on tuples
-# rt_copy_allow_tuple: copy everything rt_copy can copy and also allow tuples through
+# second class types
 
-# rt_copy is probably only used internally since anything the transpiler would want to copy could be a tuple
+object_is_tmp(a::Nothing) = true
+object_is_own(a::Nothing) = true
+rt_copy_tmp(a::Nothing) = a
+rt_copy_own(a::Nothing) = a
 
-rt_copy(a::Nothing) = a
-rt_copy_allow_tuple(a::Nothing) = a
+object_is_tmp(a::SName) = error("internal error: The name $a leaked through. Please report this.")
+object_is_own(a::SName) = error("internal error: The name $a leaked through. Please report this.")
+rt_copy_tmp(a::SName) = error("internal error: The name $a leaked through. Please report this.")
+rt_copy_own(a::SName) = error("internal error: The name $a leaked through. Please report this.")
 
-rt_copy(a::SProc) = a
-rt_copy_allow_tuple(a::SProc) = a
+object_is_tmp(a::STuple) = true
+object_is_own(a::STuple) = error("internal error: The tuple $a leaked through. Please report this.")
+rt_copy_tmp(a::STuple) = a
+rt_copy_own(a::STuple) = error("internal error: The tuple $a leaked through. Please report this.")
 
-rt_copy(a::SName) = error("internal error: The name $a leaked through. Please report this.")
-rt_copy_allow_tuple(a::SName) = error("internal error: The name $a leaked through. Please report this.")
+# immutable types
 
-rt_copy(a::Int) = a
-rt_copy_allow_tuple(a::Int) = a
+object_is_tmp(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = true
+object_is_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = true
 
-rt_copy(a::BigInt) = a
-rt_copy_allow_tuple(a::BigInt) = a
+rt_copy_tmp(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = a
+rt_copy_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = a
 
-rt_copy(a::SString) = a
-rt_copy_allow_tuple(a::SString) = a
+# mutable types
 
-rt_copy(a::Vector{Int}) = SIntVec(deepcopy(a))
-rt_copy(a::SIntVec) = a
-rt_copy_allow_tuple(a::Vector{Int}) = SIntVec(deepcopy(a))
-rt_copy_allow_tuple(a::SIntVec) = a
+object_is_tmp(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smatrix}) = a.tmp
+object_is_own(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smatrix}) = !a.tmp
 
-rt_copy(a::Array{Int, 2}) = SIntMat(deepcopy(a))
-rt_copy(a::SIntMat) = a
-rt_copy_allow_tuple(a::Array{Int, 2}) = SIntMat(deepcopy(a))
-rt_copy_allow_tuple(a::SIntMat) = a
+function rt_copy_tmp(a::Union{Sintvec, Sintmat, Sbigintmat})
+    if object_is_tmp(a)
+        return a
+    else
+        return typeof(a)(copy(a.value), true)
+    end
+end
 
-rt_copy(a::Array{BigInt, 2}) = SBigIntMat(deepcopy(a))
-rt_copy(a::SBigIntMat) = a
-rt_copy_allow_tuple(a::Array{BigInt, 2}) = SBigIntMat(deepcopy(a))
-rt_copy_allow_tuple(a::SBigIntMat) = a
+function rt_copy_own(a::Union{Sintvec, Sintmat, Sbigintmat})
+    if object_is_tmp(a)
+        return typeof(a)(a.value, false)
+    else
+        return typeof(a)(copy(a.value), false)
+    end
+end
 
-rt_copy(a::SListData) = SList(deepcopy(a))
-rt_copy(a::SList) = a
-rt_copy_allow_tuple(a::SListData) = SList(deepcopy(a))
-rt_copy_allow_tuple(a::SList) = a
+function rt_copy_tmp(a::Slist)
+    if object_is_tmp(a)
+        return a
+    else
+        return Slist(Any[rt_copy_own(x) for x in a.value],
+                     a.parent, a.ring_dep_count, nothing, true)
+    end
+end
 
-rt_copy(a::SRing) = a
-rt_copy_allow_tuple(a::SRing) = a
+function rt_copy_own(a::Slist)
+    if object_is_tmp(a)
+        a.tmp = false
+        return a
+    else
+        return Slist(Any[rt_copy_own(x) for x in a.value],
+                     a.parent, a.ring_dep_count, nothing, false)
+    end
+end
 
-rt_copy(a::SNumber) = a
-rt_copy_allow_tuple(a::SNumber) = a
+function rt_copy_tmp(a::Sideal)
+    if object_is_tmp(a)
+        return a
+    else
+        return Sideal(libSingular.id_Copy(a.value, a.parent.value), a.parent, true)
+    end
+end
 
-rt_copy(a::SPoly) = a
-rt_copy_allow_tuple(a::SPoly) = a
+function rt_copy_own(a::Sideal)
+    if object_is_tmp(a)
+        a.tmp = false
+        return a
+    else
+        return Sideal(libSingular.id_Copy(a.value, a.parent.value), a.parent, false)
+    end
+end
 
-rt_copy(a::SVector) = a
-rt_copy_allow_tuple(a::SVector) = a
+function rt_copy_tmp(a::Smatrix)
+    if object_is_tmp(a)
+        return a
+    else
+        return Smatrix(libSingular.mp_Copy(a.value, a.parent.value), a.parent, true)
+    end
+end
 
-rt_copy(a::SIdealData) = SIdeal(deepcopy(a))
-rt_copy(a::SIdeal) = a
-rt_copy_allow_tuple(a::SIdealData) = SIdeal(deepcopy(a))
-rt_copy_allow_tuple(a::SIdeal) = a
-
-rt_copy(a::STuple) = error("internal error: The tuple $a leaked through. Please report this.")
-rt_copy_allow_tuple(a::STuple) = a
-
-
-# copiers returning non SingularType, usually so that we can mutate it
-# only used internally for convenience by the runtime, and should not be output by transpiler
-
-rt_edit(a::Vector{Int}) = deepcopy(a)
-rt_edit(a::SIntVec) = a.vector
-
-rt_edit(a::Array{Int, 2}) = deepcopy(a)
-rt_edit(a::SIntMat) = a.matrix
-
-rt_edit(a::Array{BigInt, 2}) = deepcopy(a)
-rt_edit(a::SBigIntMat) = a.matrix
-
-rt_edit(a::SListData) = deepcopy(a)
-rt_edit(a::SList) = a.list
+function rt_copy_own(a::Smatrix)
+    if object_is_tmp(a)
+        a.tmp = false
+        return a
+    else
+        return Smatrix(libSingular.mp_Copy(a.value, a.parent.value), a.parent, false)
+    end
+end
 
 
-# get the underlying mutable object if it exists
-
-rt_ref(a::Nothing) = a
-
-rt_ref(a::SProc) = a
-
-rt_ref(a::SName) = error("internal error: The name $a leaked through. Please report this.")
-
-rt_ref(a::Int) = a
-
-rt_ref(a::BigInt) = a
-
-rt_ref(a::SString) = a
-
-rt_ref(a::Vector{Int}) = a
-rt_ref(a::SIntVec) = a.vector
-
-rt_ref(a::Array{Int, 2}) = a
-rt_ref(a::SIntMat) = a.matrix
-
-rt_ref(a::Array{BigInt, 2}) = a
-rt_ref(a::SBigIntMat) = a.matrix
-
-rt_ref(a::SListData) = a
-rt_ref(a::SList) = a.list
-
-rt_ref(a::SRing) = a
-
-rt_ref(a::SPoly) = a
-
-rt_ref(a::SVector) = a
-
-rt_ref(a::SNumber) = a
-
-rt_ref(a::SIdealData) = a
-rt_ref(a::SIdeal) = a.ideal
-
-# unsafe promotion
+# unsafe promotion to tmp object
 
 rt_promote(a::Nothing) = a
 
-rt_promote(a::SProc) = a
-
 rt_promote(a::SName) = error("internal error: The name $a leaked through. Please report this.")
+
+rt_promote(a::Sproc) = a
 
 rt_promote(a::Int) = a
 
 rt_promote(a::BigInt) = a
 
-rt_promote(a::SString) = a
+rt_promote(a::Sstring) = a
 
-rt_promote(a::Vector{Int}) = SIntVec(a)
-rt_promote(a::SIntVec) = a
+function rt_promote(a::Union{Sintvec, Sintmat, Sbigintmat})
+    return typeof(a)(a.value, true)
+end
 
-rt_promote(a::Array{Int, 2}) = SIntMat(a)
-rt_promote(a::SIntMat) = a
+rt_promote(a::Sring) = a
 
-rt_promote(a::Array{BigInt, 2}) = SBigIntMat(a)
-rt_promote(a::SBigIntMat) = a
+rt_promote(a::Snumber) = a
 
-rt_promote(a::SListData) = SList(a)
-rt_promote(a::SList) = a
+rt_promote(a::Spoly) = a
 
-rt_promote(a::SRing) = a
+rt_promote(a::Svector) = a
 
-rt_promote(a::SPoly) = a
-
-rt_promote(a::SVector) = a
-
-rt_promote(a::SIdealData) = SIdeal(a)
-rt_promote(a::SIdeal) = a
-
+function rt_promote(a::Union{Slist, Sideal, Smatrix})
+    a.tmp = true
+    return a
+end
 
 
 # rt_ringof has to be used for .r_... members of newstruct, which are read-only
 function rt_ringof(a)
-    if isa(a, _List)
-        r = rt_ref(a).parent
-        r.valid || rt_error("sorry, this list does not have a basering")
-        return r
-    elseif isa(a, _SingularRingType)
-        return rt_ref(a).parent
+    if isa(a, Slist)
+        @error_check(a.parent.valid, "sorry, this list does not have a basering")
+        return a.parent
+    elseif isa(a, SingularRingType)
+        return a.parent
     else
-        rt_error("type " * rt_typestring(a) * " does not have a basering")
+        rt_error("type `$(rt_typestring(a))` does not have a basering")
         return rtInvalidRing
     end
 end
 
 
 function rt_is_ring_dep(a)
-    if isa(a, _List)
-        return rt_ref(a).parent.valid
+    if isa(a, Slist)
+        return a.parent.valid
     else
-        return isa(a, _SingularRingType)
+        return isa(a, SingularRingType)
     end
 end
 
 
-function object_is_ok(a::SListData)
+function object_is_ok(a::Slist)
     count = 0
-    for i in a.data
+    for i in a.value
         count += rt_is_ring_dep(i)
-        if isa(i, SListData)
-            println("list does not own one of its sublists")
-            return false
-        elseif isa(i, SName)
+        if isa(i, SName)
             println("list contains a name")
             return false
-        elseif isa(i, Tuple)
+        end
+        if isa(i, STuple)
             println("list contains a tuple")
+            return false
+        end
+        if !object_is_own(i)
+            println("list contains a non-owned object")
             return false
         end
         if !object_is_ok(i)
             println("list contains a bad element")
             return false
         end
+    end
+    if !isempty(a.value) && isa(a.value[end], Nothing)
+        println("list has a nothing on the end")
+        return false
     end
     if count != a.ring_dep_count
         println("list has incorrect count $(a.ring_dep_count); correct is $(count)")
@@ -323,14 +260,18 @@ function object_is_ok(a::SListData)
     return true
 end
 
-function object_is_ok(a::SList)
-    object_is_ok(a.list)
-end
-
 function object_is_ok(a::STuple)
     for i in
+        if isa(i, SName)
+            println("list contains a name")
+            return false
+        end
         if isa(i, Tuple)
-            println("list contains a tuple")
+            println("tuple contains a tuple")
+            return false
+        end
+        if !object_is_tmp(i)
+            println("tuple contains a non-temporary object")
             return false
         end
         if !object_is_ok(i)
@@ -353,12 +294,12 @@ end
 
 ########################## make and friends ###################################
 
-function rt_box_it_with_ring(n::libSingular.number, r::SRing)
-    return SNumber(n, r)
+function rt_box_it_with_ring(n::libSingular.number, r::Sring)
+    return Snumber(n, r)
 end
 
-function rt_box_it_with_ring(p::libSingular.poly, r::SRing)
-    return SPoly(p, r)
+function rt_box_it_with_ring(p::libSingular.poly, r::Sring)
+    return Spoly(p, r)
 end
 
 
@@ -371,8 +312,9 @@ function rt_make(a::SName)
     # local
     vars = rtGlobal.local_vars
     for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
+        @expensive_assert object_is_own(vars[i].second)
         if vars[i].first == a.name
-            return rt_ref(vars[i].second)
+            return vars[i].second
         end
     end
 
@@ -382,12 +324,11 @@ function rt_make(a::SName)
     if haskey(R.vars, a.name)
         # global lists are expected to know their names after make
         v = R.vars[a.name]
-        if isa(v, SList)
-            v.list.back = a.name
-            return v.list
-        else
-            return rt_ref(v)
+        @expensive_assert object_is_own(v)
+        if isa(v, Slist)
+            v.back = a.name
         end
+        return v
     end
 
     # global ring independent
@@ -397,18 +338,17 @@ function rt_make(a::SName)
             if haskey(d, a.name)
                 # global lists are expected to know their names after make
                 v = d[a.name]
-                if isa(v, SList)
-                    v.list.back = a.name
-                    return v.list
-                else
-                    return rt_ref(v)
+                @expensive_assert object_is_own(v)
+                if isa(v, Slist)
+                    v.back = a.name
                 end
+                return v
             end
         end
     end
 
     # monomials
-    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.ring_ptr)
+    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.value)
     if ok
         return rt_box_it_with_ring(p, R)
     end
@@ -417,7 +357,7 @@ function rt_make(a::SName)
 end
 
 # Since our local variables are going to disappear after we return, we can avoid
-# the extra copy in the code sequence return rt_copy_allow_tuple(rt_ref(localvar))
+# the extra copy in the code sequence return rt_copy_tmp(localvar)
 function rt_make_return(a::SName)
     n = length(rtGlobal.callstack)
 
@@ -425,11 +365,11 @@ function rt_make_return(a::SName)
     vars = rtGlobal.local_vars
     for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
         if vars[i].first == a.name
-            return vars[i].second
+            return rt_promote(vars[i].second)
         end
     end
 
-    return rt_copy(rt_make(a)) # global variables must be copied
+    return rt_copy_tmp(rt_make(a)) # global variables must be copied
 end
 
 # same as make but we just return a if nothing was found
@@ -440,8 +380,9 @@ function rt_make_allow_name_ret(a::SName)
     # local
     vars = rtGlobal.local_vars
     for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
+        @expensive_assert object_is_own(vars[i].second)
         if vars[i].first == a.name
-            return rt_ref(vars[i].second)
+            return vars[i].second
         end
     end
 
@@ -449,14 +390,13 @@ function rt_make_allow_name_ret(a::SName)
 
     # global ring dependent
     if haskey(R.vars, a.name)
-        # ditto comment
+        # global lists are expected to know their names after make
         v = R.vars[a.name]
-        if isa(v, SList)
-            v.list.back = a.name
-            return v.list
-        else
-            return rt_ref(v)
+        @expensive_assert object_is_own(v)
+        if isa(v, Slist)
+            v.back = a.name
         end
+        return v
     end
 
     # global ring independent
@@ -466,18 +406,17 @@ function rt_make_allow_name_ret(a::SName)
             if haskey(d, a.name)
                 # global lists are expected to know their names after make
                 v = d[a.name]
-                if isa(v, SList)
-                    v.list.back = a.name
-                    return v.list
-                else
-                    return rt_ref(v)
+                @expensive_assert object_is_own(v)
+                if isa(v, Slist)
+                    v.back = a.name
                 end
+                return v
             end
         end
     end
 
     # monomials
-    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.ring_ptr)
+    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.value)
     if ok
         return rt_box_it_with_ring(p, R)
     end
@@ -517,7 +456,7 @@ function rtdefined(a::SName)
     end
 
     # monomials
-    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.ring_ptr)
+    ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.value)
     if ok
         rt_box_it_with_ring(p, R) # consume p  TODO clean this up
         return -1
@@ -592,7 +531,7 @@ function rtkill(a::Vector{SName})
 end
 
 
-function rt_backtick(a::SString)
+function rt_backtick(a::Sstring)
     return makeunknown(a.string)
 end
 
@@ -616,13 +555,13 @@ function rt_leavefunction()
     pop!(rtGlobal.callstack)
 end
 
-function rt_set_current_ring(a::SRing)
+function rt_set_current_ring(a::Sring)
     # call the user an idiot if changing basering would create a name conflict
     vars_in_both = intersect(Set(keys(rtGlobal.vars[:Top])), Set(keys(a.vars)))
     if !isempty(vars_in_both)
         rt_error("new basering shadows the global variable(s) " *
                  join(map(string, collect(vars_in_both)), ", ")  *
-                 " from Top; your code is probably broken")
+                 " from Top")
         return
     end
     n = length(rtGlobal.callstack)
@@ -634,14 +573,14 @@ function rt_set_current_ring(a::SRing)
         for i in rtGlobal.callstack[n].start_all_locals:length(rtGlobal.local_vars)
             hidden = false
             value = vars[i].second
-            if isa(value, _List)
-                @assert rt_ref(value).back === nothing
-                p = rt_ref(value).parent
+            if isa(value, Slist)
+                @assert value.back === nothing
+                p = value.parent
                 if p.valid && !(p === a)
                     hidden = true
                 end
-            elseif isa(value, _SingularRingType)
-                p = rt_ref(value).parent
+            elseif isa(value, SingularRingType)
+                p = value.parent
                 @assert p.valid
                 if !(p === a)
                     hidden = true
@@ -664,8 +603,7 @@ function rt_set_current_ring(a::SRing)
         end
         if !isempty(local_vars_in_both)
             rt_error("new basering shadows the local variable(s) " *
-                     join(map(string, local_vars_in_both), ", ")  *
-                     "; your code is probably broken")
+                     join(map(string, local_vars_in_both), ", "))
             return
         end
         # locals are good to go
@@ -680,19 +618,19 @@ function rt_set_current_ring(a::SRing)
         if !isempty(vars_in_both)
             rt_error("new basering shadows the global variable(s) " *
                      join(map(string, collect(vars_in_both)), ", ")  *
-                     " from " * string(pack) * "; your code is probably broken")
+                     " from " * string(pack))
             return
         end
     end
     rtGlobal.callstack[n].current_ring = a
 end
 
-function rtcall(allow_name_ret::Bool, f::SProc, v...)
+function rtcall(allow_name_ret::Bool, f::Sproc, v...)
     return f.func(v...)
 end
 
 function rtcall(allow_name_ret::Bool, f, v...)
-    @assert !isa(f, SProc)
+    @assert !isa(f, Sproc)
     @assert !isa(f, SName)
     rt_error("objects of type `$(rt_typestring(f))` are not callable")
     return nothing
@@ -736,13 +674,13 @@ end
 
 function rtcall(allow_name_ret::Bool, a::Vector{SName}, v...)
     av = rt_name_cross(a, v...)
-    !isempty(av) || rt_error("bad indexed variable construction")
+    @error_check(!isempty(av), "bad indexed variable construction")
     if allow_name_ret
         r = Any[]
         for s in av
             c = rt_make_allow_name_ret(s)
-            if isa(c, SProc)    # TODO extend this to a list of "callable" types
-                push!(r, rt_copy(c))
+            if isa(c, Sproc)    # TODO extend this to a list of "callable" types
+                push!(r, rt_copy_tmp(c))
             else
                 return av
             end
@@ -755,7 +693,7 @@ function rtcall(allow_name_ret::Bool, a::Vector{SName}, v...)
             if isa(c, SName)
                 rt_error("bad indexed variable construction")
             else
-                push!(r, rt_copy(c))
+                push!(r, rt_copy_tmp(c))
             end
         end
         return length(r) == 1 ? r[1] : STuple(r)
@@ -768,8 +706,8 @@ function rt_name_cross(a::Vector{SName}, v...)
         for i in v
             if isa(i, Int)
                 push!(r, makeunknown(String(b.name)*"("*string(i)*")"))
-            elseif isa(i, _IntVec)
-                for j in rt_ref(i)
+            elseif isa(i, Sintvec)
+                for j in i.value
                     push!(r, makeunknown(String(b.name)*"("*string(j)*")"))
                 end
             else
@@ -853,12 +791,10 @@ function rt_check_declaration_global_ring_dep(a::Symbol, typ)
     end
 
     # make sure that current ring does not have this entry
-    if R.valid
-        if haskey(R.vars, a)
-            rt_declare_warnerror(R.vars[a], a, typ)
-        end
-    else
-        rt_error("cannot declare a ring-dependent type when no basering is active")
+    @error_check(R.valid, "cannot declare a ring-dependent type without a basering")
+
+    if haskey(R.vars, a)
+        rt_declare_warnerror(R.vars[a], a, typ)
     end
 
     return R.vars
@@ -909,7 +845,7 @@ function rt_empty_proc(v...) # only used by rt_defaultconstructor_proc
 end
 
 function rt_defaultconstructor_proc()
-    return SProc(rt_empty_proc, "empty proc", :Top)
+    return Sproc(rt_empty_proc, "empty proc", :Top)
 end
 
 function rt_declare_proc(a::Vector{SName})
@@ -921,10 +857,10 @@ end
 function rt_declare_proc(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SProc)
+        rt_check_declaration_local(a.name, Sproc)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_proc()))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SProc)
+        d = rt_check_declaration_global_ring_indep(a.name, Sproc)
         d[a.name] = rt_defaultconstructor_proc()
     end
 end
@@ -990,7 +926,7 @@ end
 
 #### string
 function rt_defaultconstructor_string()
-    return SString("")
+    return Sstring("")
 end
 
 function rt_declare_string(a::Vector{SName})
@@ -1002,10 +938,10 @@ end
 function rt_declare_string(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SString)
+        rt_check_declaration_local(a.name, Sstring)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_string()))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SString)
+        d = rt_check_declaration_global_ring_indep(a.name, Sstring)
         d[a.name] = rt_defaultconstructor_string()
     end
 end
@@ -1017,7 +953,7 @@ end
 
 #### intvec
 function rt_defaultconstructor_intvec()
-    return SIntVec(Int[0])
+    return Sintvec(Int[0], false)
 end
 
 function rt_declare_intvec(a::Vector{SName})
@@ -1029,10 +965,10 @@ end
 function rt_declare_intvec(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SIntVec)
+        rt_check_declaration_local(a.name, Sintvec)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_intvec()))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SIntVec)
+        d = rt_check_declaration_global_ring_indep(a.name, Sintvec)
         d[a.name] = rt_defaultconstructor_intvec()
     end
 end
@@ -1044,7 +980,7 @@ end
 
 #### intmat
 function rt_defaultconstructor_intmat(nrows::Int = 1, ncols::Int = 1)
-    return SIntMat(zeros(Int, nrows, ncols))
+    return Sintmat(zeros(Int, nrows, ncols), false)
 end
 
 function rt_declare_intmat(a::Vector{SName}, nrows::Int = 1, ncols::Int = 1)
@@ -1056,10 +992,10 @@ end
 function rt_declare_intmat(a::SName, nrows::Int = 1, ncols::Int = 1)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SIntMat)
+        rt_check_declaration_local(a.name, Sintmat)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_intmat(nrows, ncols)))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SIntMat)
+        d = rt_check_declaration_global_ring_indep(a.name, Sintmat)
         d[a.name] = rt_defaultconstructor_intmat(nrows, ncols)
     end
 end
@@ -1071,7 +1007,7 @@ end
 
 #### bigintmat
 function rt_defaultconstructor_bigintmat(nrows::Int = 1, ncols::Int = 1)
-    return SBigIntMat(zeros(BigInt, nrows, ncols))
+    return Sbigintmat(zeros(BigInt, nrows, ncols), false)
 end
 
 function rt_declare_bigintmat(a::Vector{SName}, nrows::Int = 1, ncols::Int = 1)
@@ -1083,10 +1019,10 @@ end
 function rt_declare_bigintmat(a::SName, nrows::Int = 1, ncols::Int = 1)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SBigIntMat)
+        rt_check_declaration_local(a.name, Sbigintmat)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_bigintmat(nrows, ncols)))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SBigIntMat)
+        d = rt_check_declaration_global_ring_indep(a.name, Sbigintmat)
         d[a.name] = rt_defaultconstructor_bigintmat(nrows, ncols)
     end
     return nothing
@@ -1099,7 +1035,7 @@ end
 
 #### list
 function rt_defaultconstructor_list()
-    return SList(SListData(Any[], rtInvalidRing, 0, nothing))
+    return Slist(Any[], rtInvalidRing, 0, nothing, false)
 end
 
 function rt_declare_list(a::Vector{SName})
@@ -1111,10 +1047,10 @@ end
 function rt_declare_list(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SList)
+        rt_check_declaration_local(a.name, Slist)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_list()))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SList)
+        d = rt_check_declaration_global_ring_indep(a.name, Slist)
         d[a.name] = rt_defaultconstructor_list()
     end
     return nothing
@@ -1142,8 +1078,8 @@ end
 function rt_defaultconstructor_number()
     R = rt_basering()
     @error_check(R.valid, "cannot construct a number when no basering is active")
-    r1 = libSingular.n_Init(0, R.ring_ptr)
-    return SNumber(r1, R)
+    r1 = libSingular.n_Init(0, R.value)
+    return Snumber(r1, R)
 end
 
 function rt_declare_number(a::Vector{SName})
@@ -1158,7 +1094,7 @@ function rt_declare_number(a::SName)
         rt_check_declaration_local(a.name, SNumber)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_number()))
     else
-        d = rt_check_declaration_global_ring_dep(a.name, SNumber)
+        d = rt_check_declaration_global_ring_dep(a.name, Snumber)
         d[a.name] = rt_defaultconstructor_number()
     end
     return nothing
@@ -1174,7 +1110,7 @@ function rt_defaultconstructor_poly()
     R = rt_basering()
     @error_check(R.valid, "cannot construct a polynomial when no basering is active")
     r1 = libSingular.p_null_helper()
-    return SPoly(r1, R)
+    return Spoly(r1, R)
 end
 
 function rt_declare_poly(a::Vector{SName})
@@ -1186,10 +1122,10 @@ end
 function rt_declare_poly(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SPoly)
+        rt_check_declaration_local(a.name, Spoly)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_poly()))
     else
-        d = rt_check_declaration_global_ring_dep(a.name, SPoly)
+        d = rt_check_declaration_global_ring_dep(a.name, Spoly)
         d[a.name] = rt_defaultconstructor_poly()
     end
     return nothing
@@ -1211,11 +1147,11 @@ end
 # special constructor via [poly...]
 function rt_bracket_constructor(v...)
     R = rt_basering()
-    r = SVector(libSingular.p_null_helper(), R)
+    r = Svector(libSingular.p_null_helper(), R)
     for i in 1:length(v)
         p = rt_convert2poly_ptr(v[i], R)
-        libSingular.p_SetCompP(p, i, R.ring_ptr)                            # mutate p inplace
-        r.vector_ptr = libSingular.p_Add_q(r.vector_ptr, p, R.ring_ptr)     # consume both summands
+        libSingular.p_SetCompP(p, i, R.value)                            # mutate p inplace
+        r.vector_ptr = libSingular.p_Add_q(r.vector_ptr, p, R.value)     # consume both summands
     end
     return r
 end
@@ -1229,10 +1165,10 @@ end
 function rt_declare_vector(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SVector)
+        rt_check_declaration_local(a.name, Svector)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_vector()))
     else
-        d = rt_check_declaration_global_ring_dep(a.name, SVector)
+        d = rt_check_declaration_global_ring_dep(a.name, Svector)
         d[a.name] = rt_defaultconstructor_vector()
     end
     return nothing
@@ -1249,14 +1185,14 @@ function rt_defaultconstructor_ideal()
     @error_check(R.valid, "cannot construct an ideal when no basering is active")
     id = libSingular.idInit(1,1)
     libSingular.setindex_internal(id, libSingular.p_null_helper(), 0)
-    return SIdeal(SIdealData(id, R))
+    return Sideal(id, R, false)
 end
 
-function rt_new_empty_ideal()
+function rt_new_empty_ideal(temp::Bool = true)
     R = rt_basering()
     @error_check(R.valid, "cannot construct an ideal when no basering is active")
     h = libSingular.idInit(0, 1)
-    return SIdeal(SIdealData(h, R))
+    return Sideal(h, R, temp)
 end
 
 function rt_declare_ideal(a::Vector{SName})
@@ -1268,10 +1204,10 @@ end
 function rt_declare_ideal(a::SName)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SIdeal)
+        rt_check_declaration_local(a.name, Sideal)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_ideal()))
     else
-        d = rt_check_declaration_global_ring_dep(a.name, SIdeal)
+        d = rt_check_declaration_global_ring_dep(a.name, Sideal)
         d[a.name] = rt_defaultconstructor_ideal()
     end
     return nothing
@@ -1282,8 +1218,39 @@ function rt_parameter_ideal(a::SName, b)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ideal(b)))
 end
 
+#### matrix
+function rt_defaultconstructor_matrix(nrows::Int = 1, ncols::Int = 1)
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct a matrix when no basering is active")
+    m = libSingular.mpNew(nrows, ncols)
+    return Smatrix(m, R, false)
+end
+
+function rt_declare_matrix(a::Vector{SName}, nrows::Int = 1, ncols::Int = 1)
+    for i in a
+        rt_declare_matrix(i, nrows, ncols)
+    end
+end
+
+function rt_declare_matrix(a::SName, nrows::Int = 1, ncols::Int = 1)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(a.name, Smatrix)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_matrix(nrows, ncols)))
+    else
+        d = rt_check_declaration_global_ring_indep(a.name, Smatrix)
+        d[a.name] = rt_defaultconstructor_matrix(nrows, ncols)
+    end
+end
+
+function rt_parameter_matrix(a::SName, b)
+    @expensive_assert !rt_local_identifier_exists(a.name)
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2matrix(b)))
+end
+
+
 ########### type conversions ##################################################
-# each rt_convert2T(a) returns an object of type T, usually for an assignment
+# each rt_convert2T(a) returns an OWNED object of type T, usually for an assignment
 # each rt_convert2T(a) is a UNIARY function with no known exceptions
 # each rt_cast2T(a...) is used when the type name T is used as a function, i.e. string(1), or list(1,2,3)
 
@@ -1294,30 +1261,36 @@ function rt_asbool(a::Int)
 end
 
 function rt_asbool(a)
-    rt_error("expected int for boolean expression")
+    rt_error("expected `int` for boolean expression")
     return false
 end
 
 #### def
 
 function rt_convert2def(a)
-    return rt_copy(a)
+    @assert !isa(a, STuple)
+    return rt_copy_own(a)
 end
 
-function rt_convert2def(a...)
-    rt_error("cannot convert $a to a def")
-    return a
+function rt_convert2def(a::STuple)
+    @error_check(length(a.list) == 1, "cannot convert `$(rt_typestring(a))` to `def`")
+    return rt_convert2def(a.list[1])
 end
 
 
 #### proc
 
-function rt_convert2proc(a::SProc)
+function rt_convert2proc(a::Sproc)
     return a
 end
 
-function rt_convert2proc(a...)
-    rt_error("cannot convert $a to a proc")
+function rt_convert2proc(a::STuple)
+    @error_check(length(a.list) == 1, "cannot convert `$(rt_typestring(a))` to `proc`")
+    return rt_convert2proc(a.list[1])
+end
+
+function rt_convert2proc(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `proc`")
     return defaultconstructor_proc()
 end
 
@@ -1329,6 +1302,11 @@ end
 
 function rt_convert2int(a::BigInt)
     return Int(a)   # will throw if BigInt -> Int conversion fails
+end
+
+function rt_convert2int(a::STuple)
+    @error_check(length(a.list) == 1, "cannot convert `$(rt_typestring(a))` to `int`")
+    return rt_convert2int(a.list[1])
 end
 
 function rt_convert2int(a)
@@ -1348,8 +1326,13 @@ function rt_convert2bigint(a::BigInt)
     return a
 end
 
+function rt_convert2bigint(a::STuple)
+    @error_check(length(a.list) == 1, "cannot convert `$(rt_typestring(a))` to `bigint`")
+    return rt_convert2bigint(a.list[1])
+end
+
 function rt_convert2bigint(a)
-    rt_error("cannot convert $a to a bigint")
+    rt_error("cannot convert `$(rt_typestring(a))` to a `bigint`")
     return BigInt(0)
 end
 
@@ -1357,39 +1340,35 @@ const rt_cast2bigint = rt_convert2bigint
 
 #### string
 
-function rt_convert2string(a::SString)
+function rt_convert2string(a::Sstring)
     return a
 end
 
 function rt_convert2string(a)
     rt_error("cannot convert `$(rt_typestring(a))` to `string`")
-    return SString("")
+    return Sstring("")
 end
 
 function rt_cast2string(a::STuple)
-    return SString(join([rt_print(i) for i in a.list], "\n"))
+    return Sstring(join([rt_print(i) for i in a.list], "\n"))
 end
 
 function rt_cast2string(a...)
     #TODO low priority: singular prints the bodies of proc's
-    return SString(join([rt_print(i) for i in a], "\n"))
+    return Sstring(join([rt_print(i) for i in a], "\n"))
 end
 
 #### intvec
 
-function rt_convert2intvec(a::SIntVec)
-    return a
-end
-
-function rt_convert2intvec(a::Array{Int})
-    return SIntVec(deepcopy(a))
+function rt_convert2intvec(a::Sintvec)
+    return rt_copy_own(a)
 end
 
 function rt_convert2intvec(a::STuple)
     v = Int[]
-    for i in a
-        if i isa SIntVec
-            append!(v, i.vector)
+    for i in a.list
+        if i isa Sintvec
+            append!(v, i.value)
         else
             push!(v, rt_convert2int(i))
         end
@@ -1397,7 +1376,7 @@ function rt_convert2intvec(a::STuple)
     if isempty(v)
         push!(v, 0)
     end
-    return SIntVec(v)
+    return Sintvec(v, false)
 end
 
 function rt_convert2intvec(a)
@@ -1406,174 +1385,191 @@ function rt_convert2intvec(a)
 end
 
 function rt_cast2intvec(a...)
-    return rt_convert2intvec(STuple([a...]))
+    v = Int[]
+    for i in a
+        if i isa Sintvec
+            append!(v, i.value)
+        else
+            push!(v, rt_convert2int(i))
+        end
+    end
+    if isempty(v)
+        push!(v, 0)
+    end
+    return Sintvec(v, true)
 end
 
 #### intmat
 
-function rt_convert2intmat(a::SIntMat)
+function rt_convert2intmat(a::Sintmat)
+    return rt_copy_own(a)
+end
+
+function rt__cast2intmat(a::Vector{Int}, nrows::Int, ncols::Int)
+    @error_check(nrows >= 0 && ncols >= 0, "nrows and ncols of matrix cannot be negative")
+    mat = zeros(Int, nrows, ncols)
+    k = 1
+    for i in 1:nrows
+        for j in 1:ncols
+            if k > length(a)
+                break
+            end
+            mat[i, j] = a[k]
+            k += 1
+        end
+    end
+    return Sintmat(mat, true)
+end
+
+function rt_cast2intmat(a::Sintmat)
     return a
 end
 
-function rt_convert2intmat(a::Array{Int, 2})
-    return SIntMat(deepcopy(a))
+function rt_cast2intmat(a::Sintmat, nrows::Int, ncols::Int)
+    return rt__cast2intmat(vec(a.value), nrows, ncols)
 end
 
-function rt_convert2intmat(a::Tuple{Vararg{Any}}, nrows::Int, ncols::Int)
-    if nrows <= 0 || ncols <= 0
-        rt_error("nrows and ncols must be positive")
-    end
-    mat = zeros(Int, nrows, ncols)
-    row_idx = col_idx = 1
-    for i in a
-        mat[row_idx, col_idx] = rt_convert2int(i)
-        col_idx += 1
-        if col_idx > ncols
-            col_idx = 1
-            row_idx += 1
-            if row_idx > nrows
-                break
-            end
-        end
-    end
-    return SIntMat(mat)
+function rt_cast2intmat(a::Sintvec)
+    return rt__cast2intmat(a.value, length(a.value), 1)
 end
+
+function rt_cast2intmat(a::Sintvec, nrows::Int, ncols::Int)
+    return rt__cast2intmat(a.value, nrows, ncols)
+end
+
+function rt_cast2intmat(a::Sbigintmat)
+    return rt__cast2intmat(map(Int, vec(a.value)), size(a.value)...)
+end
+
+function rt_cast2intmat(a::Sbigintmat, nrows::Int, ncols::Int)
+    return rt__cast2intmat(map(Int, vec(a.value)), nrows, ncols)
+end
+
 
 #### bigintmat
 
-function rt_convert2bigintmat(a::SBigIntMat)
+function rt_convert2bigintmat(a::Sbigintmat)
+    return rt_copy_own(a)
+end
+
+function rt_convert2bigintmat(a::Sintmat)
+    return Sbigintmat(map(BigInt, a.value), false)
+end
+
+function rt_cast2bigintmat(a::Sbigintmat)
     return a
 end
 
-function rt_convert2bigintmat(a::Array{BigInt, 2})
-    return SBigIntMat(deepcopy(a))
-end
-
-function rt_convert2bigintmat(a::Tuple{Vararg{Any}}, nrows::Int, ncols::Int)
-    if nrows <= 0 || ncols <= 0
-        rt_error("nrows and ncols must be positive")
-    end
-    mat = zeros(BigInt, nrows, ncols)
-    row_idx = col_idx = 1
-    for i in a
-        mat[row_idx, col_idx] = rt_convert2bigint(i)
-        col_idx += 1
-        if col_idx > ncols
-            col_idx = 1
-            row_idx += 1
-            if row_idx > nrows
-                break
-            end
-        end
-    end
-    return SBigIntMat(mat)
+function rt_cast2bigintmat(a::Sintmat)
+    return Sbigintmat(map(BigInt, a.value), true)
 end
 
 #### list
 
-function rt_convert2list(a::SList)
-    return a
+function rt_convert2list(a::Slist)
+    return rt_copy_own(a)
 end
 
-function rt_convert2list(a::SListData)
-    return SList(deepcopy(a))
+function rt_convert2list(a::Union{Int, BigInt, Sproc, Sintvec, Sintmat, Sbigintmat})
+    return Slist(Any[a], rtInvalidRing, 0, nothing, false)
 end
 
-function rt_convert2list(a::SPoly)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "polynomial encountered from a foreign ring")
-    return SList(SListData(Any[a], a.parent, 1, nothing))
+function rt_convert2list(a::Union{Snumber, Spoly, Svector})
+    @warn_check_rings(a.parent, rt_basering(), "object encountered from a foreign ring")
+    return Slist(Any[a], a.parent, 1, nothing, false)
 end
 
 function rt_convert2list(a::STuple)
-    count = 0
-    for i in a.list
-        count += rt_is_ring_dep(i)
-    end
-    return SList(SListData(a.list, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
-end
-
-function rt_convert2list(a)
-    rt_error("cannot convert a $(rt_typestring(a)) to a list")
-    return rt_defaultconstructor_list()
-end
-
-function rt_cast2list(a...)
-    data::Vector{Any} = [rt_copy(j) for j in a]
+    data = Any[rt_copy_own(x) for x in a.list]
     count = 0
     for i in data
         count += rt_is_ring_dep(i)
     end
-    return SList(SListData(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing))
+    return Slist(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing, false)
+end
+
+function rt_convert2list(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `list`")
+    return rt_defaultconstructor_list()
+end
+
+function rt_cast2list(a...)
+    data = Any[rt_copy_own(x) for x in a]
+    count = 0
+    for i in data
+        count += rt_is_ring_dep(i)
+    end
+    return Slist(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing, true)
 end
 
 #### ring
 
-function rt_convert2ring(a::SRing)
+function rt_convert2ring(a::Sring)
     return a
 end
 
 function rt_convert2ring(a)
-    rt_error("cannot convert a $(rt_typestring(a)) to a ring")
+    rt_error("cannot convert `$(rt_typestring(a))` to `ring`")
     return rtInvalidRing
 end
 
 #### number
 
-function rt_convert2number(a::SNumber)
+function rt_convert2number(a::Snumber)
     return a
 end
 
 function rt_convert2number(a::Union{Int, BigInt})
     R = rt_basering()
     @error_check(R.valid, "cannot convert to a number when no basering is active")
-    r1 = libSingular.n_Init(a, R.ring_ptr)
-    return SNumber(r1, R)
+    r1 = libSingular.n_Init(a, R.value)
+    return Snumber(r1, R)
 end
 
 function rt_convert2number(a)
-    rt_error("cannot convert $a to a number")
+    rt_error("cannot convert `$(rt_typestring(a))` to `number`")
     return rt_defaultconstructor_number()
 end
 
 #### poly
 
 # return a new libSingular.poly not owned by any instance of a SingularType
-function rt_convert2poly_ptr(a::Union{Int, BigInt}, R::SRing)
+function rt_convert2poly_ptr(a::Union{Int, BigInt}, R::Sring)
     @error_check(R.valid, "cannot convert to a polynomial when no basering is active")
-    r1 = libSingular.n_Init(a, R.ring_ptr)
-    return libSingular.p_NSet(r1, R.ring_ptr)
+    r1 = libSingular.n_Init(a, R.value)
+    return libSingular.p_NSet(r1, R.value)
 end
 
-function rt_convert2poly_ptr(a::SNumber, R::SRing)
-    @error_check(a.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
-    r1 = libSingular.n_Copy(a.number_ptr, a.parent.ring_ptr)
-    return libSingular.p_NSet(r1, a.parent.ring_ptr)
+function rt_convert2poly_ptr(a::Snumber, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a polynomial from a different basering")
+    r1 = libSingular.n_Copy(a.value, a.parent.value)
+    return libSingular.p_NSet(r1, a.parent.value)
 end
 
-function rt_convert2poly_ptr(a::SPoly, R::SRing)
-    @error_check(a.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a polynomial from a different basering")
-    return libSingular.p_Copy(a.poly_ptr, a.parent.ring_ptr)
+function rt_convert2poly_ptr(a::Spoly, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a polynomial from a different basering")
+    return libSingular.p_Copy(a.value, a.parent.value)
 end
 
-function rt_convert2poly_ptr(a, R::SRing)
+function rt_convert2poly_ptr(a, R::Sring)
     rt_error("cannot convert `$(rt_typestring(a))` to `poly`")
     return libSingular.p_null_helper()
 end
 
-function rt_convert2poly(a::SPoly)
+function rt_convert2poly(a::Spoly)
     return a
 end
 
 function rt_convert2poly(a::Union{Int, BigInt})
     R = rt_basering()
     r1 = rt_convert2poly_ptr(a, R)
-    return SPoly(r1, R)
+    return Spoly(r1, R)
 end
 
-function rt_convert2poly(a::SNumber)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a polynomial outside of basering")
+function rt_convert2poly(a::Snumber)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "converting to a polynomial outside of basering")
     r1 = rt_convert2poly_ptr(a, a.parent)
-    return SPoly(r1, a.parent)
+    return Spoly(r1, a.parent)
 end
 
 function rt_convert2poly(a)
@@ -1586,61 +1582,55 @@ end
 function rt_convert2vector(a::Union{Int, BigInt})
     R = rt_basering()
     r1 = rt_convert2poly_ptr(a, R.parent)
-    libSingular.p_SetCompP(r1, 1, R.parent.ring_ptr)    # mutate r1 in place
+    libSingular.p_SetCompP(r1, 1, R.parent.value)       # mutate r1 in place
     return SVector(r1, R)
 end
 
-function rt_convert2vector(a::Union{SNumber, SPoly})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a vector outside of basering")
+function rt_convert2vector(a::Union{Snumber, Spoly})
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "converting to a vector outside of basering")
     r1 = rt_convert2poly_ptr(a, a.parent)
-    libSingular.p_SetCompP(r1, 1, a.parent.ring_ptr)    # mutate r1 in place
+    libSingular.p_SetCompP(r1, 1, a.parent.value)       # mutate r1 in place
     return SVector(r1, a.parent)
 end
 
-function rt_convert2vector(a::SVector)
+function rt_convert2vector(a::Svector)
     return a
 end
 
 function rt_convert2vector(a)
-    rt_error("cannot convert `$(rt_typestring(a))` to a vector")
+    rt_error("cannot convert `$(rt_typestring(a))` to `vector`")
     return rt_defaultconstructor_vector()
 end
 
 #### ideal
 
-function rt_convert2ideal_ptr(a::Union{Int, BigInt, SNumber, SPoly}, R::SRing)
+function rt_convert2ideal_ptr(a::Union{Int, BigInt, Snumber, Spoly}, R::Sring)
     p = rt_convert2poly_ptr(a, R)
     r = libSingular.idInit(1, 1)
     libSingular.setindex_internal(r, p, 0) # p is consumed
     return r
 end
 
-function rt_convert2ideal_ptr(a::SIdealData, R::SRing)
-    @error_check(a.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a ideal from a different basering")
-    libSingular.id_Copy(a.ideal_ptr, a.parent.ring_ptr)
-end
-
-function rt_convert2ideal_ptr(a::SIdeal, R::SRing)
-    @error_check(a.ideal.parent.ring_ptr.cpp_object == R.ring_ptr.cpp_object, "cannot convert to a ideal from a different basering")
-    # we may steal a.ideal.ideal_ptr because no one else cares about it
-    r = a.ideal.ideal_ptr
-    a.ideal.ideal_ptr = libSingular.idInit(1, 1)
+function rt_convert2ideal_ptr(a::Sideal, R::Sring)
+    @error_check(a.parent.value.cpp_object == R.value.cpp_object, "cannot convert to a ideal from a different basering")
+    if object_is_tmp(a)
+        # we may steal a.value
+        r = a.value
+        a.value = libSingular.idInit(0, 1)
+    else
+        r = libSingular.id_Copy(a.value, a.parent.value)
+    end
     return r
 end
 
-function rt_convert2ideal_ptr(a, R::SRing)
-    rt_error("cannot convert $(rt_typestring(a)) to an ideal")
+function rt_convert2ideal_ptr(a, R::Sring)
+    rt_error("cannot convert `$(rt_typestring(a))` to `ideal`")
     return libSingular.idInit(1, 1)
 end
 
 
-function rt_convert2ideal(a::SIdealData)
-    h = libSingular.id_Copy(a.ideal_ptr, a.parent.ring_ptr)
-    return SIdeal(SIdealData(h, a.parent))
-end
-
-function rt_convert2ideal(a::SIdeal)
-    return a
+function rt_convert2ideal(a::Sideal)
+    return rt_copy_own(a)
 end
 
 function rt_convert2ideal(a::Union{Int, BigInt})
@@ -1649,31 +1639,42 @@ function rt_convert2ideal(a::Union{Int, BigInt})
     r1 = rt_convert2poly_ptr(a, R)
     r2 = libSingular.idInit(1, 1)
     libSingular.setindex_internal(r2, r1, 0) # r1 is consumed
-    return SIdeal(SIdealData((r2, R)))
+    return Sideal(r2, R, false)
 end
 
-function rt_convert2ideal(a::Union{SNumber, SPoly})
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "converting to a polynomial outside of basering")
+function rt_convert2ideal(a::Union{Snumber, Spoly})
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "converting to a polynomial outside of basering")
     r1 = rt_convert2poly_ptr(a, a.parent)
     r2 = libSingular.idInit(1, 1)
     libSingular.setindex_internal(r2, r1, 0) # r1 is consumed
-    return SIdeal(SIdealData(r2, a.parent))
+    return Sideal(r2, a.parent, false)
 end
 
 function rt_cast2ideal(a...)
-    # answer must be wrapped in SIdeal at all times because rt_convert2ideal_ptr might throw
-    r::SIdeal = rt_new_empty_ideal()
+    # answer must be wrapped in Sideal at all times because rt_convert2ideal_ptr might throw
+    r::Sideal = rt_new_empty_ideal()
     for i in a
-        libSingular.id_append(r.ideal.ideal_ptr,
-                              rt_convert2ideal_ptr(i, r.ideal.parent),
-                              r.ideal.parent.ring_ptr)
+        libSingular.id_append(r.value, rt_convert2ideal_ptr(i, r.parent), r.parent.value)
     end
     return r
 end
 
 function rt_convert2ideal(a)
-    rt_error("cannot convert $(rt_typestring(a)) to an ideal")
+    rt_error("cannot convert `$(rt_typestring(a))` to `ideal`")
     return rt_defaultconstructor_ideal()
+end
+
+
+#### matrix
+
+function rt_convert2matrix(a...)
+    rt_error("matrix conversion not implemented")
+    return rt_defaultconstructor_matrix()
+end
+
+function rt_cast2matrix(a...)
+    rt_error("matrix cast not implemented")
+    return rt_defaultconstructor_matrix()
 end
 
 
@@ -1712,7 +1713,7 @@ function rt_print(a::SName)
     return rt_print(rt_make(a))
 end
 
-function rt_print(a::SProc)
+function rt_print(a::Sproc)
     return "package:  " * string(a.package) * "\n" *
            "procname: " * a.name
 end
@@ -1721,33 +1722,21 @@ function rt_print(a::Union{Int, BigInt})
     return string(a)
 end
 
-function rt_print(a::SString)
-    return a.string
+function rt_print(a::Sstring)
+    return a.value
 end
 
-function rt_print(a::Union{Array{Int, 2}, Array{BigInt, 2}})
-    return rt_format_matrix(map(string, a))
+function rt_print(a::Union{Sintmat, Sbigintmat})
+    return rt_format_matrix(map(string, a.value))
 end
 
-function rt_print(a::Union{SIntMat, SBigIntMat})
-    return rt_print(rt_ref(a))
+function rt_print(a::Sintvec)
+    return join(map(string, a.value), ", ")
 end
 
-function rt_print(a::SIntVec)
-    return rt_print(a.vector)
-end
-
-function rt_print(a::Vector{Int})
-    return join(map((x) -> string(x), a), ", ")
-end
-
-function rt_print(a::SList)
-    return rt_print(rt_ref(a))
-end
-
-function rt_print(a::SListData)
+function rt_print(a::Slist)
     s = ""
-    A = a.data
+    A = a.value
     first = true
     for i in 1:length(A)
         h = (first ? "list[" : "    [") * string(i) * "]: "
@@ -1761,45 +1750,64 @@ function rt_print(a::SListData)
     return s
 end
 
-function rt_print(a::SRing)
-    return libSingular.rPrint_helper(a.ring_ptr)
+function rt_print(a::Sring)
+    return libSingular.rPrint_helper(a.value)
 end
 
-function rt_print(a::SNumber)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a number outside of basering")
+function rt_print(a::Snumber)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing a number outside of basering")
     libSingular.StringSetS("")
-    libSingular.n_Write(a.number_ptr, a.parent.ring_ptr)
+    libSingular.n_Write(a.value, a.parent.value)
     return libSingular.StringEndS()
 end
 
-function rt_print(a::SPoly)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a polynomial outside of basering")
-    s = libSingular.p_String(a.poly_ptr, a.parent.ring_ptr)
+function rt_print(a::Spoly)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing a polynomial outside of basering")
+    s = libSingular.p_String(a.value, a.parent.value)
     return s
 end
 
-function rt_print(a::SVector)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing a vector outside of basering")
-    s = libSingular.p_String(a.vector_ptr, a.parent.ring_ptr)
+function rt_print(a::Svector)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing a vector outside of basering")
+    s = libSingular.p_String(a.value, a.parent.value)
     return s
 end
 
-rt_print(a::SIdeal) = rt_print(a.ideal)
-
-function rt_print(a::SIdealData)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "printing an ideal outside of basering")
+function rt_print(a::Sideal)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing an ideal outside of basering")
     s = ""
-    n = Int(libSingular.ngens(a.ideal_ptr))
+    n = Int(libSingular.ngens(a.value))
     first = true
     for i in 1:n
-        p = libSingular.getindex(a.ideal_ptr, Cint(i - 1))
-        t = libSingular.p_String(p, a.parent.ring_ptr)
+        p = libSingular.getindex(a.value, Cint(i - 1))
+        t = libSingular.p_String(p, a.parent.value)
         h = (first ? "ideal[" : "     [") * string(i) * "]: "
         s *= h * t * (i < n ? "\n" : "")
         first = false
     end
     if first
         s = "empty ideal"
+    end
+    return s
+end
+
+function rt_print(a::Smatrix)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing an ideal outside of basering")
+    s = ""
+    nrows = libSingular.nrows(a.value)
+    ncols = libSingular.ncols(a.value)
+    first = true
+    for i in 1:nrows
+        for j in 1:ncols
+            p = libSingular.mp_getindex(a.value, i, j)
+            t = libSingular.p_String(p, a.parent.value)
+            h = (first ? "matrix[" : "      [") * string(i) *", " * string(j) * "]: "
+            s *= h * t * ((i < nrows || j < ncols) ? "\n" : "")
+            first = false
+        end
+    end
+    if first
+        s = "empty matrix"
     end
     return s
 end
@@ -1816,11 +1824,11 @@ end
 
 function rtprint(a)
     @assert !isa(a, STuple)
-    return SString(rt_print(a))
+    return Sstring(rt_print(a))
 end
 
 function rtprint(a::STuple)
-    return STuple([SString(rt_print(i)) for i in a.list])
+    return STuple([Sstring(rt_print(i)) for i in a.list])
 end
 
 # the semicolon in Singular is the method to actually print something
@@ -1831,7 +1839,7 @@ end
 function rt_printout(a)
     @assert !isa(a, STuple)
     @assert !isa(a, Nothing)
-    rtGlobal.last_printed = rt_copy_allow_tuple(a)
+    rtGlobal.last_printed = rt_copy_own(a)
     println(rt_print(a))
 end
 
@@ -1839,14 +1847,14 @@ function rt_printout(a::STuple)
     n = length(a.list)
     for i in 1:n
         if i == n
-            rtGlobal.last_printed = rt_copy_allow_tuple(a.list[i])
+            rtGlobal.last_printed = rt_copy_own(a.list[i])
         end
         println(rt_print(a.list[i]))
     end
 end
 
 function rt_get_last_printed()
-    return rt_ref(rtGlobal.last_printed)
+    return rtGlobal.last_printed
 end
 
 # type ...; will call rt_printouttype. no idea how this is supposed to work
@@ -1857,23 +1865,24 @@ end
 ##################### typeof ##################################################
 
 rt_typedata(::Nothing)     = "none"
-rt_typedata(::SProc)       = "proc"
+rt_typedata(::Sproc)       = "proc"
 rt_typedata(::Int)         = "int"
 rt_typedata(::BigInt)      = "bigint"
-rt_typedata(::SString)     = "string"
-rt_typedata(::_IntVec)     = "intvec"
-rt_typedata(::_IntMat)     = "intmat"
-rt_typedata(::_BigIntMat)  = "bigintmat"
-rt_typedata(::_List)       = "list"
-rt_typedata(::SRing)       = "ring"
-rt_typedata(::SNumber)     = "number"
-rt_typedata(::SPoly)       = "poly"
-rt_typedata(::SVector)     = "vector"
-rt_typedata(::_Ideal)      = "ideal"
+rt_typedata(::Sstring)     = "string"
+rt_typedata(::Sintvec)     = "intvec"
+rt_typedata(::Sintmat)     = "intmat"
+rt_typedata(::Sbigintmat)  = "bigintmat"
+rt_typedata(::Slist)       = "list"
+rt_typedata(::Sring)       = "ring"
+rt_typedata(::Snumber)     = "number"
+rt_typedata(::Spoly)       = "poly"
+rt_typedata(::Svector)     = "vector"
+rt_typedata(::Sideal)      = "ideal"
+rt_typedata(::Smatrix)     = "matrix"
 rt_typedata(a::STuple) = String[rt_typedata(i) for i in a.list]
 
-rt_typedata_to_singular(a::String) = SString(a)
-rt_typedata_to_singular(a::Vector{String}) = STuple([SString(i) for i in a])
+rt_typedata_to_singular(a::String) = Sstring(a)
+rt_typedata_to_singular(a::Vector{String}) = STuple([Sstring(i) for i in a])
 
 rt_typedata_to_string(a::String) = a
 rt_typedata_to_string(a::Vector{String}) = string('(', join(a, ", "), ')')
@@ -1922,7 +1931,7 @@ function rtassign_more(a::SName, b)
     # global ring dependent
     R = rtGlobal.callstack[end].current_ring    # same as rt_basering()
     if haskey(R.vars, a.name)
-        if isa(R.vars[a.name], SList)
+        if isa(R.vars[a.name], Slist)
             rt_assign_global_list_ring_dep(R, a.name, rt_convert2list(b))
             return empty_tuple
         else
@@ -1936,7 +1945,7 @@ function rtassign_more(a::SName, b)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                if isa(d[a.name], SList)
+                if isa(d[a.name], Slist)
                     rt_assign_global_list_ring_indep(d, a.name, rt_convert2list(b))
                     return empty_tuple
                 else
@@ -1968,7 +1977,7 @@ function rtassign_last(a::SName, b)
 
     # global ring dependent
     if haskey(R.vars, a.name)
-        if isa(R.vars[a.name], SList)
+        if isa(R.vars[a.name], Slist)
             rt_assign_global_list_ring_dep(R, a.name, rt_convert2list(b))
         else
             R.vars[a.name]= rt_assign_last(R.vars[a.name], b)
@@ -1981,7 +1990,7 @@ function rtassign_last(a::SName, b)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                if isa(d[a.name], SList)
+                if isa(d[a.name], Slist)
                     rt_assign_global_list_ring_indep(d, a.name, rt_convert2list(b))
                 else
                     d[a.name] = rt_assign_last(d[a.name], b)
@@ -2016,42 +2025,38 @@ function rtassign_names_last(a::Vector{SName}, b)
 end
 
 # a = b, a lives in a ring independent table d
-function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, B::SList)
+function rt_assign_global_list_ring_indep(d::Dict{Symbol, Any}, a::Symbol, b::Slist)
     @assert haskey(d, a)
-    @assert isa(d[a], SList)
-    b = B.list
+    @assert isa(d[a], Slist)
+    @assert object_is_own(b)
     if b.parent.valid
         # move the name to the ring of b, which is hopefully the current ring
-        b.parent === rt_basering() || rt_warn("moving a list with name " * string(a.name) * " to a ring other than the basering")
-        if haskey(b.parent.vars, a)
-            rt_warn("overwriting name " * string(a.name) * " when moving list to a ring")
-        end
-        b.parent.vars[a] = B
+        @warn_check(b.parent === rt_basering(), "moving list $(string(a)) to a ring other than the basering")
+        @warn_check(!haskey(b.parent.vars, a), "overwriting name $(string(a)) when moving list to a ring")
+        b.parent.vars[a] = b
         delete!(d, a)
     else
         # no need to move the name
-        d[a] = B
+        d[a] = b
     end
 end
 
 # a = b, a lives in ring r
-function rt_assign_global_list_ring_dep(r::SRing, a::Symbol, B::SList)
+function rt_assign_global_list_ring_dep(r::Sring, a::Symbol, b::Slist)
     @assert haskey(r.vars, a)
-    @assert isa(r.vars[a], SList)
-    b = B.list
+    @assert isa(r.vars[a], Slist)
+    @assert object_is_own(b)
     if b.parent.valid
         # no need to move the name
-        r === rt_ring_of(b) || rt_warn("the list " * string(a.name) * " might now contain ring dependent data from a ring other than basering")
-        r.vars[a] = B
+        @warn_check(r === b.parent, "the list $(string(a)) might now contain ring dependent data from a ring other than basering")
+        r.vars[a] = b
     else
         # move the name to the current package
         p = rtGlobal.callstack[end].current_package
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
-            if haskey(d, a)
-                rt_warn("overwriting name " * string(a.name) * " when moving list out of ring")
-            end
-            d[a] = B
+            @warn_check(!haskey(d, a), "overwriting name $(string(a)) when moving list out of ring")
+            d[a] = b
         else
             rtGlobal.vars[p] = Dict{Symbol, Any}[a => b]
         end
@@ -2099,42 +2104,42 @@ end
 #### assignment to nothing - used at least for the first set of a variable of type def
 function rt_assign_more(a::Nothing, b)
     @assert !isa(b, STuple)
-    return rt_copy(b), empty_tuple
+    return rt_copy_own(b), empty_tuple
 end
 
 function rt_assign_more(a::Nothing, b::STuple)
     @error_check(!isempty(b), "too few arguments to assignment on right hand side")
-    return popfirst!(b.list), b
+    return rt_copy_own(popfirst!(b.list)), b
 end
 
 function rt_assign_last(a::Nothing, b)
     @assert !isa(b, STuple)
-    return rt_copy(b)
+    return rt_copy_own(b)
 end
 
 function rt_assign_last(a::Nothing, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
-    return b.list[1]
+    return rt_copy_own(b.list[1])
 end
 
 
 #### assignment to proc
-function rt_assign_more(a::SProc, b)
+function rt_assign_more(a::Sproc, b)
     @assert !isa(b, STuple)
     return rt_convert2proc(b), empty_tuple
 end
 
-function rt_assign_more(a::SProc, b::STuple)
+function rt_assign_more(a::Sproc, b::STuple)
     @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2proc(popfirst!(b.list)), b
 end
 
-function rt_assign_last(a::SProc, b)
+function rt_assign_last(a::Sproc, b)
     @assert !isa(b, STuple)
     return rt_convert2proc(b)
 end
 
-function rt_assign_last(a::SProc, b::STuple)
+function rt_assign_last(a::Sproc, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_convert2proc(b.list[1])
 end
@@ -2183,49 +2188,53 @@ function rt_assign_last(a::BigInt, b::STuple)
 end
 
 #### assignment to string
-function rt_assign_more(a::SString, b)
+function rt_assign_more(a::Sstring, b)
     @assert !isa(b, STuple)
     return rt_convert2string(b), empty_tuple
 end
 
-function rt_assign_more(a::SString, b::STuple)
+function rt_assign_more(a::Sstring, b::STuple)
     @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2string(popfirst!(b.list)), b
 end
 
-function rt_assign_last(a::SString, b)
+function rt_assign_last(a::Sstring, b)
     @assert !isa(b, STuple)
     return rt_convert2string(b)
 end
 
-function rt_assign_last(a::SString, b::STuple)
+function rt_assign_last(a::Sstring, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_convert2string(b.list[1])
 end
 
 #### assignment to intvec
-function rt_assign_more(a::SIntVec, b)
+function rt_assign_more(a::Sintvec, b)
+    @expensive_assert object_is_own(a)
     return rt_convert2intvec(b), empty_tuple
 end
 
-function rt_assign_last(a::SIntVec, b)
+function rt_assign_last(a::Sintvec, b)
+    @expensive_assert object_is_own(a)
     return rt_convert2intvec(b)
 end
 
 #### assignment to intmat
-function rt_assign_more(a::_IntMat, b::Union{_IntMat, _BigIntMat})
+function rt_assign_more(a::Sintmat, b::Union{Sintmat, Sbigintmat})
+    @expensive_assert object_is_own(a)
     return rt_convert2intmat(b), empty_tuple
 end
 
-function rt_assign_more(a::_IntMat, b)
+function rt_assign_more(a::Sintmat, b)
     @assert !isa(b, STuple)
-    A = rt_edit(a)
-    A[1, 1] = rt_convert2int(b)
-    return A, empty_tuple
+    @expensive_assert object_is_own(a)
+    a.value[1, 1] = rt_convert2int(b)
+    return a, empty_tuple
 end
 
-function rt_assign_more(a::_IntMat, b::STuple)
-    A = rt_edit(a)
+function rt_assign_more(a::Sintmat, b::STuple)
+    @expensive_assert object_is_own(a)
+    A = a.value
     nrows, ncols = size(A)
     row_idx = col_idx = 1
     while !isempty(b.list)
@@ -2239,22 +2248,25 @@ function rt_assign_more(a::_IntMat, b::STuple)
             end
         end
     end
-    return SIntMat(A), b
+    return a, b
 end
 
-function rt_assign_last(a::_IntMat, b::Union{_IntMat, _BigIntMat})
+function rt_assign_last(a::Sintmat, b::Union{Sintmat, Sbigintmat})
+    @expensive_assert object_is_own(a)
     return rt_convert2intmat(b)
 end
 
-function rt_assign_last(a::_IntMat, b)
+function rt_assign_last(a::Sintmat, b)
+    @assert !isa(b, Union{Sintmat, Sbigintmat})
     @assert !isa(b, STuple)
-    A = rt_edit(a)
-    A[1, 1] = rt_convert2int(b)
+    @expensive_assert object_is_own(a)
+    a.value[1, 1] = rt_convert2int(b)
     return A
 end
 
-function rt_assign_last(a::_IntMat, b::STuple)
-    A = rt_edit(a)
+function rt_assign_last(a::Sintmat, b::STuple)
+    @expensive_assert object_is_own(a)
+    A = a.value
     nrows, ncols = size(A)
     row_idx = col_idx = 1
     while !isempty(b.list)
@@ -2269,23 +2281,24 @@ function rt_assign_last(a::_IntMat, b::STuple)
         end
     end
     @error_check(isempty(b.list), "argument mismatch in assignment")
-    return SIntMat(A)
+    return a
 end
 
 #### assignment to bigintmat
-function rt_assign_more(a::_BigIntMat, b::Union{_IntMat, _BigIntMat})
+function rt_assign_more(a::Sbigintmat, b::Union{Sintmat, Sbigintmat})
     return rt_convert2bigintmat(b), empty_tuple
 end
 
-function rt_assign_more(a::_BigIntMat, b)
+function rt_assign_more(a::Sbigintmat, b)
     @assert !isa(b, STuple)
-    A = rt_edit(a)
-    A[1, 1] = rt_convert2bigint(b)
-    return A, empty_tuple
+    @expensive_assert object_is_own(a)
+    a.value[1, 1] = rt_convert2bigint(b)
+    return a, empty_tuple
 end
 
-function rt_assign_more(a::_BigIntMat, b::STuple)
-    A = rt_edit(a)
+function rt_assign_more(a::Sbigintmat, b::STuple)
+    @expensive_assert object_is_own(a)
+    A = a.value
     nrows, ncols = size(A)
     row_idx = col_idx = 1
     while !isempty(b.list)
@@ -2299,22 +2312,24 @@ function rt_assign_more(a::_BigIntMat, b::STuple)
             end
         end
     end
-    return SIntMat(A), b
+    return a, b
 end
 
-function rt_assign_last(a::_BigIntMat, b::Union{_IntMat, _BigIntMat})
+function rt_assign_last(a::Sbigintmat, b::Union{Sintmat, Sbigintmat})
+    @expensive_assert object_is_own(a)
     return rt_convert2bigintmat(b)
 end
 
-function rt_assign_last(a::_BigIntMat, b)
+function rt_assign_last(a::Sbigintmat, b)
     @assert !isa(b, STuple)
-    A = rt_edit(a)
-    A[1, 1] = rt_convert2bigint(b)
-    return A
+    @expensive_assert object_is_own(a)
+    a.value[1, 1] = rt_convert2bigint(b)
+    return a
 end
 
-function rt_assign_last(a::_BigIntMat, b::STuple)
-    A = rt_edit(a)
+function rt_assign_last(a::Sbigintmat, b::STuple)
+    @expensive_assert object_is_own(a)
+    A = a.value
     nrows, ncols = size(A)
     row_idx = col_idx = 1
     while !isempty(b.list)
@@ -2329,137 +2344,169 @@ function rt_assign_last(a::_BigIntMat, b::STuple)
         end
     end
     @error_check(isempty(b.list), "argument mismatch in assignment")
-    return SIntMat(A)
+    return a
 end
 
 #### assignment to list
-function rt_assign_more(a::_List, b)
+function rt_assign_more(a::Slist, b)
+    @expensive_assert object_is_own(a)
     return rt_convert2list(b), empty_tuple
 end
 
-function rt_assign_last(a::_List, b)
+function rt_assign_last(a::Slist, b)
+    @expensive_assert object_is_own(a)
     return rt_convert2list(b)
 end
 
 #### assignment to ring
-function rt_assign_more(a::SRing, b)
+function rt_assign_more(a::Sring, b)
     @assert !isa(b, STuple)
     return rt_convert2ring(b), empty_tuple
 end
 
-function rt_assign_more(a::SRing, b::STuple)
+function rt_assign_more(a::Sring, b::STuple)
     @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2ring(popfirst!(b.list)), b
 end
 
-function rt_assign_last(a::SRing, b)
+function rt_assign_last(a::Sring, b)
     @assert !isa(b, STuple)
     return rt_convert2ring(b)
 end
 
-function rt_assign_last(a::SRing, b::STuple)
+function rt_assign_last(a::Sring, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_convert2ring(b.list[1])
 end
 
 #### assignment to number
-rt_assign_more(s::SNumber, b) = rt_convert2number(b), empty_tuple
-rt_assign_last(s::SNumber, b) = rt_convert2number(b)
+function rt_assign_more(a::Snumber, b)
+    @assert !isa(b, STuple)
+    return rt_convert2number(b), empty_tuple
+end
 
-function rt_assign_more(a::SNumber, b::STuple)
+function rt_assign_more(a::Snumber, b::STuple)
     @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2number(popfirst!(b.list)), b
 end
 
-function rt_assign_last(a::SNumber, b::STuple)
+function rt_assign_last(a::Snumber, b)
+    @assert !isa(b, STuple)
+    return rt_convert2number(b)
+end
+
+function rt_assign_last(a::Snumber, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_convert2number(b.list[1])
 end
 
 #### assignment to poly
-function rt_assign_more(a::SPoly, b)
+function rt_assign_more(a::Spoly, b)
     @assert !isa(b, STuple)
     return rt_convert2poly(b), empty_tuple
 end
 
-function rt_assign_more(a::SPoly, b::STuple)
+function rt_assign_more(a::Spoly, b::STuple)
     @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2poly(popfirst!(b.list)), b
 end
 
-function rt_assign_last(a::SPoly, b)
+function rt_assign_last(a::Spoly, b)
     @assert !isa(b, STuple)
     return rt_convert2poly(b)
 end
 
-function rt_assign_last(a::SPoly, b::STuple)
+function rt_assign_last(a::Spoly, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_convert2poly(b.list[1])
 end
 
 #### assignment to vector
-function rt_assign_more(a::SVector, b)
+function rt_assign_more(a::Svector, b)
     @assert !isa(b, STuple)
     return rt_convert2vector(b), empty_tuple
 end
 
-function rt_assign_more(a::SVector, b::STuple)
+function rt_assign_more(a::Svector, b::STuple)
     @error_check(!isempty(b), "argument mismatch in assignment")
     return rt_convert2vector(popfirst!(b.list)), b
 end
 
-function rt_assign_last(a::SVector, b)
+function rt_assign_last(a::Svector, b)
     @assert !isa(b, STuple)
     return rt_convert2vector(b)
 end
 
-function rt_assign_last(a::SVector, b::STuple)
+function rt_assign_last(a::Svector, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_convert2vector(b.list[1])
 end
 
 #### assignment to ideal
-function rt_assign_more(a::SIdeal, b)
+function rt_assign_more(a::Sideal, b)
     @assert !isa(b, STuple)
+    @expensive_assert object_is_own(a)
     return rt_convert2ideal(b), empty_tuple
 end
 
-function rt_assign_more(a::SIdeal, b::STuple)
-    r::SIdeal = rt_new_empty_ideal()
-    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, SNumber, SPoly, SIdeal})
+function rt_assign_more(a::Sideal, b::STuple)
+    @expensive_assert object_is_own(a)
+    libSingular.id_Delete(a.value, a.parent.value)
+    a.value = libSingular.idInit(0, 1)
+    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Snumber, Spoly, Sideal})
         i = popfirst!(b.list)
-        libSingular.id_append(r.ideal.ideal_ptr,
-                              rt_convert2ideal_ptr(i, r.ideal.parent),
-                              r.ideal.parent.ring_ptr)
+        libSingular.id_append(a.value, rt_convert2ideal_ptr(i, a.parent), r.parent.value)
     end
-    return r, b
+    return a, b
 end
 
-function rt_assign_last(a::SIdeal, b)
+function rt_assign_last(a::Sideal, b)
     @assert !isa(b, STuple)
+    @expensive_assert object_is_own(a)
     return rt_convert2ideal(b)
 end
 
-function rt_assign_last(a::SIdeal, b::STuple)
-    r::SIdeal = rt_new_empty_ideal()
-    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, SNumber, SPoly, SIdeal})
+function rt_assign_last(a::Sideal, b::STuple)
+    @expensive_assert object_is_own(a)
+    libSingular.id_Delete(a.value, a.parent.value)
+    a.value = libSingular.idInit(0, 1)
+    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Snumber, Spoly, Sideal})
         i = popfirst!(b.list)
-        libSingular.id_append(r.ideal.ideal_ptr,
-                              rt_convert2ideal_ptr(i, r.ideal.parent),
-                              r.ideal.parent.ring_ptr)
+        libSingular.id_append(a.value, rt_convert2ideal_ptr(i, a.parent), a.parent.value)
     end
     @error_check(isempty(b.list), "argument mismatch in assignment")
-    return r
+    return a
 end
 
+#### assignment to matrix
+function rt_assign_more(a::Smatrix, b)
+    @assert !isa(b, STuple)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix(), empty_tuple
+end
+
+function rt_assign_more(a::Smatrix, b::STuple)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix(), empty_tuple
+end
+
+function rt_assign_last(a::Smatrix, b)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix()
+end
+
+function rt_assign_last(a::Smatrix, b::STuple)
+    rt_error("assignment to matrix not implemented\n")
+    return rt_defaultconstructor_matrix()
+end
 
 
 ########################### newstruct installer ###############################
 
 # newstructs are allowed to be created inside a proc, hence no choice but eval(code)
-function rtnewstruct(a::SString, b::SString)
-    @error_check(!haskey(rtGlobal.newstruct_casts, a.string), "redefinition of newstruct $(a.string)")
-    code = rt_convert_newstruct_decl(a.string, b.string)
+function rtnewstruct(a::Sstring, b::Sstring)
+    @error_check(!haskey(rtGlobal.newstruct_casts, a.value), "redefinition of newstruct $(a.value)")
+    code = rt_convert_newstruct_decl(a.value, b.value)
     eval(code)
     return
 end
@@ -2479,8 +2526,7 @@ end
 function rt_convert_newstruct_decl(newtypename::String, args::String)
     sp = split(args, ",")
     sp = [filter!(x->x != "", split(i," ")) for i in sp]
-    newreftype  = Symbol(newstructrefprefix * newtypename)
-    newtype     = Symbol(newstructprefix * newtypename)
+    newtype = Symbol(newstructprefix * newtypename)
 
     r = Expr(:block)
 
@@ -2493,91 +2539,78 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
         end
         push!(b.args, Expr(:(::), Symbol(i[2]), convert_typestring_to_symbol(String(i[1]))))
     end
-    push!(r.args, Expr(:struct, true, newreftype, b))
+    push!(b.args, Expr(:(::), :tmp, :Bool))
+    push!(r.args, Expr(:struct, true, newtype, b))
 
-    b = Expr(:block, Expr(:(::), :data, newreftype))
-    push!(r.args, Expr(:struct, false, newtype, b))
-
-    # deepcopy
-    dpcpi = Expr(:(.), :Base, QuoteNode(:deepcopy_internal))
-    idict = Expr(:(::), :dict, :IdDict)
-    c = Expr(:call, newreftype)
-    for i in sp
-        push!(c.args, Expr(:call, :deepcopy, Expr(:(.), :f, QuoteNode(Symbol(i[2])))))
-    end
-    push!(r.args, Expr(:function, Expr(:call, dpcpi, Expr(:(::), :f, newreftype), idict),
-        Expr(:return, c)
+    # object_is_tmp
+    push!(r.args, Expr(:function, Expr(:call, :object_is_tmp, Expr(:(::), :a, newtype)),
+        Expr(:return, Expr(:(.), :a, QuoteNode(:tmp)))
     ))
 
-    push!(r.args, Expr(:function, Expr(:call, dpcpi, Expr(:(::), :f, newtype), idict),
-        Expr(:return,
-            Expr(:call, newtype,
-                Expr(:call, :deepcopy,
-                    Expr(:(.), :f, QuoteNode(:data))
-                )
-            )
+    # object_is_own
+    push!(r.args, Expr(:function, Expr(:call, :object_is_own, Expr(:(::), :a, newtype)),
+        Expr(:return, Expr(:call, :(!), Expr(:(.), :a, QuoteNode(:tmp))))
+    ))
+
+    #object_is_ok
+    # TODO
+
+    # rt_copy_tmp
+    c = Expr(:call, newtype)
+    for i in sp
+        push!(c.args, Expr(:call, :rt_copy_own, Expr(:(.), :a, QuoteNode(Symbol(i[2])))))
+    end
+    push!(c.args, true)
+    push!(r.args, Expr(:function, Expr(:call, :rt_copy_tmp, Expr(:(::), :a, newtype)),
+        Expr(:if,
+            Expr(:call, :object_is_tmp, :a),
+            Expr(:return, :a),
+            Expr(:return, c)
         )
     ))
 
-    # rt_copy
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy, Expr(:(::), :f, newreftype)),
-        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy, Expr(:(::), :f, newtype)),
-        Expr(:return, :f)
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy_allow_tuple, Expr(:(::), :f, newreftype)),
-        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_copy_allow_tuple, Expr(:(::), :f, newtype)),
-        Expr(:return, :f)
-    ))
-
-    # rt_ref
-    push!(r.args, Expr(:function, Expr(:call, :rt_ref, Expr(:(::), :f, newreftype)),
-        Expr(:return, :f)
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_ref, Expr(:(::), :f, newtype)),
-        Expr(:return, Expr(:(.), :f, QuoteNode(:data)))
+    # rt_copy_own
+    c = Expr(:call, newtype)
+    for i in sp
+        push!(c.args, Expr(:call, :rt_copy_own, Expr(:(.), :a, QuoteNode(Symbol(i[2])))))
+    end
+    push!(c.args, false)
+    push!(r.args, Expr(:function, Expr(:call, :rt_copy_own, Expr(:(::), :a, newtype)),
+        Expr(:if,
+            Expr(:call, :object_is_tmp, :a),
+            Expr(:block,
+                Expr(:(=), Expr(:(.), :a, QuoteNode(:tmp)), false),
+                Expr(:return, :a)
+            ),
+            Expr(:return, c)
+        )
     ))
 
     # rt_promote
-    push!(r.args, Expr(:function, Expr(:call, :rt_promote, Expr(:(::), :f, newreftype)),
-        Expr(:return, Expr(:call, newtype, :f))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, :rt_promote, Expr(:(::), :f, newtype)),
-        Expr(:return, :f)
+    push!(r.args, Expr(:function, Expr(:call, :rt_promote, Expr(:(::), :a, newtype)),
+        Expr(:block,
+            Expr(:(=), Expr(:(.), :a, QuoteNode(:tmp)), true),
+            Expr(:return, :a)
+        )
     ))
 
     # rt_convert2T
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :f, newreftype)),
-        Expr(:return, Expr(:call, newtype, Expr(:call, :deepcopy, :f)))
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :f, newtype)),
-        Expr(:return, :f)
-    ))
-
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), :f),
-        Expr(:call, :error, "cannot convert to a " * newtypename * " from ", :f)
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:(::), :a, newtype)),
+        Expr(:return, Expr(:call, :rt_copy_own, :a))
     ))
 
     # rt_cast2T
     c = Expr(:call, Symbol("rt_cast2"*newtypename))
-    d = Expr(:call, newreftype)
+    d = Expr(:call, newtype)
     for i in sp
         push!(c.args, Symbol(i[2]))
         push!(d.args, Expr(:call, Symbol("rt_convert2"*i[1]), Symbol(i[2])))
     end
-    push!(r.args, Expr(:function, c, Expr(:return, Expr(:call, newtype, d))))
+    push!(d.args, true)
+    push!(r.args, Expr(:function, c, Expr(:return, d)))
 
-    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_cast2"*newtypename), Expr(:(...), :f)),
-        Expr(:call, :error, "cannot construct a " * newtypename * " from ", :f)
+    push!(r.args, Expr(:function, Expr(:call, Symbol("rt_cast2"*newtypename), Expr(:(...), :a)),
+        Expr(:call, :error, "cannot construct a " * newtypename * " from ", :a)
     ))
 
     push!(r.args, Expr(:call, :setindex!, Expr(:(.), :rtGlobal, QuoteNode(:newstruct_casts)),
@@ -2585,12 +2618,13 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
                                           newtypename))
 
     # rt_defaultconstructor_T
-    d = Expr(:call, newreftype)
+    d = Expr(:call, newtype)
     for i in sp
         push!(d.args, Expr(:call, Symbol("rt_defaultconstructor_"*i[1])))
     end
+    push!(d.args, false)
     push!(r.args, Expr(:function, Expr(:call, Symbol("rt_defaultconstructor_"*newtypename)),
-        Expr(:return, Expr(:call, newtype, d))
+        Expr(:return, d)
     ))
 
     # rt_declare_T
@@ -2624,25 +2658,25 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
 
     # rt_assign - all errors should be handled by rt_convert2T
     push!(r.args, Expr(:function, Expr(:call, :rt_assign_more,
-                                        Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
+                                        Expr(:(::), :a, newtype),
                                         :b),
         Expr(:return, Expr(:tuple, Expr(:call, Symbol("rt_convert2"*newtypename), :b), :empty_tuple))
     ))
 
     push!(r.args, Expr(:function, Expr(:call, :rt_assign_more,
-                                        Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
+                                        Expr(:(::), :a, newtype),
                                         Expr(:(::), :b, :STuple)),
         Expr(:return, Expr(:tuple, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:call, :popfirst!, :b)), :b))
     ))
 
     push!(r.args, Expr(:function, Expr(:call, :rt_assign_last,
-                                        Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
+                                        Expr(:(::), :a, newtype),
                                         :b),
         Expr(:return, Expr(:call, Symbol("rt_convert2"*newtypename), :b))
     ))
 
     push!(r.args, Expr(:function, Expr(:call, :rt_assign_last,
-                                        Expr(:(::), :a, Expr(:curly, :Union, newtype, newreftype)),
+                                        Expr(:(::), :a, newtype),
                                         Expr(:(::), :b, :STuple)),
         Expr(:return, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:ref, Expr(:(.), :b, QuoteNode(:list)), 1), :b))
     ))
@@ -2650,9 +2684,9 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     b = Expr(:block, Expr(:(=), :s, ""))
     for i in 1:length(sp)
         if i == 1
-            push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), newtypename * "." * sp[i][2] * ": ")))
+            push!(b.args, Expr(:(*=), :s, newtypename * "." * sp[i][2] * ": "))
         else
-            push!(b.args, Expr(:(*=), :s, Expr(:call, :(*), " "^length(newtypename) * "." * sp[i][2] * ": ")))
+            push!(b.args, Expr(:(*=), :s, " "^length(newtypename) * "." * sp[i][2] * ": "))
         end
         push!(b.args, Expr(:(*=), :s,
                             Expr(:call, :rt_indent_string,
@@ -2665,17 +2699,13 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
         end
     end
     push!(b.args, Expr(:return, :s))
-    push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newreftype)),
-        b
-    ))
-
     push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newtype)),
-        Expr(:return, Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(:data))))
+        b
     ))
 
     # rt_typedata
     push!(r.args, Expr(:function, Expr(:call, :rt_typedata,
-                                        Expr(:(::), :f, Expr(:curly, :Union, newtype, newreftype))),
+                                        Expr(:(::), :f, newtype)),
         Expr(:return, newtypename)
     ))
 
@@ -2706,18 +2736,3 @@ function rt_maketuple(v...)
     end
 end
 
-#=
-function rt_checktuplelength(a::Tuple{Vararg{Any}}, n::Int)
-    if length(a) != n
-        rt_error("expected " * string(n) * " arguments in expression list; got " * string(length(a)))
-    end
-end
-
-function rt_check_empty_tuple(a::STuple)
-    @error_check(isempty(a.list), "too many arguments to assignment on right hand side")
-end
-
-function rt_check_empty_tuple(a)
-    @error_check(!isa(a, STuple) || isempty(a.list), "too many arguments to assignment on right hand side")
-end
-=#

@@ -29,7 +29,7 @@ fails in the Singular interpreter because the right hand side has length 3. The 
     a, b, c = 1, f(), 1;
 fails in the Singular interpreter because something on the "right side is not a datum".
 
-The Julia interpreter will fail in the first example because the length of the rhs tuple is checked before assignment.
+The Julia interpreter will fail in the first example because the length of the rhs tuple is checked.
 The Julia interpreter will fail in the second example because the assignment to b is done via
     b = convert2T(..)       # T is the stored type of b
 and the convert2T will throw an error on :nothing (unless b is nothing, where T would behave like def)
@@ -62,9 +62,7 @@ There are no variables of type name.
 
 #### singular type expression list
 # note: expression lists cannot have expression lists as elements: everything is
-#       always auto splatted. Like the list type SListData below, elements
-#       of an STuple must own their data. Hence, for example, no element should
-#       have type Array{Int, 2}, but rather SIntMat.
+#       always auto splatted. See the function object_is_ok for a precise definition.
 struct STuple
     list::Vector{Any}
 end
@@ -73,7 +71,7 @@ end
 # Nothing same
 
 #### singular type ?unknown type?
-# TODO possible make this the same as Symbol. makeunknown would become a quote
+# TODO: possibly make this the same as Symbol. makeunknown would become a quote
 struct SName
     name::Symbol
 end
@@ -85,7 +83,7 @@ show(io::IO, a::SName) = print(io, ":"*string(a.name))
 ########################## ring independent types #############################
 
 ##### singular type "proc"      immutable in the singular language
-struct SProc
+struct Sproc
     func::Function
     name::String
     package::Symbol
@@ -105,53 +103,68 @@ procname_to_func(f::Symbol) = procname_to_func(f.name)
 #### singular type "string"     immutable in the singular language
 # Singular splats all arguments inside () by default, so we need ... in Julia
 # The julia String is iterable, so we need another type
-struct SString
-    string::String
+struct Sstring
+    value::String
 end
 
 
 #### singular type "intvec"     mutable in the singular language
-struct SIntVec
-    vector::Vector{Int}
+struct Sintvec
+    value::Vector{Int}
+    tmp::Bool
 end
 
-sing_array(x::SIntVec) = x.vector
-sing_array(x::Vector) = x
+function Sintvec(value::Vector{Int})
+    return Sintvec(value, true)
+end
+
+sing_array(x::Sintvec) = x.value
 
 #### singular type "intmat"     mutable in the singular language
-struct SIntMat
-    matrix::Array{Int, 2}
+struct Sintmat
+    value::Array{Int, 2}
+    tmp::Bool
 end
 
-sing_array(x::SIntMat) = x.matrix
-sing_array(x::Matrix) = x
+function Sintmat(value::Array{Int, 2})
+    return Sintmat(value, true)
+end
+
+sing_array(x::Sintmat) = x.value
 
 #### singular type "bigintmat"  mutable in the singular language
-struct SBigIntMat
-    matrix::Array{BigInt, 2}
+struct Sbigintmat
+    value::Array{BigInt, 2}
+    tmp::Bool
 end
+
+function Sbigintmat(value::Array{BigInt, 2})
+    return Sbigintmat(value, true)
+end
+
+sing_array(x::Sbigintmat) = x.value
 
 
 #### singular type "ring"       immutable in the singular language, but also holds identifiers of ring-dependent types
-mutable struct SRing
-    ring_ptr::libSingular.ring
+mutable struct Sring
+    value::libSingular.ring
     refcount::Int
     level::Int                  # 1->created at global, 2->created in fxn called from global, ect..
     vars::Dict{Symbol, Any}     # global ring vars
-    valid::Bool                 # valid==false <=> ring_ptr==NULL
+    valid::Bool                 # valid==false <=> value==NULL
 
-    function SRing(valid_::Bool, ring_ptr_::libSingular.ring, level::Int)
-        r = new(ring_ptr_, 1, level, Dict{Symbol, Any}(), valid_)
+    function Sring(valid_::Bool, value_::libSingular.ring, level::Int)
+        r = new(value_, 1, level, Dict{Symbol, Any}(), valid_)
         finalizer(rt_ring_finalizer, r)
         return r
     end
 end
 
-function rt_ring_finalizer(a::SRing)
+function rt_ring_finalizer(a::Sring)
     a.refcount -= 1
     if a.refcount <= 0
         @assert a.refcount == 0
-        libSingular.rDelete(a.ring_ptr)
+        libSingular.rDelete(a.value)
     end
 end
 
@@ -159,33 +172,30 @@ end
 #### singular type "list"       mutable in the singular language
 # note: Lists can have anything in them - including polynomials from different
 #       rings. The parent, ring_dep_count, and back members are for maintaining
-#       compatibility with backwards singular, where the content of a list can
+#       backwards compatibility with singular, where the content of a list can
 #       change the location of its name.
 #       The integrity of this structure can be checked with object_is_ok
-mutable struct SListData
-    data::Vector{Any}
-    parent::SRing           # parent.valid <=> list is considered ring dependent
+mutable struct Slist
+    value::Vector{Any}
+    parent::Sring           # parent.valid <=> list is considered ring dependent
     ring_dep_count::Int     # count of ring dependent elements
     back::Any               # pointer to data that possibly needs changing when ring dependence changes
-end
-
-struct SList
-    list::SListData
+    tmp::Bool
 end
 
 
 ############################ ring dependent types ############################
-# The constructor for T takes ownership of a raw pointer and stores in the member T_ptr
+# The constructor for T takes ownership of a raw pointer
 
 sing_ring(x) = nothing
 
 #### singular type "number"     immutable in the singular language
-mutable struct SNumber
-    number_ptr::libSingular.number
-    parent::SRing
+mutable struct Snumber
+    value::libSingular.number    
+    parent::Sring
 
-    function SNumber(number_ptr_::libSingular.number, parent_::SRing)
-        a = new(number_ptr_, parent_)
+    function Snumber(value_::libSingular.number, parent_::Sring)
+        a = new(value_, parent_)
         finalizer(rt_number_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -193,19 +203,19 @@ mutable struct SNumber
     end
 end
 
-function rt_number_finalizer(a::SNumber)
-    libSingular.n_Delete(a.number_ptr, a.parent.ring_ptr)
+function rt_number_finalizer(a::Snumber)
+    libSingular.n_Delete(a.value, a.parent.value)
     rt_ring_finalizer(a.parent)
 end
 
 
 #### singular type "poly"       immutable in the singular language
-mutable struct SPoly
-    poly_ptr::libSingular.poly      # singly linked list of terms
-    parent::SRing
+mutable struct Spoly
+    value::libSingular.poly     # singly linked list of terms
+    parent::Sring
 
-    function SPoly(poly_ptr_::libSingular.poly, parent_::SRing)
-        a = new(poly_ptr_, parent_)
+    function Spoly(value_::libSingular.poly, parent_::Sring)
+        a = new(value_, parent_)
         finalizer(rt_poly_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -213,22 +223,22 @@ mutable struct SPoly
     end
 end
 
-sing_ring(p::SPoly) = p.parent
-sing_ptr(p::SPoly) = p.poly_ptr
+sing_ring(p::Spoly) = p.parent
+sing_ptr(p::Spoly) = p.value
 
-function rt_poly_finalizer(a::SPoly)
-    libSingular.p_Delete(a.poly_ptr, a.parent.ring_ptr)
+function rt_poly_finalizer(a::Spoly)
+    libSingular.p_Delete(a.value, a.parent.value)
     rt_ring_finalizer(a.parent)
 end
 
 
 #### singular type "vector"     immutable in the singular language
-mutable struct SVector
-    vector_ptr::libSingular.poly    # singly linked list of terms*gens(i)
-    parent::SRing
+mutable struct Svector
+    vector_ptr::libSingular.poly    # singly linked list of terms*gen(i), like a sparse array of poly
+    parent::Sring
 
-    function SVector(vector_ptr_::libSingular.poly, parent_::SRing)
-        a = new(vector_ptr_, parent_)
+    function SVector(value_::libSingular.poly, parent_::Sring)
+        a = new(value_, parent_)
         finalizer(rt_vector_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -236,22 +246,23 @@ mutable struct SVector
     end
 end
 
-sing_ring(p::SVector) = p.parent
-sing_ptr(p::SVector) = p.vector_ptr
+sing_ring(p::Svector) = p.parent
+sing_ptr(p::Svector) = p.value
 
-function rt_vector_finalizer(a::SVector)
-    libSingular.p_Delete(a.vector_ptr, a.parent.ring_ptr)
+function rt_vector_finalizer(a::Svector)
+    libSingular.p_Delete(a.value, a.parent.value)
     rt_ring_finalizer(a.parent)
 end
 
 
-#### singular type "ideal"      mutable like a list polys in the singular language
-mutable struct SIdealData
-    ideal_ptr::libSingular.ideal    # dense 1d array of poly
-    parent::SRing
+#### singular type "ideal"      mutable like a 1d array of polys in the singular language
+mutable struct Sideal
+    value::libSingular.ideal        # dense 1d array of poly
+    parent::Sring
+    tmp::Bool
 
-    function SIdealData(ideal_ptr_::libSingular.ideal, parent_::SRing)
-        a = new(ideal_ptr_, parent_)
+    function Sideal(value_::libSingular.ideal, parent_::Sring, tmp_::Bool)
+        a = new(value_, parent_, tmp_)
         finalizer(rt_ideal_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -259,58 +270,60 @@ mutable struct SIdealData
     end
 end
 
-sing_ptr(i::SIdealData) = i.ideal_ptr
-sing_ring(i::SIdealData) = i.parent
+sing_ptr(i::Sideal) = i.value
+sing_ring(i::Sideal) = i.parent
 
-function rt_ideal_finalizer(a::SIdealData)
-    libSingular.id_Delete(a.ideal_ptr, a.parent.ring_ptr)
+function rt_ideal_finalizer(a::Sideal)
+    libSingular.id_Delete(a.value, a.parent.value)
     rt_ring_finalizer(a.parent)
 end
 
-struct SIdeal
-    ideal::SIdealData
+
+#### singular type "matrix"     mutable like a 2d array of polys in the singular language
+mutable struct Smatrix
+    value::libSingular.matrix       # dense 2d array of poly
+    parent::Sring
+    tmp::Bool
+
+    function Smatrix(value_::libSingular.matrix, parent_::Sring, tmp_::Bool)
+        a = new(value_, parent_, tmp_)
+        finalizer(rt_matrix_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
 end
 
-sing_ptr(i::SIdeal) = sing_ptr(i.ideal)
-sing_ring(i::SIdeal) = sing_ring(i.ideal)
+sing_ptr(a::Smatrix) = a.value
+sing_ring(a::Smatrix) = a.parent
 
-#### singular type "matrix"
-mutable struct SMatrix
-#    value::libSingular.matrix
-    parent::SRing
-end
-
-
-# the underscore types include the underlying mutable containers
-const _IntVec    = Union{SIntVec, Vector{Int}}
-const _IntMat    = Union{SIntMat, Array{Int, 2}}
-const _BigIntMat = Union{SBigIntMat, Array{BigInt, 2}}
-const _List      = Union{SList, SListData}
-const _Ideal     = Union{SIdeal, SIdealData}
-
-# it is almost useless to have a list of singular types because of newstruct
-#const SingularType = Union{Nothing, SProc, Int, BigInt, SString,
-#                           SIntVec, SIntMat, SBigIntMat, SList,
-#                           SRing, SNumber, SPoly, SIdeal}
-
-# the set of possible ring dependent types is finite because newstruct creates ring indep types
-# all ring dependent types have a .parent member for the ring
-const SingularRingType = Union{SList, SNumber, SPoly, SIdeal}
-
-# the types that are always ring dependent
-const _SingularRingType = Union{SNumber, SPoly, SIdeal, SIdealData}
-
-# this function is broken now
-function type_is_ring_dependent(t::String)
-    return t == "number" || t == "poly" || t == "ideal" || t == "matrix"
+function rt_matrix_finalizer(a::Smatrix)
+    libSingular.mp_Delete(a.value, a.parent.value)
+    rt_ring_finalizer(a.parent)
 end
 
 
-#const _SingularType = Union{SingularType,
-#                           Vector{Int}, Array{Int, 2}, Array{BigInt, 2}, SListData,
-#                           SIdealData}
+# the types that are always ring dependent, i.e. the .parent member is always valid
+# Slist is not included. lists are just special.
+const SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smatrix}
 
 
+# TODO: a SingularType encompassing all types including newstruct's
+
+
+######################### user defined types ##################################
+
+const newstructprefix = "Snewstruct_"
+
+function is_valid_newstruct_member(s::String)
+    if match(r"^[a-zA-Z][a-zA-Z0-9]*$", s) == nothing
+        return false
+    else
+        return true
+    end
+end
+
+###############################################################################
 ########################## transpiler types ###################################
 
 struct AstNode
@@ -372,7 +385,7 @@ mutable struct rtCallStackEntry
 =#
     start_all_locals::Int       # index into rtGlobal.local_vars
     start_current_locals::Int   # index into rtGlobal.local_vars
-    current_ring::SRing
+    current_ring::Sring
     current_package::Symbol
 end
 
@@ -389,7 +402,7 @@ mutable struct rtGlobalState
 end
 
 # when there is no current ring, the current ring is "invalid"
-const rtInvalidRing = SRing(false, libSingular.rDefault_null_helper(), 1)
+const rtInvalidRing = Sring(false, libSingular.rDefault_null_helper(), 1)
 
 const rtGlobal = rtGlobalState(String[],
                                true,
@@ -429,3 +442,12 @@ macro expensive_assert(cond)
     return nothing
 #    return :($(esc(cond)) ? nothing : rt_error("expensive assertion failed"))
 end
+
+macro warn_check_rings(ringa, ringb, msg)
+    return :($(esc(ringa)) === $(esc(ringb)) ? nothing : rt_warn($(esc(msg))))
+end
+
+macro error_check_rings(ringa, ringb, msg)
+    return :($(esc(ringa)) === $(esc(ringb)) ? nothing : rt_error($(esc(msg))))
+end
+

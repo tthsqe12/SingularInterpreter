@@ -48,14 +48,6 @@ macro RULE_procarglist(i)         ;return(4500 + i); end
 macro RULE_procarg(i)             ;return(4600 + i); end
 
 
-function is_valid_newstruct_member(s::String)
-    if match(r"^[a-zA-Z][a-zA-Z0-9]*$", s) == nothing
-        return false
-    else
-        return true
-    end
-end
-
 ######################### scan / convert #####################################
 # transpilation proceeds with two depth-first passes over the ast
 # scan: collect candidate local variables for local storage, i.e. local i::Int in the julia code
@@ -63,10 +55,9 @@ end
 
 
 function we_know_splat_is_trivial(a)
-    if a isa Expr && a.head == :call && length(a.args) == 2 &&
-                            (a.args[1] == :rt_make || a.args[1] == :rt_ref)
+    if a isa Expr && a.head == :call && length(a.args) == 2 && a.args[1] == :rt_make
         return true
-    elseif a isa SName
+    elseif a isa Symbol
         return true
     elseif a isa Int
         return true
@@ -80,8 +71,11 @@ end
 function is_a_name(a)
     if isa(a, SName)
         return true
+    elseif isa(a, Expr) && a.head == :call && !isempty(a.args) && a.args[1] == :rt_backtick
+        return true
+    else
+        return false
     end
-    return (isa(a, Expr) && a.head == :call && !isempty(a.args) && a.args[1] == :rt_backtick)
 end
 
 
@@ -100,7 +94,7 @@ function make_tuple_array_nocopy(a::Array{Any})
         elseif we_know_splat_is_trivial(b)
             push!(r, b)
         else
-            push!(r, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, b)))
+            push!(r, Expr(:(...), Expr(:call, :rt_copy_tmp, b)))
         end
     end
     return r
@@ -125,11 +119,11 @@ function make_tuple_array_copy(a::Array{Any})
         if isa(b, Expr) && b.head == :call && !isempty(b.args) && b.args[1] == :rt_maketuple
             append!(r, b.args[2:end])
         elseif is_a_name(b)
-            push!(r, Expr(:call, :rt_copy, Expr(:call, :rt_make, b)))
+            push!(r, Expr(:call, :rt_copy_tmp, Expr(:call, :rt_make, b)))
         elseif we_know_splat_is_trivial(b)
-            push!(r, Expr(:call, :rt_copy, b))
+            push!(r, Expr(:call, :rt_copy_tmp, b))
         else
-            push!(r, Expr(:(...), Expr(:call, :rt_copy_allow_tuple, b)))
+            push!(r, Expr(:(...), Expr(:call, :rt_copy_tmp, b)))
         end
     end
     return r
@@ -138,20 +132,17 @@ end
 # will not generate names!
 function make_copy(a)
     if is_a_name(a)
-        return Expr(:call, :rt_copy, Expr(:call, :rt_make, a))
+        return Expr(:call, :rt_copy_tmp, Expr(:call, :rt_make, a))
     else
-        return Expr(:call, :rt_copy_allow_tuple, a)
+        return Expr(:call, :rt_copy_tmp, a)
     end
 end
 
 function convert_stringexpr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_stringexpr(0) < 100
-    return SString(a.child[1])
+    return Sstring(a.child[1])
 end
 
-
-const newstructprefix    = "SNewStruct_"
-const newstructrefprefix = "SNewStructRef_"
 
 function convert_typestring_to_symbol(s::String)
     return get(builtin_typestring_to_symbol, s, Symbol(newstructprefix * s))
@@ -346,7 +337,7 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         else
             s = a.child[1]::String
             if haskey(env.declared_identifiers, s)
-                return Expr(:call, :rt_ref, Symbol(s))
+                return Symbol(s)
             else
                 return makeunknown(s)
             end
@@ -363,13 +354,12 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
             s = s[3:end]
         end
         is_valid_newstruct_member(s) || throw(TranspileError(s * " is not a valid newstruct member name"))
-        b = convert_expr(a.child[1], env)
-        b = Expr(:call, isa(b, SName) ? :rt_make : :rt_ref, b)
-        t = Expr(:call, :rt_ref, Expr(:(.), b, QuoteNode(Symbol(s))))
+        b = make_nocopy(convert_expr(a.child[1], env))
+        c = Expr(:(.), b, QuoteNode(Symbol(s)))
         if doring
-            return Expr(:call, :rt_ringof, t)
+            return Expr(:call, :rt_ringof, c)
         else
-            return t
+            return c
         end
     elseif a.rule == @RULE_elemexpr(6) || a.rule == @RULE_elemexpr(5)
         if a.rule == @RULE_elemexpr(6)
@@ -681,14 +671,13 @@ function convert_returncmd(a::AstNode, env::AstEnv)
         r = Expr(:block)
         if length(b) == 1
             c = b[1]
-            if isa(c, Expr) && c.head === :call && length(c.args) == 2 &&
-                              c.args[1] == :rt_ref && isa(c.args[2], Symbol)
-                @assert haskey(env.declared_identifiers, string(c.args[2]))
-                push!(r.args, Expr(:(=), t, Expr(:call, :rt_promote, c.args[2])))
+            if isa(c, Symbol)
+                @assert haskey(env.declared_identifiers, string(c))
+                push!(r.args, Expr(:(=), t, Expr(:call, :rt_promote, c)))
             elseif is_a_name(c)
                 push!(r.args, Expr(:(=), t, Expr(:call, :rt_make_return, c)))
             else
-                push!(r.args, Expr(:(=), t, Expr(:call, :rt_copy_allow_tuple, c)))
+                push!(r.args, Expr(:(=), t, Expr(:call, :rt_copy_tmp, c)))
             end
         else
             push!(r.args, Expr(:(=), t, Expr(:call, :rt_maketuple, make_tuple_array_copy(b)...)))
@@ -802,7 +791,7 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
             s = make_nocopy(convert_expr(b.child[1], env))
             push!(out.args, Expr(:call, :rt_incrementby, Expr(:call, :rt_backtick, s), right))
         elseif a.rule == @RULE_elemexpr(4)
-            b = convert_expr(a.child[1], env)
+            b = make_nocopy(convert_expr(a.child[1], env))
             c = a.child[2]
             c.child[1].rule == @RULE_extendedid(1) || throw(TranspileError("rhs of dot in assignment is no good"))
             s = c.child[1].child[1]::String
@@ -812,7 +801,7 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
                 b = Expr(:(.), b, QuoteNode(Symbol(s)))
             else
                 t = gensym()
-                push!(out.args, Expr(:(=), t, Expr(:call, isa(b, SName) ? :rt_make : :rt_ref, b)))    # make returns a reference
+                push!(out.args, Expr(:(=), t, b))
                 b = Expr(:(.), t, QuoteNode(Symbol(s)))
             end
             push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign_last, b, Expr(:call, :rtplus, b, right))))
@@ -922,7 +911,7 @@ function push_assignment!(rest::Symbol, last::Bool, out::Expr, left::AstNode, ri
                 push!(out.args, Expr(:(=), rest, Expr(:call, :rtassign_more, Expr(:call, :rt_backtick, s), right)))
             end
         elseif a.rule == @RULE_elemexpr(4)
-            b = convert_expr(a.child[1], env)
+            b = make_nocopy(convert_expr(a.child[1], env))
             c = a.child[2]
             c.rule == @RULE_elemexpr(99) || throw(TranspileError("rhs of dot in assignment is no good"))
             s = c.child[1]::String
@@ -936,7 +925,6 @@ function push_assignment!(rest::Symbol, last::Bool, out::Expr, left::AstNode, ri
                     push!(out.args, Expr(:(=), Expr(:tuple, b, rest), Expr(:call, :rt_assign_more, b, right)))
                 end
             else
-                b = Expr(:call, isa(b, SName) ? :rt_make : :rt_ref, b)
                 b = Expr(:(.), b, QuoteNode(Symbol(s)))
                 if last
                     push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign_last, b, right)))
@@ -1030,13 +1018,9 @@ function push_exprlist_expr!(l::Array{AstNode}, a::AstNode, env::AstEnv)
     end
 end
 
-function rt_make_ring_from_ringlist(a::SListData)
+function rt_make_ring_from_ringlist(a::Slist)
     error("rt_make_ring_from_ringlist not implement")
     return rtInvalidRing
-end
-
-function rt_make_ring_from_ringlist(a::SList)
-    return rt_make_ring_from_ringlist(a.data)
 end
 
 function rt_make_ring(coeff, var, ord)
@@ -1044,38 +1028,36 @@ function rt_make_ring(coeff, var, ord)
     var = rt_parse_var(var)
     @error_check(length(ord) > 0, "bad ordering specification")
     ord = [rt_parse_ord(a) for a in ord]
-    return SRing(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
+    return Sring(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
 end
 
-rt_make_qring(a::SRing) = a
+rt_make_qring(a::Sring) = a
 
-rt_make_qring(a::SIdeal) = rt_make_qring(rt_ref(a))
-
-function rt_make_qring(a::SIdealData)
-    @warn_check(a.parent.ring_ptr.cpp_object == rt_basering().ring_ptr.cpp_object, "constructing qring outside of basering")
-    r = libSingular.new_qring(a.ideal_ptr, a.parent.ring_ptr)
+function rt_make_qring(a::Sideal)
+    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "constructing qring outside of basering")
+    r = libSingular.new_qring(a.value, a.parent.value)
     if r == C_NULL
         rt_error("qring construction failed")
         return rtInvalidRing
     else
-        return SRing(true, r, length(rtGlobal.callstack))
+        return Sring(true, r, length(rtGlobal.callstack))
     end
 end
 
-function rt_declare_assign_ring(a::SName, b::SRing)
+function rt_declare_assign_ring(a::SName, b::Sring)
     n = length(rtGlobal.callstack)
     if n > 1
-        rt_check_declaration_local(a.name, SRing)
+        rt_check_declaration_local(a.name, Sring)
         push!(rtGlobal.local_vars, Pair(a.name, b))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, SRing)
+        d = rt_check_declaration_global_ring_indep(a.name, Sring)
         d[a.name] = b
     end
     rt_set_current_ring(b)
     return
 end
 
-function rt_declare_assign_ring(a::Vector{SName}, b::SRing)
+function rt_declare_assign_ring(a::Vector{SName}, b::Sring)
     @error_check(length(a) == 1, "ring construction expects one indexed name")
     rt_declare_assign_ring(a[1], b)
     return
@@ -1220,7 +1202,7 @@ if the rlist looks like
 
     (x, y(i), (z(j), `s`(k)(l)))
 
-i, j, k, l must evaluate to Int|SIntVec and s must evaluate to a SString
+i, j, k, l must evaluate to Int|Sintvec and s must evaluate to a Sstring
 
 first the nested expr lists are flattened
 
@@ -1485,10 +1467,10 @@ end
 function rt_flatten_ord_weights!(w::Array{Int, 1}, a::Any)
     if isa(a, Int)
         push!(w, a)
-    elseif isa(a, SIntVec)
-        append!(w, a.vector)
-    elseif isa(a, SIntMat)
-        append!(w, vec(transpose(a.matrix)))
+    elseif isa(a, Sintvec)
+        append!(w, a.value)
+    elseif isa(a, Sintmat)
+        append!(w, vec(transpose(a.value)))
     else
         rt_error("bad order specification")
     end
@@ -1923,8 +1905,8 @@ function convert_declare_ip_variable!(vars::Array{AstNode}, a::AstNode, env::Ast
             return r
         elseif a.rule == @RULE_declare_ip_variable(5) || a.rule == @RULE_declare_ip_variable(6)
             if a.rule == @RULE_declare_ip_variable(5)
-                numrows = convert_expr(a.child[3], env)
-                numcols = convert_expr(a.child[4], env)
+                numrows = make_nocopy(convert_expr(a.child[3], env))
+                numcols = make_nocopy(convert_expr(a.child[4], env))
             else
                 numrows = numcols = 1 # default matrix size is 1x1
             end
@@ -2163,7 +2145,9 @@ function convert_procarg!(arglist::Vector{Any}, body::Expr, a::AstNode, env::Ast
         at_end || throw(TranspileError("proc argument # only allowed at the end"))
         # our argument tuple might contain uncopied references
         # the copy will turn the tuple into a bona fide singular object, which is expected by rt_convert2T
-        inside = Expr(:call, Symbol("rt_convert2"*t), Expr(:call, :map, :rt_copy, Symbol("#"*s)))
+        inside = Expr(:vect, Expr(:(...), Symbol("#"*s)))
+        inside = Expr(:call, STuple, Expr(:call, :map, :rt_copy_tmp, collect))
+        inside = Expr(:call, Symbol("rt_convert2"*t), inside)
         if haskey(env.declared_identifiers, s)
             push!(body.args, Expr(:(=), Symbol(s), inside))
         else
@@ -2221,7 +2205,7 @@ function convert_proccmd(a::AstNode, env::AstEnv)
         push!(body.args, Expr(:return, :nothing))
         r = Expr(:block)
         push!(r.args, Expr(:function, Expr(:call, internalfunc, args...), body))
-        procobj = Expr(:call, :SProc, internalfunc, s, QuoteNode(env.package))
+        procobj = Expr(:call, :Sproc, internalfunc, s, QuoteNode(env.package))
         if haskey(env.declared_identifiers, s)
             @assert env.declared_identifers[s] == "proc"
             push!(r.args, Expr(:(=), Symbol(s), procobj))
@@ -2396,6 +2380,16 @@ function convert_top_pprompt(a::AstNode, env::AstEnv)
     end
 end
 
+function typestring_could_be_ring_dep(s::String)
+    if s == "def" || s == "list"
+        return true
+    end
+    if !haskey(builtin_typestring_to_symbol, s)
+        return false
+    end
+    return eval(builtin_typestring_to_symbol[s]) <: SingularRingType
+end
+
 function scan_lines(a::AstNode, env::AstEnv, at_top::Bool)
     @assert 0 < a.rule - @RULE_lines(0) < 100
     for i in a.child
@@ -2406,7 +2400,9 @@ function scan_lines(a::AstNode, env::AstEnv, at_top::Bool)
         if env.everything_is_screwed || !rtGlobal.optimize_locals
             empty!(env.declared_identifiers)
         elseif env.rings_are_screwed
-            env.declared_identifiers = filter(x->(!type_is_ring_dependent(last(x))), env.declared_identifiers)
+            env.declared_identifiers = filter(
+                                x->(!typestring_could_be_ring_dep(last(x))),
+                                                     env.declared_identifiers)
         end
     end
 end
@@ -2539,7 +2535,7 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
         push!(body.args, Expr(:return, :nothing))
 
         jfunction = eval(Expr(:function, Expr(:call, internalfunc, args...), body))
-        our_proc_object = SProc(jfunction, s, env.package)
+        our_proc_object = Sproc(jfunction, s, env.package)
 
         export_packages = [env.package]
         if !static && env.export_names
@@ -2866,7 +2862,7 @@ function astprint_expr(a::AstNode, env::AstEnv, indent::Int)::String
     elseif a.rule == @RULE_expr(2)
         return astprint_elemexpr(a.child[1], env, indent)
     elseif a.rule == @RULE_expr(3)
-        return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * ", " * astprint_expr(a.child[1], env, 0) * "]"
+        return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * ", " * astprint_expr(a.child[3], env, 0) * "]"
     elseif a.rule == @RULE_expr(4)
         return astprint_expr(a.child[1], env, indent) * "[" * astprint_expr(a.child[2], env, 0) * "]"
     elseif @RULE_expr(5) <= a.rule <= @RULE_expr(9)
