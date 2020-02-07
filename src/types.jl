@@ -257,7 +257,7 @@ function rt_vector_finalizer(a::Svector)
 end
 
 
-#### singular type "ideal"      mutable like a 1d array of polys in the singular language
+#### singular type "ideal"      mutable like a 1d array of poly in the singular language
 mutable struct Sideal
     value::libSingular.ideal        # dense 1d array of poly
     parent::Sring
@@ -276,6 +276,30 @@ sing_ptr(i::Sideal) = i.value
 sing_ring(i::Sideal) = i.parent
 
 function rt_ideal_finalizer(a::Sideal)
+    libSingular.id_Delete(a.value, a.parent.value)
+    rt_ring_finalizer(a.parent)
+end
+
+
+#### singular type "module"      mutable like a 1d array of vector in the singular language
+mutable struct Smodule
+    value::libSingular.ideal        # dense 1d array of vector
+    parent::Sring
+    tmp::Bool
+
+    function Smodule(value_::libSingular.ideal, parent_::Sring, tmp_::Bool)
+        a = new(value_, parent_, tmp_)
+        finalizer(rt_module_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
+end
+
+sing_ptr(i::Smodule) = i.value
+sing_ring(i::Smodule) = i.parent
+
+function rt_module_finalizer(a::Smodule)
     libSingular.id_Delete(a.value, a.parent.value)
     rt_ring_finalizer(a.parent)
 end

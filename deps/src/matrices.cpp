@@ -8,7 +8,12 @@ void singular_define_matrices(jlcxx::Module & Singular)
 
     Singular.method("nrows", [](matrix I) { return (int)MATROWS(I); });
 
-    Singular.method("id_Module2Matrix", &id_Module2Matrix);
+    Singular.method("id_Matrix2Module", [](ideal M, ring r) {
+        return id_Matrix2Module((matrix)M, r);
+    });
+    Singular.method("id_Matrix2Module", [](matrix M, ring r) {
+        return id_Matrix2Module(M, r);
+    });
 
     Singular.method("mp_getindex", [](matrix M, int i, int j) {
         return (poly)MATELEM(M, i, j);

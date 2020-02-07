@@ -42,8 +42,12 @@ Base.iterate(a::Sring) = iterate(a, 0)
 Base.iterate(a::Sring, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Spoly) = iterate(a, 0)
 Base.iterate(a::Spoly, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Svector) = iterate(a, 0)
+Base.iterate(a::Svector, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Sideal) = iterate(a, 0)
 Base.iterate(a::Sideal, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Smodule) = iterate(a, 0)
+Base.iterate(a::Smodule, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Smatrix) = iterate(a, 0)
 Base.iterate(a::Smatrix, state) = (state == 0 ? (a, 1) : nothing)
 # special case for STuple, which iterates over its elements
@@ -91,8 +95,8 @@ rt_copy_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector
 
 # mutable types
 
-object_is_tmp(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smatrix}) = a.tmp
-object_is_own(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smatrix}) = !a.tmp
+object_is_tmp(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smodule, Smatrix}) = a.tmp
+object_is_own(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smodule, Smatrix}) = !a.tmp
 
 function rt_copy_tmp(a::Union{Sintvec, Sintmat, Sbigintmat})
     if object_is_tmp(a)
@@ -129,20 +133,20 @@ function rt_copy_own(a::Slist)
     end
 end
 
-function rt_copy_tmp(a::Sideal)
+function rt_copy_tmp(a::Union{Sideal, Smodule})
     if object_is_tmp(a)
         return a
     else
-        return Sideal(libSingular.id_Copy(a.value, a.parent.value), a.parent, true)
+        return typeof(a)(libSingular.id_Copy(a.value, a.parent.value), a.parent, true)
     end
 end
 
-function rt_copy_own(a::Sideal)
+function rt_copy_own(a::Union{Sideal, Smodule})
     if object_is_tmp(a)
         a.tmp = false
         return a
     else
-        return Sideal(libSingular.id_Copy(a.value, a.parent.value), a.parent, false)
+        return typeof(a)(libSingular.id_Copy(a.value, a.parent.value), a.parent, false)
     end
 end
 
@@ -190,7 +194,7 @@ rt_promote(a::Spoly) = a
 
 rt_promote(a::Svector) = a
 
-function rt_promote(a::Union{Slist, Sideal, Smatrix})
+function rt_promote(a::Union{Slist, Sideal, Smodule, Smatrix})
     a.tmp = true
     return a
 end
@@ -1218,6 +1222,45 @@ function rt_parameter_ideal(a::SName, b)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2ideal(b)))
 end
 
+#### module
+function rt_defaultconstructor_module()
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct an module when no basering is active")
+    id = libSingular.idInit(1,1)
+    libSingular.setindex_internal(id, libSingular.p_null_helper(), 0)
+    return Smodule(id, R, false)
+end
+
+function rt_new_empty_module(temp::Bool = true)
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct an module when no basering is active")
+    h = libSingular.idInit(0, 1)
+    return Smodule(h, R, temp)
+end
+
+function rt_declare_module(a::Vector{SName})
+    for i in a
+        rt_declare_module(i)
+    end
+end
+
+function rt_declare_module(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(a.name, Smodule)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_module()))
+    else
+        d = rt_check_declaration_global_ring_dep(a.name, Smodule)
+        d[a.name] = rt_defaultconstructor_module()
+    end
+    return nothing
+end
+
+function rt_parameter_module(a::SName, b)
+    @expensive_assert !rt_local_identifier_exists(a.name)
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2module(b)))
+end
+
 #### matrix
 function rt_defaultconstructor_matrix(nrows::Int = 1, ncols::Int = 1)
     R = rt_basering()
@@ -1522,8 +1565,8 @@ end
 function rt_convert2number(a::Union{Int, BigInt})
     R = rt_basering()
     @error_check(R.valid, "cannot convert to a number when no basering is active")
-    r1 = libSingular.n_Init(a, R.value)
-    return Snumber(r1, R)
+    r = libSingular.n_Init(a, R.value)
+    return Snumber(r, R)
 end
 
 function rt_convert2number(a)
@@ -1536,14 +1579,14 @@ end
 # return a new libSingular.poly not owned by any instance of a SingularType
 function rt_convert2poly_ptr(a::Union{Int, BigInt}, R::Sring)
     @error_check(R.valid, "cannot convert to a polynomial when no basering is active")
-    r1 = libSingular.n_Init(a, R.value)
-    return libSingular.p_NSet(r1, R.value)
+    r = libSingular.n_Init(a, R.value)
+    return libSingular.p_NSet(r, R.value)
 end
 
 function rt_convert2poly_ptr(a::Snumber, R::Sring)
     @error_check_rings(a.parent, R, "cannot convert to a polynomial from a different basering")
-    r1 = libSingular.n_Copy(a.value, a.parent.value)
-    return libSingular.p_NSet(r1, a.parent.value)
+    r = libSingular.n_Copy(a.value, a.parent.value)
+    return libSingular.p_NSet(r, a.parent.value)
 end
 
 function rt_convert2poly_ptr(a::Spoly, R::Sring)
@@ -1551,25 +1594,20 @@ function rt_convert2poly_ptr(a::Spoly, R::Sring)
     return libSingular.p_Copy(a.value, a.parent.value)
 end
 
-function rt_convert2poly_ptr(a, R::Sring)
-    rt_error("cannot convert `$(rt_typestring(a))` to `poly`")
-    return libSingular.p_null_helper()
+function rt_convert2poly(a::Union{Int, BigInt})
+    R = rt_basering()
+    r = rt_convert2poly_ptr(a, R)
+    return Spoly(r, R)
+end
+
+function rt_convert2poly(a::Snumber)
+    @warn_check_rings(a.parent, rt_basering(), "converting to a polynomial outside of basering")
+    r = rt_convert2poly_ptr(a, a.parent)
+    return Spoly(r, a.parent)
 end
 
 function rt_convert2poly(a::Spoly)
     return a
-end
-
-function rt_convert2poly(a::Union{Int, BigInt})
-    R = rt_basering()
-    r1 = rt_convert2poly_ptr(a, R)
-    return Spoly(r1, R)
-end
-
-function rt_convert2poly(a::Snumber)
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "converting to a polynomial outside of basering")
-    r1 = rt_convert2poly_ptr(a, a.parent)
-    return Spoly(r1, a.parent)
 end
 
 function rt_convert2poly(a)
@@ -1579,18 +1617,30 @@ end
 
 #### vector
 
+function rt_convert2vector_ptr(a::Union{Int, BigInt, Snumber, Spoly}, R::Sring)
+    @error_check(R.valid, "cannot convert to a vector when no basering is active")
+    r = rt_convert2poly_ptr(a, R)
+    libSingular.p_SetCompP(r, 1, R.value)       # mutate r inplace
+    return r
+end
+
+function rt_convert2vector_ptr(a::Svector, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a vector from a different basering")
+    return libSingular.p_Copy(a.value, a.parent.value)
+end
+
 function rt_convert2vector(a::Union{Int, BigInt})
     R = rt_basering()
-    r1 = rt_convert2poly_ptr(a, R.parent)
-    libSingular.p_SetCompP(r1, 1, R.parent.value)       # mutate r1 in place
-    return Svector(r1, R)
+    r = rt_convert2poly_ptr(a, R.parent)
+    libSingular.p_SetCompP(r, 1, R.parent.value)        # mutate r inplace
+    return Svector(r, R)
 end
 
 function rt_convert2vector(a::Union{Snumber, Spoly})
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "converting to a vector outside of basering")
-    r1 = rt_convert2poly_ptr(a, a.parent)
-    libSingular.p_SetCompP(r1, 1, a.parent.value)       # mutate r1 in place
-    return Svector(r1, a.parent)
+    @warn_check_rings(a.parent, rt_basering(), "converting to a vector outside of basering")
+    r = rt_convert2poly_ptr(a, a.parent)
+    libSingular.p_SetCompP(r, 1, a.parent.value)        # mutate r inplace
+    return Svector(r, a.parent)
 end
 
 function rt_convert2vector(a::Svector)
@@ -1600,6 +1650,12 @@ end
 function rt_convert2vector(a)
     rt_error("cannot convert `$(rt_typestring(a))` to `vector`")
     return rt_defaultconstructor_vector()
+end
+
+function rt_cast2vector(a...)
+    rt_error("vector(...) is unavailable; use brackets [...] for `vector` cast")
+    return rt_defaultconstructor_vector()
+
 end
 
 #### ideal
@@ -1612,7 +1668,7 @@ function rt_convert2ideal_ptr(a::Union{Int, BigInt, Snumber, Spoly}, R::Sring)
 end
 
 function rt_convert2ideal_ptr(a::Sideal, R::Sring)
-    @error_check(a.parent.value.cpp_object == R.value.cpp_object, "cannot convert to a ideal from a different basering")
+    @error_check_rings(a.parent, R, "cannot convert to a ideal from a different basering")
     if object_is_tmp(a)
         # we may steal a.value
         r = a.value
@@ -1623,31 +1679,26 @@ function rt_convert2ideal_ptr(a::Sideal, R::Sring)
     return r
 end
 
-function rt_convert2ideal_ptr(a, R::Sring)
-    rt_error("cannot convert `$(rt_typestring(a))` to `ideal`")
-    return libSingular.idInit(1, 1)
+function rt_convert2ideal(a::Union{Int, BigInt})
+    R = rt_basering()
+    @error_check(R.valid, "cannot convert to an ideal when no basering is active")
+    r = rt_convert2ideal_ptr(a, R)
+    return Sideal(r2, R, false)
 end
 
+function rt_convert2ideal(a::Union{Snumber, Spoly})
+    @warn_check_rings(a.parent, rt_basering(), "converting to a ideal outside of basering")
+    r = rt_convert2ideal_ptr(a, a.parent)
+    return Sideal(r, a.parent, false)
+end
 
 function rt_convert2ideal(a::Sideal)
     return rt_copy_own(a)
 end
 
-function rt_convert2ideal(a::Union{Int, BigInt})
-    R = rt_basering()
-    @error_check(R.valid, "cannot convert to an ideal when no basering is active")
-    r1 = rt_convert2poly_ptr(a, R)
-    r2 = libSingular.idInit(1, 1)
-    libSingular.setindex_internal(r2, r1, 0) # r1 is consumed
-    return Sideal(r2, R, false)
-end
-
-function rt_convert2ideal(a::Union{Snumber, Spoly})
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "converting to a polynomial outside of basering")
-    r1 = rt_convert2poly_ptr(a, a.parent)
-    r2 = libSingular.idInit(1, 1)
-    libSingular.setindex_internal(r2, r1, 0) # r1 is consumed
-    return Sideal(r2, a.parent, false)
+function rt_convert2ideal(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `ideal`")
+    return rt_defaultconstructor_ideal()
 end
 
 function rt_cast2ideal(a...)
@@ -1659,13 +1710,81 @@ function rt_cast2ideal(a...)
     return r
 end
 
-function rt_convert2ideal(a)
-    rt_error("cannot convert `$(rt_typestring(a))` to `ideal`")
-    return rt_defaultconstructor_ideal()
+
+#### module
+
+function rt_convert2module_ptr(a::Union{Int, BigInt, Snumber, Spoly, Svector}, R::Sring)
+    @error_check(R.valid, "cannot convert to a module when no basering is active")
+    r1 = rt_convert2vector_ptr(a, R)
+    r2 = libSingular.idInit(1, 1)
+    libSingular.setindex_internal(r2, r1, 0) # r1 is consumed
+    return r2
+end
+
+function rt_convert2module_ptr(a::Sideal, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a module from a different basering")
+    r1 = rt_convert2ideal_ptr(a, R)
+    r2 = libSingular.id_Matrix2Module(r1, R.value)  # r1 is consumed
+    return r2
+end
+
+function rt_convert2module_ptr(a::Smodule, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a module from a different basering")
+    if object_is_tmp(a)
+        # we may steal a.value
+        r = a.value
+        a.value = libSingular.idInit(0, 1)
+    else
+        r = libSingular.id_Copy(a.value, a.parent.value)
+    end
+    return r
+end
+
+function rt_convert2module_ptr(a::Smatrix, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a module from a different basering")
+    r1 = rt_convert2matrix_ptr(a, R)
+    r2 = libSingular.id_Matrix2Module(r1, R.value)  # r1 is consumed
+    return r2
+end
+
+function rt_convert2module(a::Union{Int, BigInt})
+    R = rt_basering()
+    @error_check(R.valid, "cannot convert to a module when no basering is active")
+    r = rt_convert2module_ptr(a, R)
+    return Smodule(r2, R, false)
+end
+
+function rt_convert2module(a::Union{Snumber, Spoly, Svector, Sideal})
+    @warn_check_rings(a.parent, rt_basering(), "converting to a module outside of basering")
+    r = rt_convert2module_ptr(a, a.parent)
+    return Smodule(r, a.parent)
+end
+
+function rt_convert2module(a::Smodule)
+    return rt_copy_own(a)
+end
+
+function rt_convert2module(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `module`")
+    return rt_defaultconstructor_module()
+end
+
+function rt_cast2module(a...)
+    # answer must be wrapped in Smodule at all times because rt_convert2module_ptr might throw
+    r::Smodule = rt_new_empty_module()
+    for i in a
+        libSingular.id_append(r.value, rt_convert2module_ptr(i, r.parent), r.parent.value)
+    end
+    return r
 end
 
 
 #### matrix
+
+function rt_convert2matrix_ptr(a...)
+    rt_error("matrix ptr conversion not implemented")
+    return
+end
 
 function rt_convert2matrix(a...)
     rt_error("matrix conversion not implemented")
@@ -1791,8 +1910,26 @@ function rt_print(a::Sideal)
     return s
 end
 
+function rt_print(a::Smodule)
+    @warn_check_rings(a.parent, rt_basering(), "printing a module outside of basering")
+    s = ""
+    n = Int(libSingular.ngens(a.value))
+    first = true
+    for i in 1:n
+        p = libSingular.getindex(a.value, Cint(i - 1))
+        t = libSingular.p_String(p, a.parent.value)
+        h = (first ? "module[" : "      [") * string(i) * "]: "
+        s *= h * t * (i < n ? "\n" : "")
+        first = false
+    end
+    if first
+        s = "empty module"
+    end
+    return s
+end
+
 function rt_print(a::Smatrix)
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing an ideal outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "printing a matrix outside of basering")
     s = ""
     nrows = libSingular.nrows(a.value)
     ncols = libSingular.ncols(a.value)
@@ -1801,7 +1938,7 @@ function rt_print(a::Smatrix)
         for j in 1:ncols
             p = libSingular.mp_getindex(a.value, i, j)
             t = libSingular.p_String(p, a.parent.value)
-            h = (first ? "matrix[" : "      [") * string(i) *", " * string(j) * "]: "
+            h = (first ? "matrix[" : "      [") * string(i) * ", " * string(j) * "]: "
             s *= h * t * ((i < nrows || j < ncols) ? "\n" : "")
             first = false
         end
@@ -1878,6 +2015,7 @@ rt_typedata(::Snumber)     = "number"
 rt_typedata(::Spoly)       = "poly"
 rt_typedata(::Svector)     = "vector"
 rt_typedata(::Sideal)      = "ideal"
+rt_typedata(::Smodule)     = "module"
 rt_typedata(::Smatrix)     = "matrix"
 rt_typedata(a::STuple) = String[rt_typedata(i) for i in a.list]
 
@@ -2473,6 +2611,42 @@ function rt_assign_last(a::Sideal, b::STuple)
     while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Snumber, Spoly, Sideal})
         i = popfirst!(b.list)
         libSingular.id_append(a.value, rt_convert2ideal_ptr(i, a.parent), a.parent.value)
+    end
+    @error_check(isempty(b.list), "argument mismatch in assignment")
+    return a
+end
+
+#### assignment to module
+function rt_assign_more(a::Smodule, b)
+    @assert !isa(b, STuple)
+    @expensive_assert object_is_own(a)
+    return rt_convert2module(b), empty_tuple
+end
+
+function rt_assign_more(a::Smodule, b::STuple)
+    @expensive_assert object_is_own(a)
+    libSingular.id_Delete(a.value, a.parent.value)
+    a.value = libSingular.idInit(0, 1)
+    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Snumber, Spoly, Svector, Sideal, Smodule})
+        i = popfirst!(b.list)
+        libSingular.id_append(a.value, rt_convert2module_ptr(i, a.parent), r.parent.value)
+    end
+    return a, b
+end
+
+function rt_assign_last(a::Smodule, b)
+    @assert !isa(b, STuple)
+    @expensive_assert object_is_own(a)
+    return rt_convert2module(b)
+end
+
+function rt_assign_last(a::Smodule, b::STuple)
+    @expensive_assert object_is_own(a)
+    libSingular.id_Delete(a.value, a.parent.value)
+    a.value = libSingular.idInit(0, 1)
+    while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Snumber, Spoly, Svector, Sideal, Smodule})
+        i = popfirst!(b.list)
+        libSingular.id_append(a.value, rt_convert2module_ptr(i, a.parent), a.parent.value)
     end
     @error_check(isempty(b.list), "argument mismatch in assignment")
     return a
