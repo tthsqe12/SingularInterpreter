@@ -1,0 +1,7 @@
+ring r = 0, (x, y, z), lp;
+module a = x, y;
+a = a, z, [x^2, y^2];
+ASSUME(0, typeof(a) == "module");
+module b = a;
+ASSUME(0, typeof(b) == "module");
+

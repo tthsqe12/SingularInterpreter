@@ -436,41 +436,44 @@ end
 
 
 
-#### ideal get/setindex ####
+#### ideal/module get/setindex ####
 
-function rtgetindex(a::Sideal, i::Int)
+function rtgetindex(a::Union{Sideal, Smodule}, i::Int)
     n = Int(libSingular.ngens(a.value))
     @error_check(1 <= i <= n, "ideal index out of range")
     r1 = libSingular.getindex(a.value, Cint(i - 1))
     r2 = libSingular.p_Copy(r1, a.parent.value)
-    return Spoly(r2, a.parent)
+    return isa(a, Sideal) ? Spoly(r2, a.parent) : Svector(r2, a.parent)
 end
 
-function rtgetindex(a::Sideal, i::Sintvec)
+function rtgetindex(a::Union{Sideal, Smodule}, i::Sintvec)
     r = Any[rtgetindex(a, t) for t in i.value]
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
-function rt_setindex(a::Sideal, i::Int, b)
+
+function rt_setindex(a::Union{Sideal, Smodule}, i::Int, b)
     @assert !isa(b, STuple)    
     @error_check(i > 0, "ideal index must be positive for assignment")
-    libSingular.id_setindex_fancy(a.value, Cint(i), rt_convert2poly_ptr(b, a.parent), a.parent.value)
+    b1 = isa(a, Sideal) ? rt_convert2poly_ptr(b, a.parent) :
+                          rt_convert2vector_ptr(b, a.parent)
+    libSingular.id_setindex_fancy(a.value, Cint(i), b1, a.parent.value)
     return
 end
 
-function rtsetindex_more(a::Sideal, i::Int, b)
+function rtsetindex_more(a::Union{Sideal, Smodule}, i::Int, b)
     @assert !isa(b, STuple)
     rt_setindex(a, i, b)
     return empty_tuple
 end
 
-function rtsetindex_more(a::Sideal, i::Int, b::STuple)
+function rtsetindex_more(a::Union{Sideal, Smodule}, i::Int, b::STuple)
     @error_check(!isempty(b.list), "argument mismatch in assignment")
     rt_setindex(a, i, popfirst!(b.list))
     return b
 end
 
-function rtsetindex_more(a::Sideal, i::Sintvec, b)
+function rtsetindex_more(a::Union{Sideal, Smodule}, i::Sintvec, b)
     @assert !isa(b, STuple)
     if length(i.value) == 1
         rt_setindex(a, i.value[1], b)
@@ -481,7 +484,7 @@ function rtsetindex_more(a::Sideal, i::Sintvec, b)
     end
 end
 
-function rtsetindex_more(a::Sideal, i::Sintvec, b::STuple)
+function rtsetindex_more(a::Union{Sideal, Smodule}, i::Sintvec, b::STuple)
     n = length(i.value)
     @error_check(length(b.list) >= n, "argument mismatch in assignment")
     for t in 1:n
@@ -491,26 +494,26 @@ function rtsetindex_more(a::Sideal, i::Sintvec, b::STuple)
     return b
 end
 
-function rtsetindex_last(a::Sideal, i::Int, b)
+function rtsetindex_last(a::Union{Sideal, Smodule}, i::Int, b)
     @assert !isa(b, STuple)
     rt_setindex(a, i, b)
     return
 end
 
-function rtsetindex_last(a::Sideal, i::Int, b::STuple)
+function rtsetindex_last(a::Union{Sideal, Smodule}, i::Int, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     rt_setindex(a, i, b.list[1])
     return
 end
 
-function rtsetindex_last(a::Sideal, i::Sintvec, b)
+function rtsetindex_last(a::Union{Sideal, Smodule}, i::Sintvec, b)
     @assert !isa(b, STuple)
     @error_check(length(i.value) == 1, "argument mismatch in assignment")
     rt_setindex(a, i.value[1], b)
     return
 end
 
-function rtsetindex_last(a::Sideal, i::Sintvec, b::STuple)
+function rtsetindex_last(a::Union{Sideal, Smodule}, i::Sintvec, b::STuple)
     n = length(i.value)
     @error_check(length(b.list) == n, "argument mismatch in assignment")
     for t in 1:n
