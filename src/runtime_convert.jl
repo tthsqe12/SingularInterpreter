@@ -391,7 +391,7 @@ function rt_convert2ideal(a::Union{Int, BigInt})
     R = rt_basering()
     @error_check(R.valid, "cannot convert to an ideal when no basering is active")
     r = rt_convert2ideal_ptr(a, R)
-    return Sideal(r2, R, false)
+    return Sideal(r, R, false)
 end
 
 function rt_convert2ideal(a::Union{Snumber, Spoly})
@@ -459,7 +459,7 @@ function rt_convert2module(a::Union{Int, BigInt})
     R = rt_basering()
     @error_check(R.valid, "cannot convert to a module when no basering is active")
     r = rt_convert2module_ptr(a, R)
-    return Smodule(r2, R, false)
+    return Smodule(r, R, false)
 end
 
 function rt_convert2module(a::Union{Snumber, Spoly, Svector, Sideal})
@@ -489,13 +489,97 @@ end
 
 #### matrix
 
-function rt_convert2matrix_ptr(a...)
-    rt_error("matrix ptr conversion not implemented")
-    return
+function rt_convert2matrix_ptr(a::Union{Int, BigInt, Snumber, Spoly}, R::Sring)
+    p = rt_convert2poly_ptr(a, R)
+    r = libSingular.mpNew(1, 1)
+    libSingular.mp_setindex(r, 1, 1, p, R.value) # p is consumed
+    return r
 end
 
-function rt_convert2matrix(a...)
-    rt_error("matrix conversion not implemented")
+function rt_convert2matrix_ptr(a::Sintvec, R::Sring)
+    @error_check(R.valid, "cannot convert to a matrix when no basering is active")
+    nrows = length(a.value)
+    r = libSingular.mpNew(nrows, 1)
+    for i in 1:nrows
+        libSingular.mp_setindex(r, i, 1, libSingular.p_ISet(a.value[i], R.value), R.value)
+    end
+    return r
+end
+
+function rt_convert2matrix_ptr(a::Sintmat, R::Sring)
+    @error_check(R.valid, "cannot convert to a matrix when no basering is active")
+    nrows, ncols = size(a.value)
+    r = libSingular.mpNew(nrows, ncols)
+    for i in 1:nrows
+        for j in 1:ncols
+            libSingular.mp_setindex(r, i, j, libSingular.p_ISet(a.value[i, j], R.value), R.value)
+        end
+    end
+    return r
+end
+
+function rt_convert2matrix_ptr(a::Svector, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a matrix from a different basering")
+    # mp_from_vector (really id_Vec2Ideal) does not modify its input :)
+    return libSingular.mp_from_vector(a.value, a.parent.value)
+end
+
+function rt_convert2matrix_ptr(a::Sideal, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a matrix from a different basering")
+    if object_is_tmp(a)
+        # we may steal a.value
+        r = a.value
+        a.value = libSingular.idInit(0, 1)
+    else
+        r = libSingular.id_Copy(a.value, a.parent.value)
+    end
+    return libSingular.mp_from_ideal(r)   # this is just a pointer cast
+end
+
+function rt_convert2matrix_ptr(a::Smodule, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a matrix from a different basering")
+    if object_is_tmp(a)
+        # we may steal a.value
+        r = a.value
+        a.value = libSingular.idInit(0, 1)
+    else
+        r = libSingular.id_Copy(a.value, a.parent.value)
+    end
+    return libSingular.id_Module2Matrix(r, a.parent.value) # consume r
+end
+
+function rt_convert2matrix_ptr(a::Smatrix, R::Sring)
+    @error_check_rings(a.parent, R, "cannot convert to a matrix from a different basering")
+    if object_is_tmp(a)
+        # we may steal a.value
+        r = a.value
+        a.value = libSingular.mpNew(0, 0)
+    else
+        r = libSingular.mp_Copy(a.value, a.parent.value)
+    end
+    return r
+end
+
+function rt_convert2matrix(a::Union{Int, BigInt, Sintvec, Sintmat})
+    R = rt_basering()
+    @error_check(R.valid, "cannot convert to a module when no basering is active")
+    r = rt_convert2matrix_ptr(a, R)
+    return Smatrix(r, R, false)
+end
+
+function rt_convert2matrix(a::Union{Snumber, Spoly, Svector, Sideal, Smodule})
+    @warn_check_rings(a.parent, rt_basering(), "converting to a module outside of basering")
+    r = rt_convert2matrix_ptr(a, a.parent)
+    return Smatrix(r, a.parent, false)
+end
+
+function rt_convert2matrix(a::Smatrix)
+    return rt_copy_own(a)
+end
+
+
+function rt_convert2matrix(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `matrix`")
     return rt_defaultconstructor_matrix()
 end
 

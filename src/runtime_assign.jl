@@ -597,7 +597,7 @@ function rt_assign_more(a::Smodule, b::STuple)
     a.value = libSingular.idInit(0, 1)
     while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Snumber, Spoly, Svector, Sideal, Smodule})
         i = popfirst!(b.list)
-        libSingular.id_append(a.value, rt_convert2module_ptr(i, a.parent), r.parent.value)
+        libSingular.mo_append(a.value, rt_convert2module_ptr(i, a.parent), r.parent.value)
     end
     return a, b
 end
@@ -614,7 +614,7 @@ function rt_assign_last(a::Smodule, b::STuple)
     a.value = libSingular.idInit(0, 1)
     while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Snumber, Spoly, Svector, Sideal, Smodule})
         i = popfirst!(b.list)
-        libSingular.id_append(a.value, rt_convert2module_ptr(i, a.parent), a.parent.value)
+        libSingular.mo_append(a.value, rt_convert2module_ptr(i, a.parent), a.parent.value)
     end
     @error_check(isempty(b.list), "argument mismatch in assignment")
     return a
@@ -633,12 +633,73 @@ function rt_assign_more(a::Smatrix, b::STuple)
 end
 
 function rt_assign_last(a::Smatrix, b)
-    rt_error("assignment to matrix not implemented\n")
-    return rt_defaultconstructor_matrix()
+    @expensive_assert object_is_own(a)
+    @assert !isa(b, STuple)
+    # if b is "like a matrix" then the new value of a should be the matrix version of b
+    if isa(b, Smatrix)
+        return rt_copy_own(b)
+    elseif isa(b, Union{Sintvec, Sintmat, Smodule})
+        return Smatrix(rt_convert2matrix_ptr(b, a.parent), a.parent, false)
+    # else b is converted to a stream of poly and fed into a row-by-row without changing the size of a
+    # Note: Placing the Svector here and the Sintvec above matches the behaviour of singular,
+    #       but this makes no sense from the point of view of consistency.
+    else
+        libSingular.mp_zero(a.value, a.parent.value)
+        libSingular.mp_append(a.value, 0, rt_convert2matrix_ptr(b, a.parent), a.parent.value)
+        return a
+    end
 end
 
 function rt_assign_last(a::Smatrix, b::STuple)
-    rt_error("assignment to matrix not implemented\n")
-    return rt_defaultconstructor_matrix()
+    @expensive_assert object_is_own(a)
+    if length(b.list) == 1
+        return rt_assign_last(a, b.list[1])
+    else
+        # a is zeroed; b is converted to a stream of poly and fed into a row-by-row
+        libSingular.mp_zero(a.value, a.parent.value)
+        index = Cint(0)
+        while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Sintvec, Sintmat, Snumber, Spoly, Svector, Sideal, Smodule, Smatrix})
+            i = popfirst!(b.list)
+            index = libSingular.mp_append(a.value, index, rt_convert2matrix_ptr(i, a.parent), a.parent.value)
+        end
+        return a
+    end
 end
 
+
+#### assignment to map
+function rt_assign_more(a::Smap, b)
+    @assert !isa(b, STuple)
+    rt_error("assignment to map not implemented\n")
+    return rt_defaultconstructor_map(), empty_tuple
+end
+
+function rt_assign_more(a::Smap, b::STuple)
+    rt_error("assignment to map not implemented\n")
+    return rt_defaultconstructor_map(), empty_tuple
+end
+
+function rt_assign_last(a::Smap, b)
+    @assert !isa(b, STuple)
+    @expensive_assert object_is_own(a)
+    return rt_convert2map(b)
+end
+
+function rt_assign_last(a::Smap, b::STuple)
+    @expensive_assert object_is_own(a)
+    @error_check(!isempty(b.list), "argument mismatch in assignment")
+    if length(b.list) == 1
+        return rt_convert2map(b.list[1])
+    else
+        @error_check(!isa(b.list[1], Sring), "assignment to map expects a ring first")
+        libSingular.ma_Delete(a.value, a.parent.value)
+        a.source = popfirst!(b.list)
+        a.value = libSingular.maInit(0)
+        while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Sintvec, Sintmat, Snumber, Spoly, Svector, Sideal, Smodule, Smatrix})
+            i = popfirst!(b.list)
+            libSingular.ma_append_matrix_first_row(a.value, rt_convert2matrix_ptr(i, a.parent), a.parent.value)
+        end
+        @error_check(isempty(b.list), "argument mismatch in assignment")
+        return a
+    end
+end
