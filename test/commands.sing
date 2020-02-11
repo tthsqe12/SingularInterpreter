@@ -36,6 +36,5 @@ ASSUME(0, transpose(im) == imt);
 
 // primefactors
 ring r0 = 0,x,lp;
-number n = 369;
-list pf = primefactors(n);
+list pf = primefactors(number(369));
 ASSUME(0, pf == list(list(3, 41), list(2, 1), 1));

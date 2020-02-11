@@ -8,6 +8,13 @@ n = bigint(12);
 ASSUME(0, n == 12);
 ASSUME(0, typeof(n) == "number");
 
+number n2 = number(bigint(12));
+list somenumbers = 12, bigint(12), number(12);
+for(int i=1; i<=3; i++) {
+    ASSUME(0, number(somenumbers[i]) == 12);
+    ASSUME(0, typeof(number(somenumbers[i])) == "number");
+}
+
 number m = -3;
 ASSUME(0, typeof(m) == "number");
 ASSUME(0, m == -3);

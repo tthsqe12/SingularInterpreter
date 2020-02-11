@@ -68,10 +68,9 @@ ASSUME(0, defined(l) == 0);
 intmat im[2][2] = 1, 2, 3, 4;
 bigintmat bim[2][2] = 1, 2, 3, 4;
 proc dummyproc() {}
-number nn = 1;
 // a & b are ring r variables
-list l1 = 1, bigint(1), nn, dummyproc, "asd", 1..3, im, bim, list(1, 2), r, a, [a, 2*b], ideal(a, b);
-list l2 = list(1, bigint(1), nn, dummyproc, "asd", 1..3, im, bim, list(1, 2), r, a, [a, 2*b], ideal(a, b));
+list l1 = 1, bigint(1), number(1), dummyproc, "asd", 1..3, im, bim, list(1, 2), r, a, [a, 2*b], ideal(a, b);
+list l2 = list(1, bigint(1), number(1), dummyproc, "asd", 1..3, im, bim, list(1, 2), r, a, [a, 2*b], ideal(a, b));
 ASSUME(0, size(l1) == 13);
 ASSUME(0, size(l2) == 13);
 for(int i=1; i<=13; i++) {

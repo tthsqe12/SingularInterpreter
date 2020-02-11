@@ -1,6 +1,6 @@
 ########### type conversions ##################################################
 # each rt_convert2T(a) returns an OWNED object of type T, usually for an assignment
-# each rt_convert2T(a) is a UNIARY function with no known exceptions
+# each rt_convert2T(a) is a UNARY function with no known exceptions
 # each rt_cast2T(a...) is used when the type name T is used as a function, i.e. string(1), or list(1,2,3)
 
 # Singular maintains bools as ints, julia needs real bools for control flow
@@ -280,6 +280,8 @@ function rt_convert2number(a)
     return rt_defaultconstructor_number()
 end
 
+const rt_cast2number = rt_convert2number
+
 #### poly
 
 # return a new libSingular.poly not owned by any instance of a SingularType
@@ -501,5 +503,3 @@ function rt_cast2matrix(a...)
     rt_error("matrix cast not implemented")
     return rt_defaultconstructor_matrix()
 end
-
-
