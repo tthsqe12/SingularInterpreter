@@ -652,6 +652,12 @@ function rt_set_current_ring(a::Sring)
     rtGlobal.callstack[n].current_ring = a
 end
 
+function rtcall(::Bool, f::Smap, a::Spoly)
+    # TODO: this is completely wrong
+    r = libSingular.maMapPoly(a.value, f.source.value, f.value, f.parent.value)
+    return Spoly(r, a.parent)
+end
+
 function rtcall(allow_name_ret::Bool, f::Sproc, a::SName)
     return f.func(rt_make(a.name))
 end
