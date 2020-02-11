@@ -691,7 +691,7 @@ function rt_assign_last(a::Smap, b::STuple)
     if length(b.list) == 1
         return rt_convert2map(b.list[1])
     else
-        @error_check(!isa(b.list[1], Sring), "assignment to map expects a ring first")
+        @error_check(isa(b.list[1], Sring), "assignment to map expects a ring first")
         libSingular.ma_Delete(a.value, a.parent.value)
         a.source = popfirst!(b.list)
         a.value = libSingular.maInit(0)

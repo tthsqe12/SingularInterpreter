@@ -562,13 +562,13 @@ end
 
 function rt_convert2matrix(a::Union{Int, BigInt, Sintvec, Sintmat})
     R = rt_basering()
-    @error_check(R.valid, "cannot convert to a module when no basering is active")
+    @error_check(R.valid, "cannot convert to a matrix when no basering is active")
     r = rt_convert2matrix_ptr(a, R)
     return Smatrix(r, R, false)
 end
 
 function rt_convert2matrix(a::Union{Snumber, Spoly, Svector, Sideal, Smodule})
-    @warn_check_rings(a.parent, rt_basering(), "converting to a module outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "converting to a matrix outside of basering")
     r = rt_convert2matrix_ptr(a, a.parent)
     return Smatrix(r, a.parent, false)
 end
