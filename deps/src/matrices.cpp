@@ -15,6 +15,8 @@ void singular_define_matrices(jlcxx::Module & Singular)
         return id_Matrix2Module(M, r);
     });
 
+    Singular.method("id_Module2Matrix", &id_Module2Matrix);
+
     Singular.method("mp_getindex", [](matrix M, int i, int j) {
         return (poly)MATELEM(M, i, j);
     });
@@ -22,6 +24,20 @@ void singular_define_matrices(jlcxx::Module & Singular)
     Singular.method("mp_setindex", [](matrix M, int i, int j, poly p, ring r) {
         p_Delete(&MATELEM(M, i, j), r);
         MATELEM(M, i, j) = p;
+    });
+
+    /* v seems to be unaltered by this operation */
+    Singular.method("mp_from_vector", [](poly v, ring r) {
+        matrix m=(matrix)id_Vec2Ideal(v, r);
+        int h=MATCOLS(m);
+        MATCOLS(m)=MATROWS(m);
+        MATROWS(m)=h;
+        m->rank=h;
+        return m;
+    });
+
+    Singular.method("mp_from_ideal", [](ideal h) {
+        return (matrix) h;
     });
 
     Singular.method("mp_Copy",
@@ -48,4 +64,25 @@ void singular_define_matrices(jlcxx::Module & Singular)
         omFree(str_ptr);
         return s;
     });
+
+    Singular.method("mp_zero", [](matrix a, ring r) {
+        for (int i = 0; i < a->nrows*a->ncols; i++)
+            p_Delete(a->m + i, r);  // sets it back to zero
+    });
+
+    /* append b to a starting at zero index ai; b is completely consumed by this operation */
+    Singular.method("mp_append", [](matrix a, int ai, matrix b, ring r) {
+        int bi = 0;
+        while (ai < a->nrows*a->ncols && bi < b->nrows*b->ncols)
+        {
+            poly t = a->m[bi];
+            a->m[ai] = b->m[bi];
+            b->m[bi] = t;
+            ai++;
+            bi++;
+        }
+        mp_Delete(&b, r);
+        return ai;
+    });
+
 }

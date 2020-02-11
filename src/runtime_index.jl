@@ -426,13 +426,19 @@ function rtgetindex(a::Union{Sideal, Smodule}, i::Sintvec)
     return length(r) == 1 ? r[1] : STuple(r)
 end
 
-
-function rt_setindex(a::Union{Sideal, Smodule}, i::Int, b)
-    @assert !isa(b, STuple)    
+function rt_setindex(a::Sideal, i::Int, b)
+    @assert !isa(b, STuple)
     @error_check(i > 0, "ideal index must be positive for assignment")
-    b1 = isa(a, Sideal) ? rt_convert2poly_ptr(b, a.parent) :
-                          rt_convert2vector_ptr(b, a.parent)
+    b1 = rt_convert2poly_ptr(b, a.parent)
     libSingular.id_setindex_fancy(a.value, Cint(i), b1, a.parent.value)
+    return
+end
+
+function rt_setindex(a::Smodule, i::Int, b)
+    @assert !isa(b, STuple)
+    @error_check(i > 0, "ideal index must be positive for assignment")
+    b1 = rt_convert2vector_ptr(b, a.parent)
+    libSingular.mo_setindex_fancy(a.value, Cint(i), b1, a.parent.value)
     return
 end
 

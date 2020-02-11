@@ -103,6 +103,59 @@ auto id_Std_helper(ideal a, ring b, bool complete_reduction = false)
     return id;
 }
 
+
+/* 1-based with auto resize */
+void id_setindex_fancy(ideal h, int n, poly p, ring r)
+{
+    if (n <= 0)
+        return;
+    int old_elems = IDELEMS(h);
+    if (n <= old_elems)
+    {
+        if (h->m[n - 1] != NULL)
+            p_Delete(&h->m[n - 1], r);
+    }
+    else
+    {
+        poly * old_polys = h->m;
+        poly * new_polys = (poly *)omAlloc0(n*sizeof(poly));
+        for (int i = 0; i < old_elems; i++)
+            new_polys[i] = old_polys[i];
+        if (old_elems > 0)
+            omFreeSize((ADDRESS)old_polys, sizeof(poly)*old_elems);
+        h->m = new_polys;
+        IDELEMS(h) = n;
+    }
+    h->m[n - 1] = p;
+};
+
+/* append b to a; b is completely consumed by this operation */
+void id_append(ideal a, ideal b, ring r)
+{
+    int belems = IDELEMS(b);
+    int aelems = IDELEMS(a);
+    if (belems > 0)
+    {
+        poly * old_polys = a->m;
+        poly * new_polys = (poly *)omAlloc0((aelems + belems)*sizeof(poly));
+        for (int i = 0; i < aelems; i++)
+            new_polys[i] = old_polys[i];
+        if (aelems > 0)
+            omFreeSize((ADDRESS)old_polys, sizeof(poly)*aelems);
+        for (int i = 0; i < belems; i++)
+        {
+            new_polys[aelems + i] = b->m[i];
+            b->m[i] = NULL;
+        }
+        a->m = new_polys;
+        IDELEMS(a) = aelems + belems;
+    }
+    id_Delete(&b, r);
+    return;
+}
+
+
+
 void singular_define_ideals(jlcxx::Module & Singular)
 {
     Singular.method("id_Delete",
@@ -115,52 +168,34 @@ void singular_define_ideals(jlcxx::Module & Singular)
     Singular.method("setindex_internal",
                     [](ideal r, poly n, int o) { return r->m[o] = n; });
 
-    Singular.method("id_setindex_fancy", [](ideal h, int n, poly p, ring r) {
-        if (n <= 0)
-            return;
-        int old_elems = IDELEMS(h);
-        if (n <= old_elems)
-        {
-            if (h->m[n - 1] != NULL)
-                p_Delete(&h->m[n - 1], r);
-        }
-        else
-        {
-            poly * old_polys = h->m;
-            poly * new_polys = (poly *)omAlloc0(n*sizeof(poly));
-            for (int i = 0; i < old_elems; i++)
-                new_polys[i] = old_polys[i];
-            if (old_elems > 0)
-                omFreeSize((ADDRESS)old_polys, sizeof(poly)*old_elems);
-            h->m = new_polys;
-            IDELEMS(h) = n;
-        }
-        h->m[n - 1] = p;
+    Singular.method("id_setindex_fancy", &id_setindex_fancy);
+
+    /* modules have to keep a bound on the rank */
+    Singular.method("mo_setindex_fancy", [](ideal m, int n, poly p, ring r) {
+        long maxcomp = 0;
+        if ((p!=NULL) && (p_GetComp(p, r)!=0))
+            maxcomp = p_MaxComp(p, r);
+        id_setindex_fancy(m, n, p, r);
+        m->rank=si_max(m->rank,maxcomp);
     });
 
     /* append b to a; b is completely consumed by this operation */
-    Singular.method("id_append", [](ideal a, ideal b, ring r) {
-        int belems = IDELEMS(b);
-        int aelems = IDELEMS(a);
-        if (belems > 0)
+    Singular.method("id_append", &id_append);
+
+    /* modules have to keep a bound on the rank */
+    Singular.method("mo_append", [](ideal a, ideal b, ring r) {
+        // maybe just use maxcomp = b->rank ?
+        long maxcomp = 0;
+        for (int i = 0; i < b->ncols; i++)
         {
-            poly * old_polys = a->m;
-            poly * new_polys = (poly *)omAlloc0((aelems + belems)*sizeof(poly));
-            for (int i = 0; i < aelems; i++)
-                new_polys[i] = old_polys[i];
-            if (aelems > 0)
-                omFreeSize((ADDRESS)old_polys, sizeof(poly)*aelems);
-            for (int i = 0; i < belems; i++)
-            {
-                new_polys[aelems + i] = b->m[i];
-                b->m[i] = NULL;
-            }
-            a->m = new_polys;
-            IDELEMS(a) = aelems + belems;
+            poly p = b->m[i];
+            if ((p!=NULL) && (p_GetComp(p, r)!=0))
+                maxcomp = si_max(maxcomp, p_MaxComp(p, r));
         }
-        id_Delete(&b, r);
-        return;
+        id_append(a, b, r);
+        a->rank=si_max(a->rank,maxcomp);
     });
+
 
     Singular.method("getindex",
                     [](ideal r, int o) { return (poly)(r->m[o]); });
@@ -319,4 +354,22 @@ void singular_define_ideals(jlcxx::Module & Singular)
         rChangeCurrRing(r);
         return idMinBase(I);
     });
+
+    Singular.method("maInit", [] (int ncols) {
+        map m = (map)idInit(ncols, 1);
+        m->preimage = omStrDup("???");
+        return m;
+    });
+
+    Singular.method("ma_Delete", [](map m, ring r) {
+        omFreeBinAddr((ADDRESS)m->preimage);
+        m->preimage=NULL;
+        id_Delete((ideal*)&m,r);
+    });
+
+    Singular.method("maCopy", &maCopy);
+
+    Singular.method("ma_ncols", [](map m) {return m->ncols;});
+
+    Singular.method("ma_getindex0", [](map m, int i) {return m->m[i];});
 }

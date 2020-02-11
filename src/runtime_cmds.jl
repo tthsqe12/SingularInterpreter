@@ -211,6 +211,21 @@ function rtsize(a::Sideal)
 end
 
 
+#### nrows ####
+
+function rtnrows(a::Sintvec)
+    return Int(length(a.value))
+end
+
+function rtnrows(a::Union{Sintmat, Sbigintmat})
+    return size(a.value)[1]
+end
+
+function rtnrows(a::Smatrix)
+    return Int(libSingular.nrows(a.value))
+end
+
+
 #### ncols ####
 
 function rtncols(a::STuple)
@@ -218,12 +233,15 @@ function rtncols(a::STuple)
 end
 
 function rtncols(a::Union{Sintmat, Sbigintmat})
-    nrows, ncols = size(a.value)
-    return ncols
+    return size(a.value)[2]
 end
 
-function rtncols(a::Sideal)
+function rtncols(a::Union{Sideal, Smodule})
     return Int(libSingular.id_ncols(a.value))
+end
+
+function rtncols(a::Smatrix)
+    return Int(libSingular.ncols(a.value))
 end
 
 #### nvars ####

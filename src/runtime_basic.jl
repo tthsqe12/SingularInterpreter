@@ -50,6 +50,8 @@ Base.iterate(a::Smodule) = iterate(a, 0)
 Base.iterate(a::Smodule, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Smatrix) = iterate(a, 0)
 Base.iterate(a::Smatrix, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Smap) = iterate(a, 0)
+Base.iterate(a::Smap, state) = (state == 0 ? (a, 1) : nothing)
 # special case for STuple, which iterates over its elements
 Base.iterate(a::STuple) = iterate(a.list)
 Base.iterate(a::STuple, state) = iterate(a.list, state)
@@ -95,8 +97,8 @@ rt_copy_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector
 
 # mutable types
 
-object_is_tmp(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smodule, Smatrix}) = a.tmp
-object_is_own(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smodule, Smatrix}) = !a.tmp
+object_is_tmp(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smodule, Smatrix, Smap}) = a.tmp
+object_is_own(a::Union{Sintvec, Sintmat, Sbigintmat, Slist, Sideal, Smodule, Smatrix, Smap}) = !a.tmp
 
 function rt_copy_tmp(a::Union{Sintvec, Sintmat, Sbigintmat})
     if object_is_tmp(a)
@@ -167,6 +169,25 @@ function rt_copy_own(a::Smatrix)
     end
 end
 
+function rt_copy_tmp(a::Smap)
+    if object_is_tmp(a)
+        return a
+    else
+        return Smap(libSingular.maCopy(a.value, a.parent.value), a.source, a.parent, true)
+    end
+end
+
+function rt_copy_own(a::Smap)
+    if object_is_tmp(a)
+        a.tmp = false
+        return a
+    else
+        return Smap(libSingular.maCopy(a.value, a.parent.value), a.source, a.parent, false)
+    end
+end
+
+
+
 
 # unsafe promotion to tmp object
 
@@ -194,7 +215,7 @@ rt_promote(a::Spoly) = a
 
 rt_promote(a::Svector) = a
 
-function rt_promote(a::Union{Slist, Sideal, Smodule, Smatrix})
+function rt_promote(a::Union{Slist, Sideal, Smodule, Smatrix, Smap})
     a.tmp = true
     return a
 end
@@ -629,6 +650,10 @@ function rt_set_current_ring(a::Sring)
     rtGlobal.callstack[n].current_ring = a
 end
 
+function rtcall(allow_name_ret::Bool, f::Sproc, a::SName)
+    return f.func(rt_make(a.name))
+end
+
 function rtcall(allow_name_ret::Bool, f::Sproc, v...)
     return f.func(v...)
 end
@@ -747,6 +772,7 @@ rt_typedata(::Svector)     = "vector"
 rt_typedata(::Sideal)      = "ideal"
 rt_typedata(::Smodule)     = "module"
 rt_typedata(::Smatrix)     = "matrix"
+rt_typedata(::Smap)        = "map"
 rt_typedata(a::STuple) = String[rt_typedata(i) for i in a.list]
 
 rt_typedata_to_singular(a::String) = Sstring(a)

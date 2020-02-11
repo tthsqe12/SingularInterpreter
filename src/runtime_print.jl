@@ -75,26 +75,26 @@ function rt_print(a::Sring)
 end
 
 function rt_print(a::Snumber)
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing a number outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "printing a number outside of basering")
     libSingular.StringSetS("")
     libSingular.n_Write(a.value, a.parent.value)
     return libSingular.StringEndS()
 end
 
 function rt_print(a::Spoly)
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing a polynomial outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "printing a polynomial outside of basering")
     s = libSingular.p_String(a.value, a.parent.value)
     return s
 end
 
 function rt_print(a::Svector)
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing a vector outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "printing a vector outside of basering")
     s = libSingular.p_String(a.value, a.parent.value)
     return s
 end
 
 function rt_print(a::Sideal)
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "printing an ideal outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "printing an ideal outside of basering")
     s = ""
     n = Int(libSingular.ngens(a.value))
     first = true
@@ -146,6 +146,24 @@ function rt_print(a::Smatrix)
     end
     if first
         s = "empty matrix"
+    end
+    return s
+end
+
+function rt_print(a::Smap)
+    @warn_check_rings(a.parent, rt_basering(), "printing a map outside of basering")
+    s = ""
+    n = Int(libSingular.ma_ncols(a.value))
+    first = true
+    for i in 1:n
+        p = libSingular.ma_getindex0(a.value, Cint(i - 1))
+        t = libSingular.p_String(p, a.parent.value)
+        h = (first ? "map[" : "   [") * string(i) * "]: "
+        s *= h * t * (i < n ? "\n" : "")
+        first = false
+    end
+    if first
+        s = "empty map"
     end
     return s
 end

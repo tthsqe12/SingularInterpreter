@@ -329,9 +329,37 @@ function rt_matrix_finalizer(a::Smatrix)
 end
 
 
+#### singular type "map"     mutable like a 1d array of poly in the singular language
+mutable struct Smap
+    value::libSingular.map          # dense 1d array of poly
+    source::Sring                   # map from SOURCE
+    parent::Sring                   # to TARGET (parent)
+    tmp::Bool
+
+    function Smap(value_::libSingular.map, source_::Sring, parent_::Sring, tmp_::Bool)
+        a = new(value_, source_, parent_, tmp_)
+        finalizer(rt_map_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
+end
+
+sing_ptr(i::Smap) = i.value
+sing_ring(i::Smap) = i.parent
+
+function rt_map_finalizer(a::Smap)
+    libSingular.ma_Delete(a.value, a.parent.value)
+    rt_ring_finalizer(a.parent)
+end
+
+
+
+
+
 # the types that are always ring dependent, i.e. the .parent member is always valid
 # Slist is not included. lists are just special.
-const SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smatrix}
+const SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smatrix, Smap}
 
 
 # TODO: a SingularType encompassing all types including newstruct's

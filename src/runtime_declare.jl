@@ -562,4 +562,41 @@ function rt_parameter_matrix(a::SName, b)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2matrix(b)))
 end
 
+#### map
+function rt_defaultconstructor_map()
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct a map when no basering is active")
+    ma = libSingular.maInit(1)
+    return Smap(ma, R, R, false)
+end
+
+function rt_new_empty_map(S::Sring, temp::Bool = true)
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct a map when no basering is active")
+    ma = libSingular.ma_Init(0)
+    return Smap(ma, S, R, temp)
+end
+
+function rt_declare_map(a::Vector{SName})
+    for i in a
+        rt_declare_map(i)
+    end
+end
+
+function rt_declare_map(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(a.name, Smap)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_map()))
+    else
+        d = rt_check_declaration_global_ring_dep(a.name, Smap)
+        d[a.name] = rt_defaultconstructor_map()
+    end
+    return nothing
+end
+
+function rt_parameter_map(a::SName, b)
+    @expensive_assert !rt_local_identifier_exists(a.name)
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2map(b)))
+end
 
