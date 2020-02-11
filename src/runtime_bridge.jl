@@ -26,17 +26,21 @@ end
 set_arg1(x; withcopy=false, withname=false) = set_arg(x, 1; withcopy=withcopy, withname=withname)
 set_arg2(x; withcopy=false, withname=false) = set_arg(x, 2; withcopy=withcopy, withname=withname)
 
-get_res() = libSingular.get_leftv_res()
+function get_res(expectedtype::CMDS)
+    t, d = libSingular.get_leftv_res()
+    @assert t == Int(expectedtype)
+    d
+end
 
-get_res(::Type{Int}, ring=nothing) = Int(get_res())
+get_res(::Type{Int}, ring=nothing) = Int(get_res(INT_CMD))
 
 get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
-    T(libSingular.internal_void_to_poly_helper(get_res()), r)
+    T(libSingular.internal_void_to_poly_helper(get_res(_types_to_id[T])), r)
 
 get_res(::Type{Snumber}, r::Sring) =
-    Snumber(libSingular.internal_void_to_number_helper(get_res()), r)
+    Snumber(libSingular.internal_void_to_number_helper(get_res(NUMBER_CMD)), r)
 
-get_res(::Type{Sideal}, r::Sring, data=get_res()) =
+get_res(::Type{Sideal}, r::Sring, data=get_res(IDEAL_CMD)) =
     Sideal(libSingular.internal_void_to_ideal_helper(data), r, true)
 
 function get_res(::Type{Sintvec}, ring=nothing)
@@ -83,7 +87,7 @@ function get_res(::Type{STuple}, ring=nothing)
     end
 end
 
-get_res(::Type{Sstring}, ring=nothing) = Sstring(unsafe_string(Ptr{Cchar}(get_res())))
+get_res(::Type{Sstring}, ring=nothing) = Sstring(unsafe_string(Ptr{Cchar}(get_res(STRING_CMD))))
 
 function maybe_get_res(err, T)
     if err == 0

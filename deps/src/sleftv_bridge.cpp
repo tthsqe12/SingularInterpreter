@@ -134,9 +134,10 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("get_leftv_res",
                     [] {
                         void *res = (void*)lvres.Data();
+                        int t = lvres.Typ();
                         rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
                                                // this can check for its validity
-                        return res;
+                        return std::make_tuple(t, res);
                     });
 
     Singular.method("get_leftv_res_next",
