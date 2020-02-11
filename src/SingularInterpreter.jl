@@ -51,5 +51,6 @@ include("runtime_index.jl")
 include("runtime_print.jl")
 include("runtime_ops.jl")
 include("runtime_cmds.jl")
+include("runtime_bridge.jl")
 
 end # module
