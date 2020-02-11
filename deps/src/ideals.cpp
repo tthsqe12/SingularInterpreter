@@ -372,4 +372,27 @@ void singular_define_ideals(jlcxx::Module & Singular)
     Singular.method("ma_ncols", [](map m) {return m->ncols;});
 
     Singular.method("ma_getindex0", [](map m, int i) {return m->m[i];});
+
+    Singular.method("ma_append_matrix", [](map a, matrix b, ring r) {
+        int belems = b->nrows*b->ncols;
+        int aelems = a->ncols;
+        if (belems > 0)
+        {
+            poly * old_polys = a->m;
+            poly * new_polys = (poly *)omAlloc0((aelems + belems)*sizeof(poly));
+            for (int i = 0; i < aelems; i++)
+                new_polys[i] = old_polys[i];
+            if (aelems > 0)
+                omFreeSize((ADDRESS)old_polys, sizeof(poly)*aelems);
+            for (int i = 0; i < belems; i++)
+            {
+                new_polys[aelems + i] = b->m[i];
+                b->m[i] = NULL;
+            }
+            a->m = new_polys;
+            a->ncols = aelems + belems;
+        }
+        mp_Delete(&b, r);
+        return;
+    });
 }

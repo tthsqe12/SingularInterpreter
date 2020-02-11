@@ -697,7 +697,7 @@ function rt_assign_last(a::Smap, b::STuple)
         a.value = libSingular.maInit(0)
         while !isempty(b.list) && isa(b.list[1], Union{Int, BigInt, Sintvec, Sintmat, Snumber, Spoly, Svector, Sideal, Smodule, Smatrix})
             i = popfirst!(b.list)
-            libSingular.ma_append_matrix_first_row(a.value, rt_convert2matrix_ptr(i, a.parent), a.parent.value)
+            libSingular.ma_append_matrix(a.value, rt_convert2matrix_ptr(i, a.parent), a.parent.value)
         end
         @error_check(isempty(b.list), "argument mismatch in assignment")
         return a
