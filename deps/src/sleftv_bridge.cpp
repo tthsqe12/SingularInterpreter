@@ -132,11 +132,12 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
     Singular.method("get_leftv_res",
-                    [] {
+                    [](bool clear_curr_ring) {
                         void *res = (void*)lvres.Data();
                         int t = lvres.Typ();
-                        rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
-                                               // this can check for its validity
+                        if (clear_curr_ring)
+                            rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
+                                                   // this can check for its validity
                         return std::make_tuple(t, res);
                     });
 
@@ -175,16 +176,15 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         rChangeCurrRing(NULL);
                     });
 
-    Singular.method("lvres_list_length", [] {
-                                             assert(lvres.rtyp == LIST_CMD);
-                                             lists l = (lists)lvres.data;
+    Singular.method("list_length", [](void* data) {
+                                             lists l = (lists)data;
                                              return (jint)(l->nr+1);
                                          });
 
-    Singular.method("lvres_list_elt_i",
-                    [](int i) {
+    Singular.method("list_elt_i",
+                    [](void* data, int i) {
                         assert(lvres.rtyp == LIST_CMD);
-                        lists l = (lists)lvres.data;
+                        lists l = (lists)data;
                         assert(0 < i && i <= l->nr+1);
                         sleftv &e = l->m[i-1];
                         void *d;

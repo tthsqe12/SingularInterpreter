@@ -26,8 +26,8 @@ end
 set_arg1(x; withcopy=false, withname=false) = set_arg(x, 1; withcopy=withcopy, withname=withname)
 set_arg2(x; withcopy=false, withname=false) = set_arg(x, 2; withcopy=withcopy, withname=withname)
 
-function get_res(expectedtype::CMDS)
-    t, d = libSingular.get_leftv_res()
+function get_res(expectedtype::CMDS; clear_curr_ring=true)
+    t, d = libSingular.get_leftv_res(clear_curr_ring)
     @assert t == Int(expectedtype)
     d
 end
@@ -58,11 +58,12 @@ function get_res(::Type{Sintmat}, ring=nothing)
 end
 
 function get_res(::Type{Slist}, ring=nothing)
-    n = libSingular.lvres_list_length()
+    ld = get_res(LIST_CMD, clear_curr_ring=false) # TODO: clear_curr_ring later when possible
+    n = libSingular.list_length(ld)
     a = Vector{Any}(undef, n)
     cnt = 0
     for i = 1:n
-        (t, d) = libSingular.lvres_list_elt_i(i)
+        (t, d) = libSingular.list_elt_i(ld, i)
         @assert d != C_NULL
         T = convertible_types[CMDS(t)]
         a[i] = get_res(T, ring, d)
