@@ -177,24 +177,28 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("list_length", [](void* data) {
-                                             lists l = (lists)data;
-                                             return (jint)(l->nr+1);
-                                         });
+                                       lists l = (lists)data;
+                                       return (jint)(l->nr+1);
+                                   });
 
     Singular.method("list_elt_i",
                     [](void* data, int i) {
-                        assert(lvres.rtyp == LIST_CMD);
                         lists l = (lists)data;
                         assert(0 < i && i <= l->nr+1);
                         sleftv &e = l->m[i-1];
                         void *d;
                         int t;
-                        if (e.rtyp == IDEAL_CMD)
-                            d = (void*)idCopy((ideal)e.data);
-                        else if (e.rtyp == INTMAT_CMD)
-                            d = (void*)ivCopy((intvec*)e.data);
-                        else
+                        switch (e.rtyp) {
+                        case IDEAL_CMD:
+                            d = (void*)idCopy((ideal)e.data); break;
+                        case INTMAT_CMD:
+                            d = (void*)ivCopy((intvec*)e.data); break;
+                        case LIST_CMD:
+                        case INT_CMD:
+                            d = (void*)e.data; break;
+                        default:
                             d = (void*)NULL;
+                        }
                         return std::make_tuple(e.rtyp, d);
                     });
 

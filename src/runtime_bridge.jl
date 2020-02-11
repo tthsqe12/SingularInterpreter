@@ -32,7 +32,7 @@ function get_res(expectedtype::CMDS; clear_curr_ring=true)
     d
 end
 
-get_res(::Type{Int}, ring=nothing) = Int(get_res(INT_CMD))
+get_res(::Type{Int}, ring=nothing, data=get_res(INT_CMD)) = Int(data)
 
 get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
     T(libSingular.internal_void_to_poly_helper(get_res(_types_to_id[T])), r)
@@ -57,13 +57,13 @@ function get_res(::Type{Sintmat}, ring=nothing)
     Sintmat(im, true)
 end
 
-function get_res(::Type{Slist}, ring=nothing)
-    ld = get_res(LIST_CMD, clear_curr_ring=false) # TODO: clear_curr_ring later when possible
-    n = libSingular.list_length(ld)
+function get_res(::Type{Slist}, ring=nothing, data=nothing)
+    data = something(data, get_res(LIST_CMD, clear_curr_ring=false)) # TODO: clear_curr_ring later when possible
+    n = libSingular.list_length(data)
     a = Vector{Any}(undef, n)
     cnt = 0
     for i = 1:n
-        (t, d) = libSingular.list_elt_i(ld, i)
+        (t, d) = libSingular.list_elt_i(data, i)
         @assert d != C_NULL
         T = convertible_types[CMDS(t)]
         a[i] = get_res(T, ring, d)
