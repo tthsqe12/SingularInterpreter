@@ -2,6 +2,10 @@
 
 set_arg(x::Int, i; kw...) = libSingular.set_leftv_arg_i(x, i)
 
+function set_arg(x::BigInt, i; withcopy=false, withname=false)
+    GC.@preserve x libSingular.set_leftv_arg_i_bigint(pointer_from_objref(x), i)
+end
+
 function set_arg(x::Union{Spoly,Svector,Sideal,Snumber}, i; withcopy, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).value)
     libSingular.set_leftv_arg_i(x.value, Int(type_id(x)), i, withcopy)

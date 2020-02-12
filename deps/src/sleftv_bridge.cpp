@@ -62,6 +62,17 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         lv.rtyp = NUMBER_CMD;
                     });
 
+    Singular.method("set_leftv_arg_i_bigint",
+                    [](void *p, int i) {
+                        auto b = reinterpret_cast<__mpz_struct*>(p) ;
+                        number n = n_InitMPZ(b, coeffs_BIGINT);
+                        auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                        lv.Init();
+                        lv.data = (void*)n;
+                        lv.rtyp = BIGINT_CMD;
+                    });
+
+
     Singular.method("set_leftv_arg_i",
                     [](ring x, int i, bool copy) {
                         assert(0 <= i && i <= 2);
