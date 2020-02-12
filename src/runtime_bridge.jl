@@ -8,7 +8,7 @@ end
 
 function set_arg(x::Union{Spoly,Svector,Sideal,Snumber}, i; withcopy, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).value)
-    libSingular.set_leftv_arg_i(x.value, Int(type_id(x)), i, withcopy)
+    libSingular.set_leftv_arg_i(x.value, Int(type_id(typeof(x))), i, withcopy)
 end
 
 function set_arg(x::Sring, i; withcopy=false, withname=false)
@@ -39,7 +39,7 @@ end
 get_res(::Type{Int}, ring=nothing, data=get_res(INT_CMD)) = Int(data)
 
 get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
-    T(libSingular.internal_void_to_poly_helper(get_res(_types_to_id[T])), r)
+    T(libSingular.internal_void_to_poly_helper(get_res(type_id(T))), r)
 
 get_res(::Type{Snumber}, r::Sring) =
     Snumber(libSingular.internal_void_to_number_helper(get_res(NUMBER_CMD)), r)
@@ -160,22 +160,9 @@ const convertible_types = Dict{CMDS, Type}(
 # needed)
 push!(convertible_types, ANY_TYPE => Union{values(convertible_types)...})
 
-const _types_to_id = Dict(t => id for (id, t) in convertible_types)
-
-function type_id(x)
-    xt = get(_types_to_id, typeof(x), nothing)
-    if xt === nothing
-        for (t, id) in _types_to_id
-            id == ANY_TYPE && continue
-            if x isa t
-                _types_to_id[typeof(x)] = id
-                xt = id
-                break
-            end
-        end
-    end
-    @assert xt !== nothing
-    xt
+for (id, T) in convertible_types
+    id == ANY_TYPE && continue
+    @eval type_id(::Type{$T}) = $id
 end
 
 const error_expected_types = Dict(
