@@ -170,15 +170,37 @@ const error_expected_types = Dict(
     "leadexp" => "poly",
 )
 
+const type_conversions = Dict{Int,Vector{Int}}()
+
+let i = 0
+    while true
+        (it, ot) = libSingular.dConvertTypes(i)
+        it == 0 && break
+        its = push!(get!(type_conversions, ot, Int[]), it)
+        i += 1
+    end
+end
+
 let seen = Set{Int}([Int(PRINT_CMD)])
     # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
     i = 0
     valid_types = Int.(keys(convertible_types))
+    todo = Dict{Tuple{Int,Int},Int}()
+
     while true
         (cmd, res, arg) = libSingular.dArith1(i)
         cmd == 0 && break # end of dArith1
         i += 1
+        todo[cmd, arg] = res
+    end
 
+    for ((cmd, arg), res) in todo
+        for argi in get(type_conversions, arg, ())
+            get!(todo, (cmd, argi), res)
+        end
+    end
+
+    for ((cmd, arg), res) in todo
         res in valid_types && arg in valid_types || continue
 
         res = CMDS(res)

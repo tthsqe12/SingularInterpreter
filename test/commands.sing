@@ -40,3 +40,5 @@ list pf = primefactors(number(369));
 ASSUME(0, pf == list(list(3, 41), list(2, 1), 1));
 pf = primefactors(bigint(369));
 ASSUME(0, pf == list(list(3, 41), list(2, 1), 1));
+pf = primefactors(369);
+ASSUME(0, pf == list(list(3, 41), list(2, 1), 1));

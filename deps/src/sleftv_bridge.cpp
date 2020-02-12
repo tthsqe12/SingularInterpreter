@@ -318,6 +318,17 @@ struct sValCmdM
   short valid_for;
 };
 
+typedef void *   (*iiConvertProc)(void * data);
+typedef void    (*iiConvertProcL)(leftv out,leftv in);
+
+struct sConvertTypes
+{
+  int i_typ;
+  int o_typ;
+  iiConvertProc p;
+  iiConvertProcL pl;
+};
+
 #include <Singular/table.h>
 
 static void singular_define_table_h(jlcxx::Module & Singular) {
@@ -326,5 +337,9 @@ static void singular_define_table_h(jlcxx::Module & Singular) {
                         sValCmd1 r = dArith1[i];
                         return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg);
                     });
-
+    Singular.method("dConvertTypes",
+                    [](int i) {
+                        sConvertTypes r = dConvertTypes[i];
+                        return std::make_tuple((jint)r.i_typ, (jint)r.o_typ);
+                    });
 }
