@@ -198,12 +198,27 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return r;
                     });
 
-    Singular.method("lvres_array_get_dim",
-                    [](int d) {
-                        assert(1 <= d && d <= 2);
-                        assert(lvres.rtyp == INTVEC_CMD || lvres.rtyp == INTMAT_CMD);
-                        intvec *iv = (intvec*)lvres.data;
-                        return d == 1 ? iv->rows() : iv->cols();
+    Singular.method("lvres_array_get_dims",
+                    [] {
+                        jint r, c;
+                        intvec *iv;
+                        bigintmat *bim;
+                        switch (lvres.rtyp) {
+                        case INTVEC_CMD:
+                        case INTMAT_CMD:
+                            iv = (intvec*)lvres.data;
+                            r = iv->rows();
+                            c = iv->cols();
+                            break;
+                        case BIGINTMAT_CMD:
+                            bim = (bigintmat*)lvres.Data();
+                            r = bim->rows();
+                            c = bim->rows();
+                            break;
+                        default:
+                            assert(false);
+                        }
+                        return std::make_tuple(r, c);
                     });
 
     Singular.method("lvres_to_jlarray",
@@ -220,6 +235,18 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                             for (int i=0; i<iv.length(); ++i)
                                 a[i] = iv[i];
                         rChangeCurrRing(NULL);
+                    });
+
+    Singular.method("lvres_bim_get_elt_ij",
+                    [](int i, int j) {
+                        assert(lvres.rtyp == BIGINTMAT_CMD);
+                        bigintmat &bim = *(bigintmat*)lvres.Data();
+                        assert(1 <= i && i <= bim.rows() &&
+                               1 <= j && j <= bim.cols());
+                        if (i == bim.rows() && j == bim.cols())
+                            // TODO: fix this ugly hack
+                            rChangeCurrRing(NULL);
+                        return (void*)BIMATELEM(bim, i, j);
                     });
 
     Singular.method("list_length", [](void* data) {

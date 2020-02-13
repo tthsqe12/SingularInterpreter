@@ -62,17 +62,27 @@ get_res(::Type{Sideal}, r::Sring, data=get_res(IDEAL_CMD)) =
     Sideal(libSingular.internal_void_to_ideal_helper(data), r, true)
 
 function get_res(::Type{Sintvec}, ring=nothing)
-    d = libSingular.lvres_array_get_dim(1)
+    d = libSingular.lvres_array_get_dims()[1]
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv)
     Sintvec(iv, true)
 end
 
 function get_res(::Type{Sintmat}, ring=nothing)
-    d = libSingular.lvres_array_get_dim.((1, 2))
+    d = libSingular.lvres_array_get_dims()
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im))
     Sintmat(im, true)
+end
+
+function get_res(::Type{Sbigintmat}, ring=nothing)
+    r, c = libSingular.lvres_array_get_dims()
+    bim = Matrix{BigInt}(undef, r, c)
+    for i=1:r, j=1:c
+        bim[i,j] = get_res(BigInt, nothing,
+                           libSingular.lvres_bim_get_elt_ij(i,j))
+    end
+    Sbigintmat(bim, true)
 end
 
 function get_res(::Type{Slist}, ring=nothing, data=nothing)

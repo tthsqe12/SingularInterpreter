@@ -35,4 +35,12 @@ ASSUME(0, m[3, 3] == 0);
 
 kill m;
 bigintmat m[2][2] = 1, 2, 3, 4;
+
+ASSUME(0, ncols(m) == 2);
+ASSUME(0, nrows(m) == 2);
 ASSUME(0, det(m) == -2);
+
+bigintmat m2[2][2] = 1, 3, 2, 4;
+ASSUME(0, transpose(m) == m2);
+m2 = 2, 1, 0, 1;
+ASSUME(0, bareiss(m) == m2);
