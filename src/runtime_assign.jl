@@ -13,8 +13,8 @@
 #               | c = rt_assign_last(c, t)
 
 # The assignment to any variable "a" declared "def" must pass through rt_assign because:
-#   (1) The initial value of "a" is nothing
-#   (2) The first assignment to "a" with a non-nothing type on the rhs succeeds
+#   (1) The initial value of "a" is Snone
+#   (2) The first assignment to "a" with a non-Snone type on the rhs succeeds
 #       and essentially determines the type of "a"
 #   (3) Future assignments to "a" behave as if "a" had the type in (2)
 # Since we don't know if an assignment is the first or not - and even if we did,
@@ -207,23 +207,23 @@ function rt_incrementby(a::SName, b::Int)
 end
 
 
-#### assignment to nothing - used at least for the first set of a variable of type def
-function rt_assign_more(a::Nothing, b)
+#### assignment to Snone - used at least for the first set of a variable of type def
+function rt_assign_more(a::Snone, b)
     @assert !isa(b, STuple)
     return rt_copy_own(b), empty_tuple
 end
 
-function rt_assign_more(a::Nothing, b::STuple)
+function rt_assign_more(a::Snone, b::STuple)
     @error_check(!isempty(b), "too few arguments to assignment on right hand side")
     return rt_copy_own(popfirst!(b.list)), b
 end
 
-function rt_assign_last(a::Nothing, b)
+function rt_assign_last(a::Snone, b)
     @assert !isa(b, STuple)
     return rt_copy_own(b)
 end
 
-function rt_assign_last(a::Nothing, b::STuple)
+function rt_assign_last(a::Snone, b::STuple)
     @error_check(length(b.list) == 1, "argument mismatch in assignment")
     return rt_copy_own(b.list[1])
 end

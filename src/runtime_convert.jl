@@ -230,6 +230,9 @@ end
 
 function rt_convert2list(a::STuple)
     data = Any[rt_copy_own(x) for x in a.list]
+    while !isempty(data) && isa(data[end], Snone)
+        pop!(data)
+    end
     count = 0
     for i in data
         count += rt_is_ring_dep(i)
@@ -244,6 +247,9 @@ end
 
 function rt_cast2list(a...)
     data = Any[rt_copy_own(x) for x in a]
+    while !isempty(data) && isa(data[end], Snone)
+        pop!(data)
+    end
     count = 0
     for i in data
         count += rt_is_ring_dep(i)

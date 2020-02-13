@@ -3,12 +3,12 @@
 # insert(a, b, i) is supposed to return a tmp list with b inserted at position i+1
 function rtinsert(a::Slist, b, i::Int)
     @assert !isa(b, STuple)
-    @assert !isa(b, Nothing)
+    @assert !isa(b, Snone)
     B = rt_copy_own(b)
     A = rt_copy_tmp(a)
     @expensive_assert object_is_ok(A)
     if i >= length(A.value)
-        append!(A.value, collect(Iterators.repeated(nothing, i - length(A.value))))
+        append!(A.value, collect(Iterators.repeated(rtnothing, i - length(A.value))))
         push!(A.value, B)
     else
         insert!(A.value, i + 1, B)
@@ -24,13 +24,13 @@ function rtinsert(a::Slist, b, i::Int)
     return A
 end
 
-function rtinsert(a::Slist, b::Nothing, i::Int)
+function rtinsert(a::Slist, b::Snone, i::Int)
     A = rt_copy_tmp(a)
     @expensive_assert object_is_ok(A)
     if i >= length(A.value)
         return A
     else
-        insert!(A.value, i + 1, nothing)
+        insert!(A.value, i + 1, rtnothing)
     end
     @expensive_assert object_is_ok(A)
     return A
@@ -49,7 +49,7 @@ function rtdelete(a::Slist, i::Int)
     change = Int(rt_is_ring_dep(A.value[i]))
     deleteat!(A.value, i)
     # remove nothings on the end
-    while !isempty(A.value) && isa(A.value[end], Nothing)
+    while !isempty(A.value) && isa(A.value[end], Snone)
         pop!(A.value)
     end
     A.ring_dep_count -= change
@@ -306,7 +306,7 @@ function rtsystem(a::Sstring, b...)
     else
         rt_error("system($(a.name), ...) not implemented")
     end
-    return nothing
+    return rtnothing
 end
 
 function rtsystem_ticks_per_sec(b...)
@@ -317,7 +317,7 @@ function rtsystem_ticks_per_sec(b...)
         b1 = rt_convert2int(b[1])
         @error_check(b1 > 0, "--ticks-per-sec must be larger than 0")
         rtGlobal.rtimer_scale = max(1, div(UInt64(10)^9, UInt64(b1)))
-        return nothing
+        return rtnothing
     end
 end
 
@@ -340,7 +340,7 @@ function rtsystem_install(typ_::Sstring, cmd_::Sstring, proc::Sproc, nargs::Int)
     else
         rt_error("system install failed")
     end
-    return nothing
+    return rtnothing
 end
 
 function rt_get_voice()
@@ -388,26 +388,31 @@ end
 function rtERROR(s::Sstring, leaving::String)
     @error s.string * "\nleaving " * leaving
     error("runtime error")
+    return rtnothing
 end
 
 function rtERROR(v...)
     rt_error("ERROR should be called with a string")
+    return rtnothing
 end
 
 function rt_assume(a::Int, message::String)
     if a == 0
         rt_error(message)
     end
+    return rtnothing
 end
 
 function rt_assume(a, message::String)
     rt_error("expected int for boolean expression in ASSUME")
+    return rtnothing
 end
 
 ################### call back to the transpiler ###############################
 
 function rtload(a::Sstring)
     rt_load(false, a.string)
+    return rtnothing
 end
 
 function rt_load(export_names::Bool, path::String)
@@ -454,6 +459,7 @@ function rt_load(export_names::Bool, path::String)
 #        println("------- library loaded in ", trunc(1000*(t1 - t0)), " ms -------")
 #        println()
     end
+    return rtnothing
 end
 
 

@@ -10,7 +10,7 @@ There are no variables of type tuple.
 #### Nothing
 
 There are many different kinds of nothing in Singular with distinct behaviours,
-but we conflate them all into the single Julia nothing and hope for the best.
+but we conflate them all into the single Julia Snone and hope for the best.
 
 First, it is possible for elements of a Singular list to be nothing: l[1] after
     list l; l[2] = 0;
@@ -32,7 +32,7 @@ fails in the Singular interpreter because something on the "right side is not a 
 The Julia interpreter will fail in the first example because the length of the rhs tuple is checked.
 The Julia interpreter will fail in the second example because the assignment to b is done via
     b = convert2T(..)       # T is the stored type of b
-and the convert2T will throw an error on :nothing (unless b is nothing, where T would behave like def)
+and the convert2T will throw an error on Snone (unless b isa Snone, where T would behave like def)
 
 In general, it is allowed to pass nothing around in singular:
 list k, l;
@@ -67,8 +67,9 @@ struct STuple
     list::Vector{Any}
 end
 
-#### singular type nothing
-# Nothing same
+#### singular type none
+struct Snone
+end
 
 #### singular type ?unknown type?
 # TODO: possibly make this the same as Symbol. makeunknown would become a quote
@@ -458,9 +459,11 @@ end
 # when there is no current ring, the current ring is "invalid"
 const rtInvalidRing = Sring(false, libSingular.rDefault_null_helper(), 1)
 
+const rtnothing = Snone()
+
 const rtGlobal = rtGlobalState(String[],
                                true,
-                               nothing,
+                               Snone(),
                                time_ns(),
                                1000000000,
                                Dict(:Top => Dict{Symbol, Any}()),
@@ -472,7 +475,7 @@ const empty_tuple = STuple(Any[])
 
 function reset_runtime()
     rtGlobal.optimize_locals = true
-    rtGlobal.last_printed = nothing
+    rtGlobal.last_printed = Snone()
     rtGlobal.rtimer_base = time_ns()
     rtGlobal.rtimer_scale = 1000000000
     rtGlobal.vars = Dict(:Top => Dict{Symbol, Any}())

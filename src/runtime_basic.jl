@@ -24,8 +24,8 @@ rt_ prefix generally means it used internally and/or does not correspond to a cm
 # TODO: more meta, less typing
 Base.iterate(a::SName) = iterate(a, 0)
 Base.iterate(a::SName, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Nothing) = iterate(a, 0)
-Base.iterate(a::Nothing, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Snone) = iterate(a, 0)
+Base.iterate(a::Snone, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Snumber) = iterate(a, 0)
 Base.iterate(a::Snumber, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Sproc) = iterate(a, 0)
@@ -74,10 +74,10 @@ Base.iterate(a::STuple, state) = iterate(a.list, state)
 
 # second class types
 
-object_is_tmp(a::Nothing) = true
-object_is_own(a::Nothing) = true
-rt_copy_tmp(a::Nothing) = a
-rt_copy_own(a::Nothing) = a
+object_is_tmp(a::Snone) = true
+object_is_own(a::Snone) = true
+rt_copy_tmp(a::Snone) = a
+rt_copy_own(a::Snone) = a
 
 object_is_tmp(a::SName) = error("internal error: The name $a leaked through. Please report this.")
 object_is_own(a::SName) = error("internal error: The name $a leaked through. Please report this.")
@@ -193,7 +193,7 @@ end
 
 # unsafe promotion to tmp object
 
-rt_promote(a::Nothing) = a
+rt_promote(a::Snone) = a
 
 rt_promote(a::SName) = error("internal error: The name $a leaked through. Please report this.")
 
@@ -267,8 +267,8 @@ function object_is_ok(a::Slist)
             return false
         end
     end
-    if !isempty(a.value) && isa(a.value[end], Nothing)
-        println("list has a nothing on the end")
+    if !isempty(a.value) && isa(a.value[end], Snone)
+        println("list has a none on the end")
         return false
     end
     if count != a.ring_dep_count
@@ -764,7 +764,7 @@ end
 
 ##################### typeof ##################################################
 
-rt_typedata(::Nothing)     = "none"
+rt_typedata(::Snone)       = "none"
 rt_typedata(::Sproc)       = "proc"
 rt_typedata(::Int)         = "int"
 rt_typedata(::BigInt)      = "bigint"
@@ -801,7 +801,7 @@ function rtnewstruct(a::Sstring, b::Sstring)
     @error_check(!haskey(rtGlobal.newstruct_casts, a.value), "redefinition of newstruct $(a.value)")
     code = rt_convert_newstruct_decl(a.value, b.value)
     eval(code)
-    return
+    return rtnothing
 end
 
 function filter_lineno(ex::Expr)

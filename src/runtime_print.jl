@@ -25,7 +25,7 @@ function rt_format_matrix(a::Array{String, 2})
     return join(r)
 end
 
-function rt_print(a::Nothing)
+function rt_print(a::Snone)
     return ""
 end
 
@@ -174,7 +174,7 @@ function rt_print(a::STuple)
 end
 
 # the "print" function in Singular returns a string and does not print
-function rtprint(::Nothing)
+function rtprint(::Snone)
     return ""
 end
 
@@ -188,13 +188,13 @@ function rtprint(a::STuple)
 end
 
 # the semicolon in Singular is the method to actually print something
-function rt_printout(::Nothing)
+function rt_printout(::Snone)
     return  # we will probably be printing nothing often - very important to not print anything in this case
 end
 
 function rt_printout(a)
     @assert !isa(a, STuple)
-    @assert !isa(a, Nothing)
+    @assert !isa(a, Snone)
     rtGlobal.last_printed = rt_copy_own(a)
     println(rt_print(a))
 end

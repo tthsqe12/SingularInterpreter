@@ -630,7 +630,8 @@ function convert_expr(a::AstNode, env::AstEnv)
             cond = Expr(:call, :rt_assume_level_ok, level)
         end
         return Expr(:if, cond, Expr(:call, :rt_assume, make_nocopy(convert_expr(a.child[2], env)),
-                                                       "assumption "*astprint_pretty(a.child[2], env)*" failed"))
+                                                       "assumption "*astprint_pretty(a.child[2], env)*" failed"),
+                               :rtnothing)
     else
         throw(TranspileError("internal error in convert_expr"))
     end
@@ -2202,7 +2203,7 @@ function convert_proccmd(a::AstNode, env::AstEnv)
         join_blocks!(body, convert_lines(fxnbody, newenv))
         # procedures return nothing by default
         push!(body.args, Expr(:call, :rt_leavefunction))
-        push!(body.args, Expr(:return, :nothing))
+        push!(body.args, Expr(:return, :rtnothing))
         r = Expr(:block)
         push!(r.args, Expr(:function, Expr(:call, internalfunc, args...), body))
         procobj = Expr(:call, :Sproc, internalfunc, s, QuoteNode(env.package))
@@ -2532,7 +2533,7 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
         join_blocks!(body, convert_lines(fxnbody, newenv))
         # procedures return nothing by default
         push!(body.args, Expr(:call, :rt_leavefunction))
-        push!(body.args, Expr(:return, :nothing))
+        push!(body.args, Expr(:return, :rtnothing))
 
         jfunction = eval(Expr(:function, Expr(:call, internalfunc, args...), body))
         our_proc_object = Sproc(jfunction, s, env.package)

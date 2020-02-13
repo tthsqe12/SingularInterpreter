@@ -104,14 +104,14 @@ function rt_setindex(a::Slist, i::Int, b)
     @expensive_assert object_is_ok(a)
     A = a.value
     count_change = Int(rt_is_ring_dep(b))
-    if isa(b, Nothing)
+    if isa(b, Snone)
         if i > length(A)
             return
         end
         count_change = -Int(rt_is_ring_dep(A[i]))
-        A[i] = nothing
+        A[i] = rtnothing
         # putting nothing at the end pops the list
-        while !isempty(A) && isa(A[end], Nothing)
+        while !isempty(A) && isa(A[end], Snone)
             pop!(A)
         end
     else
@@ -121,7 +121,7 @@ function rt_setindex(a::Slist, i::Int, b)
             # nothing fills out a list when we assign past the end
             resize!(A, i)
             while org_len + 1 < i
-                A[org_len + 1] = nothing
+                A[org_len + 1] = rtnothing
                 org_len += 1
             end
         else

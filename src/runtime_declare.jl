@@ -89,7 +89,7 @@ end
 #### def
 
 function rt_defaultconstructor_def()
-    return nothing
+    return rtnothing
 end
 
 function rt_declare_def(a::Vector{SName})
