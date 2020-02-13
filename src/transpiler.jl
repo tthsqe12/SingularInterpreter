@@ -275,6 +275,14 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
         scan_elemexpr(a.child[1], env)
     elseif a.rule == @RULE_elemexpr(6)
         scan_elemexpr(a.child[1], env)
+        b = a.child[2].child
+        if length(b) == 1 && b[1].rule == @RULE_expr(2)
+            b, ok = scan_elemexpr_name_call(b[1].child[1], env)
+            if ok && isa(b, SName)
+                push!(env.possible_map_args, string(b.name))
+                return
+            end
+        end
         scan_exprlist(a.child[2], env)
     elseif a.rule == @RULE_elemexpr(7)
         scan_exprlist(a.child[1], env)
@@ -327,6 +335,7 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
     end
 end
 
+
 function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
     if a.rule == @RULE_elemexpr(99)
@@ -361,17 +370,26 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         else
             return c
         end
-    elseif a.rule == @RULE_elemexpr(6) || a.rule == @RULE_elemexpr(5)
-        if a.rule == @RULE_elemexpr(6)
-            b = convert_exprlist(a.child[2], env)::Array{Any}
-        else
-            b = Any[]
+    elseif a.rule == @RULE_elemexpr(5)
+        b = Any[]
+        h = a.child[1]
+        return Expr(:call, :rtcall, nested, convert_elemexpr(h, env, h.rule == @RULE_elemexpr(6)))
+    elseif a.rule == @RULE_elemexpr(6)
+        h = convert_elemexpr(a.child[1], env, a.child[1].rule == @RULE_elemexpr(6))
+        b = a.child[2].child
+        if length(b) == 1 && b[1].rule == @RULE_expr(2)
+            b, ok = convert_elemexpr_name_call(b[1].child[1], env)
+            if ok
+                if isa(b, SName) && haskey(env.declared_identifiers, string(b.name))
+                    return Expr(:call, :rtcall, nested, h, b.name)
+                else
+                    return Expr(:call, :rtcall, nested, h, b)
+                end
+            end
         end
-        c = a.child[1]
+        b = convert_exprlist(a.child[2], env)::Array{Any}
         # x(1)(2) => rtcall(false, rtcall(true, x, 1), 2)
-        return Expr(:call, :rtcall, nested,
-                                    convert_elemexpr(c, env, c.rule == @RULE_elemexpr(6)),
-                                    make_tuple_array_nocopy(b)...)
+        return Expr(:call, :rtcall, nested, h, make_tuple_array_nocopy(b)...)
     elseif a.rule == @RULE_elemexpr(7)
         b = convert_exprlist(a.child[1], env)::Array{Any}
         return Expr(:call, :rt_bracket_constructor, make_tuple_array_nocopy(b)...)
@@ -713,34 +731,38 @@ end
 
 function scan_elemexpr_name_call(a::AstNode, env::AstEnv)
     @assert @RULE_elemexpr(0) < a.rule < @RULE_elemexpr(100)
-    env.everything_is_screwed = true
     if a.rule == @RULE_elemexpr(99)
         scan_add_appearance(a.child[1]::String, env)
+        return makeunknown(a.child[1]::String), true
     elseif a.rule == @RULE_elemexpr(98)
+        env.everything_is_screwed = true
         scan_expr(a.child[1], env)
+        return nothing, true
     elseif a.rule == @RULE_elemexpr(6)
-        scan_elemexpr_name_call(a.child[1], env)
-        scan_exprlist(a.child[2], env)
-    else
-        throw(TranspileError("bad name construction"))
+        head, ok = scan_elemexpr_name_call(a.child[1], env)
+        if ok
+            scan_exprlist(a.child[2], env)
+            return nothing, true
+        end
     end
+    return nothing, false
 end
 
 function convert_elemexpr_name_call(a::AstNode, env::AstEnv)
     @assert @RULE_elemexpr(0) < a.rule < @RULE_elemexpr(100)
-    @assert isempty(env.declared_identifiers)
     if a.rule == @RULE_elemexpr(99)
-        return makeunknown(a.child[1]::String)
+        return makeunknown(a.child[1]::String), true
     elseif a.rule == @RULE_elemexpr(98)
         s = make_nocopy(convert_expr(b.child[1], env))
-        return Expr(:call, :rt_backtick, s)
+        return Expr(:call, :rt_backtick, s), true
     elseif a.rule == @RULE_elemexpr(6)
-        head = convert_elemexpr_name_call(a.child[1]::AstNode, env)
-        arg = convert_exprlist(a.child[2]::AstNode, env)
-        return Expr(:call, :rt_name_cross, head, make_tuple_array_nocopy(arg)...)
-    else
-        throw(TranspileError("bad name construction"))
+        head, ok = convert_elemexpr_name_call(a.child[1]::AstNode, env)
+        if ok
+            arg = convert_exprlist(a.child[2]::AstNode, env)
+            return Expr(:call, :rt_name_cross, head, make_tuple_array_nocopy(arg)...), true
+        end
     end
+    return nothing, false
 end
 
 
@@ -808,7 +830,8 @@ function push_incrementby!(out::Expr, left::AstNode, right::Int, env::AstEnv)
             push!(out.args, Expr(:(=), b, Expr(:call, :rt_assign_last, b, Expr(:call, :rtplus, b, right))))
         elseif a.rule == @RULE_elemexpr(6)
             @assert isempty(env.declared_identifiers)
-            s = convert_elemexpr_name_call(a, env)
+            s, ok = convert_elemexpr_name_call(a, env)
+            ok || throw(TranspileError("bad name construction"))
             push!(out.args, Expr(:call, :rt_incrementby, s, right))
         else
             throw(TranspileError("cannot increment/decrement lhs"))
@@ -863,7 +886,8 @@ function scan_assignment(left::AstNode, env::AstEnv)
             a.child[2].rule == @RULE_elemexpr(99) || throw(TranspileError("rhs of dot in assignment is no good"))
         elseif a.rule == @RULE_elemexpr(9)
         elseif a.rule == @RULE_elemexpr(6)
-            scan_elemexpr_name_call(a, env)
+            h, ok = scan_elemexpr_name_call(a, env)
+            ok || throw(TranspileError("bad name construction"))
         end
     elseif left.rule == @RULE_extendedid(1)
         scan_add_appearance(left.child[1]::String, env)
@@ -939,7 +963,8 @@ function push_assignment!(rest::Symbol, last::Bool, out::Expr, left::AstNode, ri
             push!(out.args, Expr(:(=), rest, Expr(:call, Symbol("rt_set_" * system_var_to_string[t]), right)))
         elseif a.rule == @RULE_elemexpr(6)
             @assert isempty(env.declared_identifiers)
-            s = convert_elemexpr_name_call(a, env)
+            s, ok = convert_elemexpr_name_call(a, env)
+            ok || throw(TranspileError("bad name construction"))
             if last
                 push!(out.args, Expr(:call, :rtassign_names_last, s, right))
             else
@@ -1557,7 +1582,8 @@ function scan_ringcmd_lhs(a::AstNode, env::AstEnv)
         scan_expr(a.child[1], env)
         env.everything_is_screwed = 1
     elseif a.rule == @RULE_elemexpr(6)
-        scan_elemexpr_name_call(a, env)
+        h, ok = scan_elemexpr_name_call(a, env)
+        ok || throw(TranspileError("bad name construction"))
     else
         throw(TranspileError("bad name of ring"))
     end
@@ -1577,7 +1603,9 @@ function convert_ringcmd_lhs(a::AstNode, env::AstEnv)
         @assert isempty(env.declared_identifiers)
         return Expr(:call, :rt_backtick, make_nocopy(convert_expr(a.child[1], env))), false
     elseif a.rule == @RULE_elemexpr(6)
-        return convert_elemexpr_name_call(a, env), false
+        b, ok = convert_elemexpr_name_call(a, env)
+        ok || throw(TranspileError("bad name construction"))
+        return b, false
     else
         throw(TranspileError("bad name of ring"))
     end
@@ -1644,7 +1672,8 @@ function prepend_killelem!(r::Expr, a::AstNode, env::AstEnv)
         push!(r.args, Expr(:call, :rtkill, Expr(:call, :rt_backtick, s)))
     elseif a.rule == @RULE_elemexpr(6)
         @assert isempty(env.declared_identifiers)
-        s = convert_elemexpr_name_call(a, env)
+        s, ok = convert_elemexpr_name_call(a, env)
+        ok || throw(TranspileError("bad name construction"))
         push!(r.args, Expr(:call, :rtkill, s))
     elseif a.rule == @RULE_elemexpr(37)
         l = AstNode[]
@@ -1714,7 +1743,9 @@ function convert_exportcmd(a::AstNode, env::AstEnv)
             s = make_nocopy(convert_expr(a.child[1], env))
             push!(r.args, Expr(:call, :rtexport, Expr(:call, :rt_backtick, s)))
         elseif b.rule == @RULE_elemexpr(6)
-            push!(r.args, Expr(:call, :rtexport, convert_elemexpr_name_call(b, env)))
+            c, ok = convert_elemexpr_name_call(b, env)
+            ok || throw(TranspileError("bad name construction"))
+            push!(r.args, Expr(:call, :rtexport, c))
         else
             throw(TranspileError("bad argument to export"))
         end
@@ -2187,7 +2218,8 @@ function convert_proccmd(a::AstNode, env::AstEnv)
                         true,   # return is allowed
                         true,   # at top
                         false, false, # nothing is screwed yet
-                        Dict{String, Int}(), Dict{String, String}())
+                        Dict{String, Int}(), Dict{String, String}(),
+                        Set{String}())
         if a.rule == @RULE_proccmd(2)
             fxnargs = a.child[3]
             fxnbody = a.child[4]
@@ -2475,7 +2507,8 @@ function execute(s::String; debuglevel::Int = 0)
                      false, # return not allowed
                      true,  # at top
                      true, true,    # everthing is screwed
-                     Dict{String, Int}(), Dict{String, String}())
+                     Dict{String, Int}(), Dict{String, String}(),
+                     Set{String}())
         expr = convert_toplines(ast, env)
         t1 = time()
 
@@ -2517,7 +2550,8 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
                         true,   # return is allowed
                         true,   # at top
                         false, false,   # nothing is screwed yet
-                        Dict{String, Int}(), Dict{String, String}())
+                        Dict{String, Int}(), Dict{String, String}(),
+                        Set{String})
         if a.rule == @RULE_proccmd(2)
             fxnargs = a.child[3]
             fxnbody = a.child[4]

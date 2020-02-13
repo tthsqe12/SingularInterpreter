@@ -75,7 +75,7 @@ void singular_define_matrices(jlcxx::Module & Singular)
         int bi = 0;
         while (ai < a->nrows*a->ncols && bi < b->nrows*b->ncols)
         {
-            poly t = a->m[bi];
+            poly t = a->m[ai];
             a->m[ai] = b->m[bi];
             b->m[bi] = t;
             ai++;

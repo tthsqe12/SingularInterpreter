@@ -360,7 +360,7 @@ end
 
 # the types that are always ring dependent, i.e. the .parent member is always valid
 # Slist is not included. lists are just special.
-const SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smatrix, Smap}
+const SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smodule, Smatrix, Smap}
 
 
 # TODO: a SingularType encompassing all types including newstruct's
@@ -407,6 +407,7 @@ mutable struct AstEnv
     rings_are_screwed::Bool                     # no local ring dependent variables may go into local storage
     appeared_identifiers::Dict{String, Int}     # name => some data
     declared_identifiers::Dict{String, String}  # name => type
+    possible_map_args::Set{String}              # names that could be used as arguments to maps
 end
 
 mutable struct AstLoadEnv

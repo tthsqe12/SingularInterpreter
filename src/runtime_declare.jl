@@ -552,7 +552,7 @@ function rt_declare_matrix(a::SName, nrows::Int = 1, ncols::Int = 1)
         rt_check_declaration_local(a.name, Smatrix)
         push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_matrix(nrows, ncols)))
     else
-        d = rt_check_declaration_global_ring_indep(a.name, Smatrix)
+        d = rt_check_declaration_global_ring_dep(a.name, Smatrix)
         d[a.name] = rt_defaultconstructor_matrix(nrows, ncols)
     end
 end

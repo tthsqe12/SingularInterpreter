@@ -2,3 +2,11 @@ ring r;
 map f = r, x^2, y^2, z^2;
 poly p = x + y;
 ASSUME(0, f(p) == x^2 + y^2);
+
+kill r;
+
+ring s = 0, (a, b, c), lp;
+poly p = a + b + c;
+ring r = 0, x, lp;
+map f = s, x, x^2, x^3;
+ASSUME(0, f(p) == x + x^2 + x^3);

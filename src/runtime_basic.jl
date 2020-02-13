@@ -652,14 +652,49 @@ function rt_set_current_ring(a::Sring)
     rtGlobal.callstack[n].current_ring = a
 end
 
-function rtcall(::Bool, f::Smap, a::Spoly)
-    # TODO: this is completely wrong
-    r = libSingular.maMapPoly(a.value, f.source.value, f.value, f.parent.value)
-    return Spoly(r, a.parent)
+function rtcall(::Bool, f::Smap, a::SName)
+    n = length(rtGlobal.callstack)
+    # from all local variables look for something called a.name from f.source
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_all_locals:length(rtGlobal.local_vars)
+        if vars[i].first == a.name && isa(vars[i].second, SingularRingType) &&
+                                      vars[i].second.parent === f.source
+            return rt_call(f, vars[i].second)
+        end
+    end
+    # global
+    if haskey(f.source.vars, a.name)
+        return rt_call(f, f.source.vars[a.name])
+    end
+    rt_error("could not apply the map to the name $(string(a.name))")
+    return rtnothing
+end
+
+function rt_call(f::Smap, a::SingularRingType)
+    @error_check_rings(f.source, a.parent, "map's source ring is wrong")
+    @warn_check_rings(f.parent, rt_basering(), "map's target is not basering")
+    if isa(a, Spoly) || isa(a, Svector)
+        r = libSingular.maMapPoly(a.value, f.source.value, f.value, f.parent.value)
+        return typeof(a)(r, f.parent)
+    elseif isa(a, Sideal) || isa(a, Smodule)
+        r = libSingular.maMapIdeal(a.value, f.source.value, f.value, f.parent.value)
+        return typeof(a)(r, f.parent, true)
+    elseif isa(a, Smatrix)
+        r = libSingular.maMapMatrix(a.value, f.source.value, f.value, f.parent.value)
+        return Smatrix(r, f.parent, true)
+    else
+        rt_error("internal error: unimplemented map operation")
+        return rtnothing
+    end
+end
+
+function rtcall(::Bool, f::Smap, a)
+    @assert !isa(f, Sname)
+    rt_error("objects of type `map` can only be called on names")
 end
 
 function rtcall(allow_name_ret::Bool, f::Sproc, a::SName)
-    return f.func(rt_make(a.name))
+    return f.func(rt_make(a))
 end
 
 function rtcall(allow_name_ret::Bool, f::Sproc, v...)
@@ -707,6 +742,10 @@ function rtcall(allow_name_ret::Bool, a::SName, v...)
 
     # indexed variable constructor
     return rtcall(allow_name_ret, SName[a], v...)
+end
+
+function rtcall(allow_name_ret::Bool, a::Vector{SName}, v::SName)
+    return rtcall(allow_name_ret, a, rt_make(v))
 end
 
 function rtcall(allow_name_ret::Bool, a::Vector{SName}, v...)

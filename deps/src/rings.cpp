@@ -588,11 +588,13 @@ void singular_define_rings(jlcxx::Module & Singular)
                        poly p_cp = p_Copy(p, r);
                        return p_Diff(p_cp, i, r);
     });
-    Singular.method("maMapPoly",
-                   [](poly map_p, ring pr, map im_id, ring im) {
-                       rChangeCurrRing(pr);
-                       nMapFunc nMap =n_SetMap(currRing->cf, im->cf);
-                       return maMapPoly(map_p, pr, (ideal)im_id, im, nMap);
+    Singular.method("maMapPoly", [](poly map_p, ring pr, map im_id, ring im) {
+        const ring origin = currRing;
+        rChangeCurrRing(pr);
+        nMapFunc nMap =n_SetMap(currRing->cf, im->cf);
+        poly p = maMapPoly(map_p, pr, (ideal)im_id, im, nMap);
+        rChangeCurrRing(origin);
+        return p;
     });
     Singular.method("p_GetOrder",
                    [](poly p, ring r) {
