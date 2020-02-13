@@ -165,7 +165,11 @@ function rtgetindex(x::Sstring, y)
     cmd2('[', y isa Sintvec ? STuple : Sstring)
 end
 
-# types which can currently be sent/fetched as sleftv to/from Singular
+const unimplemented_input = [LIST_CMD]
+const unimplemented_output = [RING_CMD]
+
+# types which can currently be sent/fetched as sleftv to/from Singular, modulo the
+# unimplemented lists above
 const convertible_types = Dict{CMDS, Type}(
     INT_CMD       => Int,
     BIGINT_CMD    => BigInt,
@@ -238,6 +242,7 @@ let seen = Set{Int}([Int(PRINT_CMD)])
                          "")
         name == "" && continue
 
+        (res in unimplemented_output || arg in unimplemented_input) && continue
         Sres = convertible_types[res]
         Sarg = convertible_types[arg]
 
