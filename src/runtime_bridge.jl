@@ -38,6 +38,10 @@ end
 
 get_res(::Type{Int}, ring=nothing, data=get_res(INT_CMD)) = Int(data)
 
+function get_res(::Type{BigInt}, ring=nothing, data=get_res(BIGINT_CMD))
+    Base.GMP.MPZ.set(unsafe_load(Ptr{BigInt}(data))) # makes a copy of internals
+end
+
 get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
     T(libSingular.internal_void_to_poly_helper(get_res(type_id(T))), r)
 
