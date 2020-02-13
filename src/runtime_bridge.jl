@@ -39,7 +39,12 @@ end
 get_res(::Type{Int}, ring=nothing, data=get_res(INT_CMD)) = Int(data)
 
 function get_res(::Type{BigInt}, ring=nothing, data=get_res(BIGINT_CMD))
-    Base.GMP.MPZ.set(unsafe_load(Ptr{BigInt}(data))) # makes a copy of internals
+    d = Int(data)
+    if d & 1 != 0 # immediate int
+        BigInt(d >> 2)
+    else
+        Base.GMP.MPZ.set(unsafe_load(Ptr{BigInt}(data))) # makes a copy of internals
+    end
 end
 
 get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
