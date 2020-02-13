@@ -1,4 +1,4 @@
-project(Singular)
+project(SingularInterpreter)
 
 cmake_minimum_required(VERSION 3.01)
 

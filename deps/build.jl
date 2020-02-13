@@ -21,7 +21,7 @@ println("Detected $cores CPU threads.")
 # INSTALL NTL
 
 const ntl="ntl-10.5.0"
-
+#=
 try
   run(`wget -q -nc -c -O "$wdir/$ntl.tar.gz" "http://www.shoup.net/ntl/$ntl.tar.gz"`)
 catch
@@ -81,14 +81,14 @@ catch
   catch
   end
   cd(wdir)
-end  
+end
 
 cd(srcs)
 run(`./autogen.sh`)
 cd(wdir)
 
 # out of source-tree building:
-try 
+try
    mkdir(joinpath(wdir, "Singular_build"))
 catch
 end
@@ -128,7 +128,7 @@ end
 print("Done building Singular")
 
 cd(wdir)
-
+=#
 push!(Libdl.DL_LOAD_PATH, "$pkgdir/local/lib")
 
 cd(oldwdir)
@@ -151,4 +151,3 @@ print("Running cmake")
 
 run(`make VERBOSE=1`)
 run(`make install`)
-

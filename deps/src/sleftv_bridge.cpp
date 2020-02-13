@@ -400,6 +400,11 @@ static void singular_define_table_h(jlcxx::Module & Singular) {
                         sValCmd1 r = dArith1[i];
                         return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg);
                     });
+    Singular.method("dArith2",
+                    [](int i) {
+                        sValCmd2 r = dArith2[i];
+                        return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg1, (jint)r.arg2);
+                    });
     Singular.method("dConvertTypes",
                     [](int i) {
                         sConvertTypes r = dConvertTypes[i];

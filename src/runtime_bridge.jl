@@ -138,13 +138,13 @@ result_type(::Sintmat, ::Sintmat) = Sintmat
 result_type(::Sintmat, ::Int) = Sintmat
 result_type(::Int, ::Sintmat) = Sintmat
 
-
+#=
 function rtminus(x, y)
         set_arg1(x, withcopy=!(x isa Sring))
         set_arg2(y, withcopy=!(y isa Sring))
         cmd2('-', result_type(x, y))
 end
-
+=#
 ### comparisons ###
 
 for (op, code) in (:rtless => '<',
@@ -177,12 +177,12 @@ const convertible_types = Dict{CMDS, Type}(
     STRING_CMD    => Sstring,
     INTVEC_CMD    => Sintvec,
     INTMAT_CMD    => Sintmat,
-    RING_CMD      => Sring,
+    RING_CMD      => Sring,  # return type not implemented
     NUMBER_CMD    => Snumber,
     POLY_CMD      => Spoly,
     IDEAL_CMD     => Sideal,
     VECTOR_CMD    => Svector,
-    LIST_CMD      => Slist,
+    LIST_CMD      => Slist, # input type not implemented
 )
 # NOTE: ANY_TYPE is used only for result types automatically (this has to be done
 # on a case by case basis for input, as in most cases the name of the variable is
@@ -205,46 +205,72 @@ let i = 0
     while true
         (it, ot) = libSingular.dConvertTypes(i)
         it == 0 && break
-        its = push!(get!(type_conversions, ot, Int[]), it)
+        its = push!(get!(type_conversions, ot, Int[ot]), it)
         i += 1
     end
 end
 
-let seen = Set{Int}([Int(PRINT_CMD)])
+let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1)])
     # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
-    i = 0
+    cnt = 0
     valid_types = Int.(keys(convertible_types))
-    todo = Dict{Tuple{Int,Int},Int}()
+    todo = Dict{Pair{Int,Union{Int,Tuple{Int,Int}}},Int}()
 
+    i = 0
     while true
         (cmd, res, arg) = libSingular.dArith1(i)
         cmd == 0 && break # end of dArith1
         i += 1
-        todo[cmd, arg] = res
+        todo[cmd => arg] = res
+    end
+    i = 0
+    while true
+        (cmd, res, arg1, arg2) = libSingular.dArith2(i)
+        cmd == 0 && break # end of dArith2
+        i += 1
+        todo[cmd => (arg1, arg2)] = res
     end
 
     for ((cmd, arg), res) in todo
-        for argi in get(type_conversions, arg, ())
-            get!(todo, (cmd, argi), res)
+        if arg isa Int
+            for argi in get(type_conversions, arg, ())
+                get!(todo, cmd => argi, res)
+            end
+        else
+            arg1, arg2 = arg
+            for arg1i in get(type_conversions, arg1, (arg1,))
+                for arg2i in get(type_conversions, arg2, (arg2,))
+                    if arg1 == Int(INTVEC_CMD) && arg2 == Int(INTVEC_CMD) && cmd == Int('-')
+                        @show CMDS(arg1i), CMDS(arg2i), res
+                       @show get(todo, cmd => (arg1i, arg2i), "NOTHING")
+                    end
+                    get!(todo, cmd => (arg1i, arg2i), res)
+                end
+            end
         end
     end
 
-    for ((cmd, arg), res) in todo
-        res in valid_types && arg in valid_types || continue
-
+    for ((cmd, args), res) in todo
+        if cmd == Int('-') && res == Int(INTVEC_CMD)
+            @show CMDS.([args..., res])
+        end
+        res in valid_types && issubset(args, valid_types) || continue
+        if args isa Int
+            args = (args,)
+        end
         res = CMDS(res)
-        arg = CMDS(arg)
+        args = CMDS.(args)
 
-        arg == ANY_TYPE && continue # handled differently
+        any(==(ANY_TYPE), args) && continue # handled differently
 
         name = something(get(cmd_to_string, cmd, nothing),
                          get(op_to_string, cmd, nothing),
                          "")
         name == "" && continue
 
-        (res in unimplemented_output || arg in unimplemented_input) && continue
+        (res in unimplemented_output || !isempty(intersect(args, unimplemented_input))) && continue
         Sres = convertible_types[res]
-        Sarg = convertible_types[arg]
+        Sargs = [convertible_types[arg] for arg in args]
 
         rtname = Symbol(:rt, name)
         rtauto = Symbol(:rt, name, :_auto)
@@ -253,22 +279,50 @@ let seen = Set{Int}([Int(PRINT_CMD)])
             expected = ", expected $name(`$expected`)"
         end
 
-        if !(cmd in seen)
+        if !((cmd, length(args)) in seen)
             # fall-back to rtauto so that definitions here don't overwrite
             # these which are manually implemented
-            @eval begin
-                $rtname(x) = $rtauto(x)
+            if length(args) == 1
+                @eval begin
+                    $rtname(x) = $rtauto(x)
 
-                if !($name in ("rvar",)) # TODO: fix this ugly hack (`rtrvar_auto` already implemented manually)
-                    $rtauto(x) = rt_error(string($name, "(`$(rt_typestring(x))`) failed", $expected))
+                    if !($name in ("rvar",)) # TODO: fix this ugly hack (`rtrvar_auto` already implemented manually)
+                        $rtauto(x) = rt_error(string($name, "(`$(rt_typestring(x))`) failed", $expected))
+                    end
+                end
+            elseif length(args) == 2
+                @eval begin
+                    $rtname(x, y) = $rtauto(x, y)
+                    $rtauto(x, y) = rt_error(string($name,
+                                                    "(`$(rt_typestring(x))`, `$(rt_typestring(y))`) failed",
+                                                    $expected))
                 end
             end
-            push!(seen, cmd)
+            push!(seen, (cmd, length(args)))
         end
+        cnt += 1
+        if length(Sargs) == 1
+            @eval function $rtauto(x::$(Sargs[1]))
+                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring}))
+                cmd1($cmd, $Sres, sing_ring(x))
+            end
+        else
+            @eval function $rtauto(x::$(Sargs[1]), y::$(Sargs[2]))
+                ring = nothing
+                if x isa SingularRingType
+                    ring = sing_ring(x)
+                    if y isa SingularRingType
+                        @error_check_rings(ring, sing_ring(y), "binary command $rtauto requires same base ring")
+                    end
+                elseif y isa SingularRingType
+                    ring = sing_ring(y)
+                end
 
-        @eval function $rtauto(x::$Sarg)
-            set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring}))
-            cmd1($cmd, $Sres, sing_ring(x))
+                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring}))
+                set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring}))
+                cmd2($cmd, $Sres, ring)
+            end
         end
     end
+    @show cnt
 end
