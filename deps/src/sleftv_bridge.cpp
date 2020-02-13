@@ -22,6 +22,15 @@ static idhdl string_idhdl(int i) {
     return x;
 }
 
+// hack to work around private members from bigintmat
+struct bigintmat_twin
+{
+   coeffs m_coeffs;
+   number *v;
+   int row;
+   int col;
+};
+
 static void singular_define_table_h(jlcxx::Module & Singular);
 
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
@@ -140,6 +149,32 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         lv.data = (void*)iv;
                         lv.rtyp = ismatrix ? (int)INTMAT_CMD : (int)INTVEC_CMD;
                     });
+
+    Singular.method("set_leftv_arg_i_bigintmat",
+                    [](jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2, int i) {
+                        assert(1 <= i && i <= 2);
+                        assert(d1 * d2 == a.size());
+                        assert(d1 >= 0 && d2 >= 0);
+                        auto &lv = i == 0 ? lvres : i == 1 ? lv1 : lv2;
+                        lv.Init();
+                        auto bim_ = new bigintmat_twin; // we initialize by hand do avoid useless
+                                                       // zero-initialization
+                        // cf. bigintmat.h
+                        bim_ -> m_coeffs = coeffs_BIGINT;
+                        bim_ -> row = d1;
+                        bim_ -> col = d2;
+                        int l = d1 * d2;
+                        bim_ -> v = (number *)omAlloc(sizeof(number)*l);
+                        auto bim = reinterpret_cast<bigintmat*>(bim_);
+                        for (int i = 0, i2=1; i2 <= d2; ++i2)
+                            for (int i1=1; i1 <= d1; ++i1) {
+                                auto b = reinterpret_cast<__mpz_struct*>(a[i++]);
+                                BIMATELEM(*bim, i1, i2) = n_InitMPZ(b, coeffs_BIGINT);
+                            }
+                        lv.data = (void*)bim;
+                        lv.rtyp = BIGINTMAT_CMD;
+                    });
+
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
     Singular.method("get_leftv_res",

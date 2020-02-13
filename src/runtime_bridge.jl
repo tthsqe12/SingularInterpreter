@@ -27,6 +27,11 @@ function set_arg(x::Union{Sintvec, Sintmat}, i; withcopy=false, withname=false)
     libSingular.set_leftv_arg_i(vec(x), x isa Matrix, size(x, 1), size(x, 2), i)
 end
 
+function set_arg(x::Sbigintmat, i; withcopy=false, withname=false)
+    a = Array{Any}(x.value) # TODO: optimize this method to avoid copying
+    GC.@preserve a libSingular.set_leftv_arg_i_bigintmat(vec(a), size(a, 1), size(a, 2), i)
+end
+
 set_arg1(x; withcopy=false, withname=false) = set_arg(x, 1; withcopy=withcopy, withname=withname)
 set_arg2(x; withcopy=false, withname=false) = set_arg(x, 2; withcopy=withcopy, withname=withname)
 
@@ -152,17 +157,18 @@ end
 
 # types which can currently be sent/fetched as sleftv to/from Singular
 const convertible_types = Dict{CMDS, Type}(
-    INT_CMD    => Int,
-    BIGINT_CMD => BigInt,
-    STRING_CMD => Sstring,
-    INTVEC_CMD => Sintvec,
-    INTMAT_CMD => Sintmat,
-    RING_CMD   => Sring,
-    NUMBER_CMD => Snumber,
-    POLY_CMD   => Spoly,
-    IDEAL_CMD  => Sideal,
-    VECTOR_CMD => Svector,
-    LIST_CMD   => Slist,
+    INT_CMD       => Int,
+    BIGINT_CMD    => BigInt,
+    BIGINTMAT_CMD => Sbigintmat,
+    STRING_CMD    => Sstring,
+    INTVEC_CMD    => Sintvec,
+    INTMAT_CMD    => Sintmat,
+    RING_CMD      => Sring,
+    NUMBER_CMD    => Snumber,
+    POLY_CMD      => Spoly,
+    IDEAL_CMD     => Sideal,
+    VECTOR_CMD    => Svector,
+    LIST_CMD      => Slist,
 )
 # NOTE: ANY_TYPE is used only for result types automatically (this has to be done
 # on a case by case basis for input, as in most cases the name of the variable is
