@@ -1,35 +1,45 @@
 ##################### the lazy way: use sleftv's ##########
 
-set_arg(x::Int, i; kw...) = libSingular.set_leftv_arg_i(x, i)
+const _sleftvs = Ptr{Cvoid}[]
+
+function sleftv(i::Int)
+    if isempty(_sleftvs)
+        libSingular.allocate_sleftv_array(resize!(_sleftvs, 2))
+    end
+    _sleftvs[i]
+end
+
+
+set_arg(x::Int, i; kw...) = libSingular.set_sleftv(sleftv(i), x)
 
 function set_arg(x::BigInt, i; withcopy=false, withname=false)
-    GC.@preserve x libSingular.set_leftv_arg_i_bigint(pointer_from_objref(x), i)
+    GC.@preserve x libSingular.set_sleftv_bigint(sleftv(i), pointer_from_objref(x))
 end
 
 function set_arg(x::Union{Spoly,Svector,Sideal,Snumber}, i; withcopy, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).value)
-    libSingular.set_leftv_arg_i(x.value, Int(type_id(typeof(x))), i, withcopy)
+    libSingular.set_sleftv(sleftv(i), x.value, Int(type_id(typeof(x))), withcopy)
 end
 
 function set_arg(x::Sring, i; withcopy=false, withname=false)
-    libSingular.set_leftv_arg_i(x.value, i, withcopy)
+    libSingular.set_sleftv(sleftv(i), x.value, withcopy)
 end
 
 function set_arg(x::Sstring, i; withcopy=false, withname=false)
     # TODO: handle gracefully when basering is not valid
     # (not that Singular would handle that gracefully...)
     libSingular.rChangeCurrRing(rt_basering().value)
-    libSingular.set_leftv_arg_i(x.value, i, withname)
+    libSingular.set_sleftv(sleftv(i), x.value, withname)
 end
 
 function set_arg(x::Union{Sintvec, Sintmat}, i; withcopy=false, withname=false)
     x = x.value
-    libSingular.set_leftv_arg_i(vec(x), x isa Matrix, size(x, 1), size(x, 2), i)
+    libSingular.set_sleftv(sleftv(i), vec(x), x isa Matrix, size(x, 1), size(x, 2))
 end
 
 function set_arg(x::Sbigintmat, i; withcopy=false, withname=false)
     a = Array{Any}(x.value) # TODO: optimize this method to avoid copying
-    GC.@preserve a libSingular.set_leftv_arg_i_bigintmat(vec(a), size(a, 1), size(a, 2), i)
+    GC.@preserve a libSingular.set_sleftv_bigintmat(sleftv(i), vec(a), size(a, 1), size(a, 2))
 end
 
 set_arg1(x; withcopy=false, withname=false) = set_arg(x, 1; withcopy=withcopy, withname=withname)
@@ -127,8 +137,11 @@ function maybe_get_res(err, T)
 end
 
 # return true when no-error
-cmd1(cmd::Union{Int,CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith1(Int(cmd)), T)
-cmd2(cmd::Union{Int,CMDS,Char}, T...) = maybe_get_res(libSingular.iiExprArith2(Int(cmd)), T)
+cmd1(cmd::Union{Int,CMDS,Char}, T...) =
+    maybe_get_res(libSingular.iiExprArith1(Int(cmd), sleftv(1)), T)
+
+cmd2(cmd::Union{Int,CMDS,Char}, T...) =
+    maybe_get_res(libSingular.iiExprArith2(Int(cmd), sleftv(1), sleftv(2)), T)
 
 result_type(::Sintvec, ::Sintvec) = Sintvec
 result_type(::Sintvec, ::Int) = Sintvec
