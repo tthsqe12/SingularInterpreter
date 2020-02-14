@@ -71,6 +71,11 @@ for (int i = 0; i < 2; i++)
 
 kill m;
 matrix m[2][2] = 1, x^3, y, z, x+y^4;
+matrix m2[2][2] = 1, x^3, 2*y, 2*z;
 
+ASSUME(0, rank(m) == 2);
 ASSUME(0, size(m) == 4);
 ASSUME(0, deg(m) == 3);
+ASSUME(0, m+m/z*m == m2);
+m2 = 0, 3*x^2, 0, 0;
+ASSUME(0, diff(m, x) == m2);

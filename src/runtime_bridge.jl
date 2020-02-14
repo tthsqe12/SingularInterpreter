@@ -83,6 +83,9 @@ get_res(::Type{Snumber}, r::Sring) =
 get_res(::Type{Sideal}, r::Sring, data=get_res(IDEAL_CMD)) =
     Sideal(libSingular.internal_void_to_ideal_helper(data), r, true)
 
+get_res(::Type{Smatrix}, r::Sring, data=get_res(MATRIX_CMD)) =
+    Smatrix(libSingular.internal_void_to_matrix_helper(data), r, true)
+
 function get_res(::Type{Sintvec}, ring=nothing)
     d = libSingular.lvres_array_get_dims()[1]
     iv = Vector{Int}(undef, d)
@@ -184,7 +187,7 @@ function rtgetindex(x::Sstring, y)
 end
 
 const unimplemented_input = [ANY_TYPE]
-const unimplemented_output = [RING_CMD, MATRIX_CMD]
+const unimplemented_output = [RING_CMD]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the
 # unimplemented lists above

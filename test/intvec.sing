@@ -40,4 +40,12 @@ ASSUME(0, v - intvec(1, 2, 3) == 0:3);
 ASSUME(0, intvec(1, 2) - intvec(3, 4, 5) == intvec(-2, -2, -5));
 
 ASSUME(0, v - 1 == intvec(0, 1, 2));
-ASSUME(0, 1 - v == intvec(0, -2, -3)); // TODO: is this a bug (to report) in Singular?
+
+// the following operation, `1-v`, is under-specified, it depends on whether
+// currRing is defined (in which case it converts arguments to `matrix`, and fails
+// if they don't have the same dimension) or not (in which case 1 is converted
+// to `intvec`;
+// TODO: re-enable this test (and update it to the "correct" (truthful to Singular)
+// behavior when the mechanism is implemented
+
+// ASSUME(0, 1 - v == intvec(0, -2, -3)); // TODO: is this a bug (to report) in Singular?
