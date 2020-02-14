@@ -282,6 +282,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                                            return old;
                                        });
 
+    Singular.method("clear_currRing", [] { rChangeCurrRing(NULL); });
+
     Singular.method("internal_void_to_ideal_helper",
                       [](void *x) { return reinterpret_cast<ideal>(x); });
 
