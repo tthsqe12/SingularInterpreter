@@ -86,26 +86,26 @@ get_res(::Type{Sideal}, r::Sring, data=get_res(IDEAL_CMD)) =
 get_res(::Type{Smatrix}, r::Sring, data=get_res(MATRIX_CMD)) =
     Smatrix(libSingular.internal_void_to_matrix_helper(data), r, true)
 
-function get_res(::Type{Sintvec}, ring=nothing)
-    d = libSingular.lvres_array_get_dims()[1]
+function get_res(::Type{Sintvec}, ring=nothing, data=get_res(INTVEC_CMD))
+    d = libSingular.lvres_array_get_dims(data, Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
-    libSingular.lvres_to_jlarray(iv)
+    libSingular.lvres_to_jlarray(iv, data, Int(INTVEC_CMD))
     Sintvec(iv, true)
 end
 
-function get_res(::Type{Sintmat}, ring=nothing)
-    d = libSingular.lvres_array_get_dims()
+function get_res(::Type{Sintmat}, ring=nothing, data=get_res(INTMAT_CMD))
+    d = libSingular.lvres_array_get_dims(data, Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
-    libSingular.lvres_to_jlarray(vec(im))
+    libSingular.lvres_to_jlarray(vec(im), data, Int(INTMAT_CMD))
     Sintmat(im, true)
 end
 
-function get_res(::Type{Sbigintmat}, ring=nothing)
-    r, c = libSingular.lvres_array_get_dims()
+function get_res(::Type{Sbigintmat}, ring=nothing, data=get_res(BIGINTMAT_CMD))
+    r, c = libSingular.lvres_array_get_dims(data, Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
         bim[i,j] = get_res(BigInt, nothing,
-                           libSingular.lvres_bim_get_elt_ij(i,j))
+                           libSingular.lvres_bim_get_elt_ij(data, Int(BIGINTMAT_CMD), i,j))
     end
     Sbigintmat(bim, true)
 end

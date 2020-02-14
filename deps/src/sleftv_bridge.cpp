@@ -178,19 +178,19 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("lvres_array_get_dims",
-                    [] {
+                    [] (void* data, int type){
                         jint r, c;
                         intvec *iv;
                         bigintmat *bim;
-                        switch (lvres.rtyp) {
+                        switch (type) {
                         case INTVEC_CMD:
                         case INTMAT_CMD:
-                            iv = (intvec*)lvres.data;
+                            iv = (intvec*)data;
                             r = iv->rows();
                             c = iv->cols();
                             break;
                         case BIGINTMAT_CMD:
-                            bim = (bigintmat*)lvres.Data();
+                            bim = (bigintmat*)data;
                             r = bim->rows();
                             c = bim->rows();
                             break;
@@ -201,12 +201,12 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("lvres_to_jlarray",
-                    [](jlcxx::ArrayRef<ssize_t> a){
-                        assert(lvres.rtyp == INTVEC_CMD || lvres.rtyp == INTMAT_CMD);
-                        intvec &iv = *(intvec*)lvres.data;
+                    [](jlcxx::ArrayRef<ssize_t> a, void* data, int type) {
+                        assert(type == INTVEC_CMD || type == INTMAT_CMD);
+                        intvec &iv = *(intvec*)data;
                         assert(a.size() == iv.length());
                         int d1 = iv.rows(), d2 = iv.cols();
-                        if (lvres.rtyp == INTMAT_CMD)
+                        if (type == INTMAT_CMD)
                             for (int i=0, i2=1; i2<=d2; ++i2)
                                 for (int i1=1; i1<=d1; ++i1)
                                     a[i++] = IMATELEM(iv, i1, i2);
@@ -217,9 +217,9 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("lvres_bim_get_elt_ij",
-                    [](int i, int j) {
-                        assert(lvres.rtyp == BIGINTMAT_CMD);
-                        bigintmat &bim = *(bigintmat*)lvres.Data();
+                    [](void* data, int type, int i, int j) {
+                        assert(type == BIGINTMAT_CMD);
+                        bigintmat &bim = *(bigintmat*)data;
                         assert(1 <= i && i <= bim.rows() &&
                                1 <= j && j <= bim.cols());
                         if (i == bim.rows() && j == bim.cols())
