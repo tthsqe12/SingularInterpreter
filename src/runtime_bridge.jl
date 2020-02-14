@@ -228,15 +228,26 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
     valid_input_types = Int.(setdiff(keys(convertible_types), unimplemented_input))
     valid_output_types = Int.(setdiff(keys(convertible_types), unimplemented_output))
 
-    todo = Dict{Pair{Int,Union{Int,Tuple{Int,Int}}},Int}()
+    todo = Dict{Pair{Int,                      # cmd
+                     Union{Int,                # arg for 1-arg cmds
+                           Tuple{Int,Int}}},   # arg1 & arg2
+                Union{Int,                     # res when explicitly in the table
+                      Vector{Int}}}()          # possible res resulting from conversions
 
     i = 0
     while true
         (cmd, res, arg) = libSingular.dArith1(i)
         cmd == 0 && break # end of dArith1
         i += 1
-        if res in valid_output_types
-            todo[cmd => arg] = res
+        todo[cmd => arg] = res # unconditional, might overwrite a previous entry resulting from
+                               # conversion(s)
+        for argi in get(type_conversions, arg, ())
+            # conversions work according to the table order, so the first one might be the correct one,
+            # but at run-time, it might fail and try other possibilities, so we keep them all
+            restypes = get!(todo, cmd => argi, Int[])
+            if restypes isa Vector # if not, it's an Int which is then the only admissible "res" type
+                push!(restypes, res)
+            end
         end
     end
     i = 0
@@ -244,40 +255,42 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         (cmd, res, arg1, arg2) = libSingular.dArith2(i)
         cmd == 0 && break # end of dArith2
         i += 1
-        if res in valid_output_types
-            todo[cmd => (arg1, arg2)] = res
+        todo[cmd => (arg1, arg2)] = res
+        for arg1i in get(type_conversions, arg1, (arg1,))
+            for arg2i in get(type_conversions, arg2, (arg2,))
+                restypes = get!(todo, cmd => (arg1i, arg2i), Int[])
+                if restypes isa Vector
+                    push!(restypes, res)
+                end
+            end
         end
     end
 
-    for ((cmd, arg), res) in todo
-        @assert res in valid_output_types
-        if arg isa Int
-            for argi in get(type_conversions, arg, ())
-                if argi in valid_input_types
-                    get!(todo, cmd => argi, res)
-                end
-            end
-        else
-            arg1, arg2 = arg
-            for arg1i in get(type_conversions, arg1, (arg1,))
-                arg1i in valid_input_types || continue
-                for arg2i in get(type_conversions, arg2, (arg2,))
-                    arg2i in valid_input_types || continue
-                    get!(todo, cmd => (arg1i, arg2i), res)
-                end
-            end
+    # the todo table has to first be created without consideration for what we support yet,
+    # in order to get the conversion business right (as is intended in Singular)
+    # once the "extended" table (from table.h, extended with conversion entries) is created,
+    # we can remove as yet unsupported entries
+    filter!(todo) do ((cmd, args), res)
+        if !(res isa Vector)
+            res = [res]
         end
+        filter!(in(valid_output_types), res)
+        !isempty(res) &&
+            all(in(valid_input_types), args)
     end
 
     for ((cmd, args), res) in todo
-        # we still need to check here for validity because the commands explicitly
-        # written in the table (i.e. without conversion) have been put in todo
-        # inconditially, so that we have a chance to find "valid" convertible types
-        res in valid_output_types && issubset(args, valid_input_types) || continue
+        if res isa Int
+            res = [res]
+        else
+            unique!(res)
+        end
         if args isa Int
             args = (args,)
         end
-        res = CMDS(res)
+        @assert !isempty(res)
+        @assert issubset(res, valid_output_types) && issubset(args, valid_input_types)
+        res = CMDS.(res)
         args = CMDS.(args)
 
         name = something(get(cmd_to_string, cmd, nothing),
@@ -285,7 +298,8 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                          "")
         name == "" && continue
 
-        Sres = convertible_types[res]
+        Sres = length(res) == 1 ? convertible_types[res[1]] : Any
+
         Sargs = [convertible_types[arg] for arg in args]
 
         rtname = Symbol(:rt, name)
