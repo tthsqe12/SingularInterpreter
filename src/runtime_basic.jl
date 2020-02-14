@@ -689,7 +689,7 @@ function rt_call(f::Smap, a::SingularRingType)
 end
 
 function rtcall(::Bool, f::Smap, a)
-    @assert !isa(f, Sname)
+    @assert !isa(f, SName)
     rt_error("objects of type `map` can only be called on names")
 end
 

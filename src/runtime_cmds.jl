@@ -484,8 +484,8 @@ function rtexecute(s::Sstring)
                      n > 1, # return is allowed <=> we inside a proc
                      true,  # at top
                      true, true,    # everything is screwed (and it should also have been screwed in the calling env)
-                     Dict{String, Int}(), Dict{String, String}(),
-                     Set{String}())
+                     Set{String}(),
+                     Dict{String, Int}(), Dict{String, String}())
         expr = convert_toplines(ast, env)
         r = eval(expr)
         return r, n > length(rtGlobal.callstack)

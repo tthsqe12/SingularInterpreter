@@ -405,9 +405,9 @@ mutable struct AstEnv
     at_top::Bool
     everything_is_screwed::Bool                 # no local variables may go into local storage
     rings_are_screwed::Bool                     # no local ring dependent variables may go into local storage
+    screwed_names::Set{String}                  # the variable's name could be needed
     appeared_identifiers::Dict{String, Int}     # name => some data
     declared_identifiers::Dict{String, String}  # name => type
-    possible_map_args::Set{String}              # names that could be used as arguments to maps
 end
 
 mutable struct AstLoadEnv

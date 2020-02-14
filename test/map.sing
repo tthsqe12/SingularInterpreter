@@ -10,3 +10,22 @@ poly p = a + b + c;
 ring r = 0, x, lp;
 map f = s, x, x^2, x^3;
 ASSUME(0, f(p) == x + x^2 + x^3);
+
+kill r, s;
+
+// test some bizarre behaviour
+
+proc g() {
+    int i;
+    return(f(i));
+}
+
+ring s = 0,a,lp;
+poly i = 1 + a + a^2;
+ring r = 0,x,lp;
+map f = s, x^2;
+ASSUME(0, g() == 1 + x^2 + x^4);
+
+kill f;
+proc f(a) {return(a)}
+ASSUME(0, g() == 0);

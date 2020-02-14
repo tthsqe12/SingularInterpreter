@@ -279,7 +279,7 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
         if length(b) == 1 && b[1].rule == @RULE_expr(2)
             b, ok = scan_elemexpr_name_call(b[1].child[1], env)
             if ok && isa(b, SName)
-                push!(env.possible_map_args, string(b.name))
+                push!(env.screwed_names, string(b.name))
                 return
             end
         end
@@ -1580,7 +1580,7 @@ function scan_ringcmd_lhs(a::AstNode, env::AstEnv)
         scan_add_declaration(a.child[1]::String, "ring", env)
     elseif a.rule == @RULE_elemexpr(98)
         scan_expr(a.child[1], env)
-        env.everything_is_screwed = 1
+        env.everything_is_screwed = true
     elseif a.rule == @RULE_elemexpr(6)
         h, ok = scan_elemexpr_name_call(a, env)
         ok || throw(TranspileError("bad name construction"))
@@ -2218,8 +2218,8 @@ function convert_proccmd(a::AstNode, env::AstEnv)
                         true,   # return is allowed
                         true,   # at top
                         false, false, # nothing is screwed yet
-                        Dict{String, Int}(), Dict{String, String}(),
-                        Set{String}())
+                        Set{String}(),
+                        Dict{String, Int}(), Dict{String, String}())
         if a.rule == @RULE_proccmd(2)
             fxnargs = a.child[3]
             fxnbody = a.child[4]
@@ -2437,6 +2437,9 @@ function scan_lines(a::AstNode, env::AstEnv, at_top::Bool)
                                 x->(!typestring_could_be_ring_dep(last(x))),
                                                      env.declared_identifiers)
         end
+        for v in env.screwed_names
+            delete!(env.declared_identifiers, v)
+        end
     end
 end
 
@@ -2507,8 +2510,8 @@ function execute(s::String; debuglevel::Int = 0)
                      false, # return not allowed
                      true,  # at top
                      true, true,    # everthing is screwed
-                     Dict{String, Int}(), Dict{String, String}(),
-                     Set{String}())
+                     Set{String}(),
+                     Dict{String, Int}(), Dict{String, String}())
         expr = convert_toplines(ast, env)
         t1 = time()
 
@@ -2550,8 +2553,8 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
                         true,   # return is allowed
                         true,   # at top
                         false, false,   # nothing is screwed yet
-                        Dict{String, Int}(), Dict{String, String}(),
-                        Set{String})
+                        Set{String}(),
+                        Dict{String, Int}(), Dict{String, String}())
         if a.rule == @RULE_proccmd(2)
             fxnargs = a.child[3]
             fxnbody = a.child[4]
