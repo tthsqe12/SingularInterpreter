@@ -937,6 +937,37 @@ proc f(int n)
 1,2,3,4 
 ```
 
+(28) Singuar's maps -- and, anything that touches them -- destroy compilation.
+The possibility of maps in the system forces `i` into the symbol table for this proc.
+```
+> proc g() {
+.     int i;
+.     return(f(i));
+. }
+```
+For, the `i` in `f(i)` is not that `int i` in
+```
+> ring s = 0,a,lp;
+> poly i = 1 + a + a^2;
+> ring r = 0,x,lp;
+> map f = s, x^2;
+> g();
+x4+x2+1
+```
+but the `i` in `f(i)` is that `int i` in
+```
+> kill f;
+> proc f(a) {return(a)}
+> g();
+0
+```
+The `int i` must be in a symbol table in order for both examples to work
+because we have no choice but to delay the evaluation of `i` in `f(i)`.
+If `f` turns out to be a map, the map will receive `:i` from the delayed evaluation.
+If `f` turns out to not be a map, the runtime call operator has to lookup `:i` before continuing.
+
+
+
 -------------------------------
 
 Conclusion: The Singular language is completely different from C or Julia.
