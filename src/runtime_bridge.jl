@@ -58,6 +58,11 @@ function get_res(expectedtype::CMDS; clear_curr_ring=true)
     d
 end
 
+function get_res(::Type{Any}, ring=nothing; clear_curr_ring=true)
+    t, d = libSingular.get_leftv_res(clear_curr_ring)
+    get_res(convertible_types[CMDS(t)], ring, d)
+end
+
 get_res(::Type{Int}, ring=nothing, data=get_res(INT_CMD)) = Int(data)
 
 function get_res(::Type{BigInt}, ring=nothing, data=get_res(BIGINT_CMD))

@@ -59,3 +59,5 @@ ASSUME(0, typeof(pf[1][1]) == "bigint");
 
 // chinrem
 ASSUME(0, chinrem(intvec(2,-3),intvec(7,11)) == 30);
+ASSUME(0, chinrem(list(2, -3), intvec(7, 11)) == 30);
+ASSUME(0, chinrem(list(2, -3), list(7, 11)) == 30);
