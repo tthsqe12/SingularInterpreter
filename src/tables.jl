@@ -303,11 +303,20 @@ const cmds_that_screw_everything = Set{Int}([
 ])
 
 const op_to_string = Dict{Int, String}(Int(c) => s for (c, s) in [
-    '+' => "plus",
-    '-' => "minus",
-    '*' => "times",
-    '/' => "divide",
+    '+'         => "plus",
+    '-'         => "minus",
+    '*'         => "times",
+    '/'         => "divide",
+    '%'         => "mod",
+    '^'         => "power",
+    '<'         => "less",
+    '>'         => "greater",
+    ':'         => "colon",
+    EQUAL_EQUAL => "equalequal",
+    GE          => "greaterequal",
+    LE          => "lessequal",
 ])
+# '|', '&' exist only for Int
 
 const cmd_to_string = Dict{Int, String}(
     Int(ALIGN_CMD)    => "align",

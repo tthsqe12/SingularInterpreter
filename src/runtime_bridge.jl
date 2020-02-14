@@ -166,20 +166,6 @@ result_type(::Sintmat, ::Sintmat) = Sintmat
 result_type(::Sintmat, ::Int) = Sintmat
 result_type(::Int, ::Sintmat) = Sintmat
 
-### comparisons ###
-
-for (op, code) in (:rtless => '<',
-                   :rtgreater => '>',
-                   :rtlessequal => LE,
-                   :rtgreaterequal => GE,
-                   :rtequalequal => EQUAL_EQUAL)
-    @eval function $op(x, y)
-        set_arg1(x, withcopy=!(x isa Sring))
-        set_arg2(y, withcopy=!(y isa Sring))
-        cmd2($code, Int)
-    end
-end
-
 function rtgetindex(x::Sstring, y)
     set_arg1(x, withname=(y isa Sintvec))
     set_arg2(y, withcopy=!(y isa Sring))
@@ -232,7 +218,8 @@ let i = 0
     end
 end
 
-let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1)])
+let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
+                                (Int(':'), 2)])
     # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
     valid_input_types = Int.(setdiff(keys(convertible_types), unimplemented_input))
     valid_output_types = Int.(setdiff(keys(convertible_types), unimplemented_output))
