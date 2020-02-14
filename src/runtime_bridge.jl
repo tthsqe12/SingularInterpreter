@@ -111,6 +111,9 @@ function get_res(::Type{Sbigintmat}, ring=nothing)
 end
 
 function get_res(::Type{Slist}, ring=nothing, data=nothing)
+    clear_curr_ring = isnothing(data) # WARNING: only the top level call to get_res must clear the currRing
+                                      # (and not the recursive calls)
+                                      # ==> check this correct behavior is maintained when refactoring
     data = something(data, get_res(LIST_CMD, clear_curr_ring=false)) # TODO: clear_curr_ring later when possible
     n = libSingular.list_length(data)
     a = Vector{Any}(undef, n)
@@ -123,6 +126,7 @@ function get_res(::Type{Slist}, ring=nothing, data=nothing)
         cnt += rt_is_ring_dep(a[i])
     end
 
+    clear_curr_ring && libSingular.clear_currRing()
     Slist(a, cnt == 0 ? rtInvalidRing : something(ring), cnt, nothing, true)
 end
 
