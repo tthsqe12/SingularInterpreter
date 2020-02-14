@@ -16,7 +16,7 @@ function set_arg(lv, x::BigInt; withcopy=false, withname=false)
     GC.@preserve x libSingular.set_sleftv_bigint(lv, pointer_from_objref(x))
 end
 
-function set_arg(lv, x::Union{Spoly,Svector,Sideal,Snumber}; withcopy=true, withname=false)
+function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}; withcopy=true, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).value)
     libSingular.set_sleftv(lv, x.value, Int(type_id(typeof(x))), withcopy)
 end
@@ -184,7 +184,7 @@ function rtgetindex(x::Sstring, y)
 end
 
 const unimplemented_input = [ANY_TYPE]
-const unimplemented_output = [RING_CMD]
+const unimplemented_output = [RING_CMD, MATRIX_CMD]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the
 # unimplemented lists above
@@ -195,12 +195,13 @@ const convertible_types = Dict{CMDS, Type}(
     STRING_CMD    => Sstring,
     INTVEC_CMD    => Sintvec,
     INTMAT_CMD    => Sintmat,
+    MATRIX_CMD    => Smatrix,
     RING_CMD      => Sring,  # return type not implemented
     NUMBER_CMD    => Snumber,
     POLY_CMD      => Spoly,
     IDEAL_CMD     => Sideal,
     VECTOR_CMD    => Svector,
-    LIST_CMD      => Slist, # input type not implemented
+    LIST_CMD      => Slist,
     ANY_TYPE      => Any,   # migth be better to put `SingularType` ?
 )
 # NOTE: ANY_TYPE is used only for result types automatically (this has to be done
@@ -323,7 +324,7 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1)])
         end
         if length(Sargs) == 1
             @eval function $rtauto(x::$(Sargs[1]))
-                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring}))
+                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
                 cmd1($cmd, $Sres, sing_ring(x))
             end
         else
@@ -341,8 +342,8 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1)])
                     ring = sing_ring(y)
                 end
 
-                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring}))
-                set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring}))
+                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
+                set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
                 cmd2($cmd, $Sres, ring)
             end
         end

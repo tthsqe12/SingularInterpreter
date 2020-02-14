@@ -55,6 +55,12 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("set_sleftv",
+                    [](void* lv, matrix x, int type, bool copy) {
+                        assert(type == MATRIX_CMD);
+                        init_sleftv(lv, copy ? mp_Copy(x, currRing) : x, MATRIX_CMD);
+                    });
+
+    Singular.method("set_sleftv",
                     [](void* lv, number x, int type, bool copy) {
                         assert(type == NUMBER_CMD);
                         init_sleftv(lv, copy ? nCopy(x) : x, NUMBER_CMD);
