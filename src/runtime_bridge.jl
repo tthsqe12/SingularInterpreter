@@ -178,7 +178,7 @@ function rtgetindex(x::Sstring, y)
     cmd2('[', y isa Sintvec ? STuple : Sstring)
 end
 
-const unimplemented_input = []
+const unimplemented_input = [ANY_TYPE]
 const unimplemented_output = [RING_CMD]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the
@@ -196,11 +196,11 @@ const convertible_types = Dict{CMDS, Type}(
     IDEAL_CMD     => Sideal,
     VECTOR_CMD    => Svector,
     LIST_CMD      => Slist, # input type not implemented
+    ANY_TYPE      => Any,   # migth be better to put `SingularType` ?
 )
 # NOTE: ANY_TYPE is used only for result types automatically (this has to be done
 # on a case by case basis for input, as in most cases the name of the variable is
 # needed)
-push!(convertible_types, ANY_TYPE => Union{values(convertible_types)...})
 
 for (id, T) in convertible_types
     id == ANY_TYPE && continue
@@ -225,7 +225,9 @@ end
 
 let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1)])
     # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
-    valid_types = Int.(keys(convertible_types))
+    valid_input_types = Int.(setdiff(keys(convertible_types), unimplemented_input))
+    valid_output_types = Int.(setdiff(keys(convertible_types), unimplemented_output))
+
     todo = Dict{Pair{Int,Union{Int,Tuple{Int,Int}}},Int}()
 
     i = 0
@@ -233,27 +235,34 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1)])
         (cmd, res, arg) = libSingular.dArith1(i)
         cmd == 0 && break # end of dArith1
         i += 1
-        todo[cmd => arg] = res
+        if res in valid_output_types
+            todo[cmd => arg] = res
+        end
     end
     i = 0
     while true
         (cmd, res, arg1, arg2) = libSingular.dArith2(i)
         cmd == 0 && break # end of dArith2
         i += 1
-        todo[cmd => (arg1, arg2)] = res
+        if res in valid_output_types
+            todo[cmd => (arg1, arg2)] = res
+        end
     end
 
     for ((cmd, arg), res) in todo
+        @assert res in valid_output_types
         if arg isa Int
             for argi in get(type_conversions, arg, ())
-                res in valid_types && argi in valid_types || continue
-                get!(todo, cmd => argi, res)
+                if argi in valid_input_types
+                    get!(todo, cmd => argi, res)
+                end
             end
         else
             arg1, arg2 = arg
             for arg1i in get(type_conversions, arg1, (arg1,))
+                arg1i in valid_input_types || continue
                 for arg2i in get(type_conversions, arg2, (arg2,))
-                    issubset((res, arg1i, arg2i), valid_types) || continue
+                    arg2i in valid_input_types || continue
                     get!(todo, cmd => (arg1i, arg2i), res)
                 end
             end
@@ -264,21 +273,18 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1)])
         # we still need to check here for validity because the commands explicitly
         # written in the table (i.e. without conversion) have been put in todo
         # inconditially, so that we have a chance to find "valid" convertible types
-        res in valid_types && issubset(args, valid_types) || continue
+        res in valid_output_types && issubset(args, valid_input_types) || continue
         if args isa Int
             args = (args,)
         end
         res = CMDS(res)
         args = CMDS.(args)
 
-        any(==(ANY_TYPE), args) && continue # handled differently
-
         name = something(get(cmd_to_string, cmd, nothing),
                          get(op_to_string, cmd, nothing),
                          "")
         name == "" && continue
 
-        (res in unimplemented_output || !isempty(intersect(args, unimplemented_input))) && continue
         Sres = convertible_types[res]
         Sargs = [convertible_types[arg] for arg in args]
 
