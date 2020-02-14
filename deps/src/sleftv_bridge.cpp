@@ -141,6 +141,14 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         init_sleftv(lv, bim, BIGINTMAT_CMD);
                     });
 
+    Singular.method("set_sleftv_list",
+                    [](void* lv, jint len) {
+                        slists* list = (lists)omAllocBin(slists_bin); // segfaults with: `new slists`
+                        list->Init(len);
+                        init_sleftv(lv, list, LIST_CMD);
+                        return std::make_tuple((void*)list->m, sizeof(sleftv));
+                    });
+
     // TODO: check if lvres must be somehow de-allocated / does not leak
     Singular.method("get_leftv_res",
                     [](bool clear_curr_ring) {

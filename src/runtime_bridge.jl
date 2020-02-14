@@ -10,40 +10,47 @@ function sleftv(i::Int)
 end
 
 
-set_arg(x::Int, i; kw...) = libSingular.set_sleftv(sleftv(i), x)
+set_arg(lv, x::Int; kw...) = libSingular.set_sleftv(lv, x)
 
-function set_arg(x::BigInt, i; withcopy=false, withname=false)
-    GC.@preserve x libSingular.set_sleftv_bigint(sleftv(i), pointer_from_objref(x))
+function set_arg(lv, x::BigInt; withcopy=false, withname=false)
+    GC.@preserve x libSingular.set_sleftv_bigint(lv, pointer_from_objref(x))
 end
 
-function set_arg(x::Union{Spoly,Svector,Sideal,Snumber}, i; withcopy, withname=false)
+function set_arg(lv, x::Union{Spoly,Svector,Sideal,Snumber}; withcopy=true, withname=false)
     libSingular.rChangeCurrRing(sing_ring(x).value)
-    libSingular.set_sleftv(sleftv(i), x.value, Int(type_id(typeof(x))), withcopy)
+    libSingular.set_sleftv(lv, x.value, Int(type_id(typeof(x))), withcopy)
 end
 
-function set_arg(x::Sring, i; withcopy=false, withname=false)
-    libSingular.set_sleftv(sleftv(i), x.value, withcopy)
+function set_arg(lv, x::Sring; withcopy=true, withname=false)
+    libSingular.set_sleftv(lv, x.value, withcopy)
 end
 
-function set_arg(x::Sstring, i; withcopy=false, withname=false)
+function set_arg(lv, x::Sstring; withcopy=false, withname=false)
     # TODO: handle gracefully when basering is not valid
     # (not that Singular would handle that gracefully...)
     libSingular.rChangeCurrRing(rt_basering().value)
-    libSingular.set_sleftv(sleftv(i), x.value, withname)
+    libSingular.set_sleftv(lv, x.value, withname)
 end
 
-function set_arg(x::Union{Sintvec, Sintmat}, i; withcopy=false, withname=false)
+function set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false)
     x = x.value
-    libSingular.set_sleftv(sleftv(i), vec(x), x isa Matrix, size(x, 1), size(x, 2))
+    libSingular.set_sleftv(lv, vec(x), x isa Matrix, size(x, 1), size(x, 2))
 end
 
-function set_arg(x::Sbigintmat, i; withcopy=false, withname=false)
+function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
     a = Array{Any}(x.value) # TODO: optimize this method to avoid copying
-    GC.@preserve a libSingular.set_sleftv_bigintmat(sleftv(i), vec(a), size(a, 1), size(a, 2))
+    GC.@preserve a libSingular.set_sleftv_bigintmat(lv, vec(a), size(a, 1), size(a, 2))
 end
 
-set_arg1(x; withcopy=false, withname=false) = set_arg(x, 1; withcopy=withcopy, withname=withname)
-set_arg2(x; withcopy=false, withname=false) = set_arg(x, 2; withcopy=withcopy, withname=withname)
+function set_arg(lv, x::Slist; kwargs...)
+    m::Ptr{Cvoid}, sz::Int = libSingular.set_sleftv_list(lv, length(x.value))
+    for (i, elt) in enumerate(x.value)
+        set_arg(m+(i-1)*sz, elt, withcopy=true)
+    end
+end
+
+set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1), x; withcopy=withcopy, withname=withname)
+set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2), x; withcopy=withcopy, withname=withname)
 
 function get_res(expectedtype::CMDS; clear_curr_ring=true)
     t, d = libSingular.get_leftv_res(clear_curr_ring)
@@ -171,7 +178,7 @@ function rtgetindex(x::Sstring, y)
     cmd2('[', y isa Sintvec ? STuple : Sstring)
 end
 
-const unimplemented_input = [LIST_CMD]
+const unimplemented_input = []
 const unimplemented_output = [RING_CMD]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the

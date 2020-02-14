@@ -7,7 +7,14 @@ intmat im[2][2] = 1, 2, 3, 4;
 
 // betti (TODO: more testing)
 intmat im_betti[2][2] = 1, 1, 0, 1;
+intmat im_betti2[2][3] = 1, 1, 1, 0, 1, 0;
 ASSUME(0, betti(id) == im_betti);
+ASSUME(0, betti(id, 3) == im_betti);
+ASSUME(0, betti(list(id)) == im_betti);
+ASSUME(0, betti(list(id), 3) == im_betti);
+ASSUME(0, betti(list(id, id)) == im_betti2);
+ASSUME(0, betti(list(id, id), 3) == im_betti2);
+
 
 // lead
 ASSUME(0, lead(p) == x^2);
