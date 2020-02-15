@@ -231,6 +231,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         void *d;
                         int t;
                         switch (e.rtyp) {
+                        case NUMBER_CMD:
+                            d = (void*)nCopy((number)e.data); break;
                         case POLY_CMD:
                             d = (void*)pCopy((poly)e.data); break;
                         case IDEAL_CMD:

@@ -89,3 +89,8 @@ extgcd(x^2+x+1, x) == list(1, 1, -x-1);
 
 setring(r0); // doesn't work with any ring
 ASSUME(0, farey(2,32003) == 2);
+ASSUME(0, typeof(farey(2,32003)) == "number");
+list lfarey = farey(list(2, 3), 32003);
+ASSUME(0, lfarey == list(2, 3));
+ASSUME(0, typeof(lfarey[1]) == "number");
+ASSUME(0, typeof(lfarey[2]) == "number");
