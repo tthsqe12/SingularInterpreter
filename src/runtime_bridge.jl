@@ -231,6 +231,12 @@ end
 let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                                 (Int(':'), 2)])
     # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
+
+    # fix incorrectly specified return types in the table
+    overrides = Dict{Tuple{Vararg{Int}}, Int}(
+        Int.((FAC_CMD, IDEAL_CMD, POLY_CMD, INT_CMD)) => Int(ANY_TYPE),
+    )
+
     valid_input_types = Int.(setdiff(keys(convertible_types), unimplemented_input))
     valid_output_types = Int.(setdiff(keys(convertible_types), unimplemented_output))
 
@@ -245,6 +251,7 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         (cmd, res, arg) = libSingular.dArith1(i)
         cmd == 0 && break # end of dArith1
         i += 1
+        res = get(overrides, (cmd, res, arg), res)
         todo[cmd => arg] = res # unconditional, might overwrite a previous entry resulting from
                                # conversion(s)
         for argi in get(type_conversions, arg, ())
@@ -261,6 +268,7 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         (cmd, res, arg1, arg2) = libSingular.dArith2(i)
         cmd == 0 && break # end of dArith2
         i += 1
+        res = get(overrides, (cmd, res, arg1, arg2), res)
         todo[cmd => (arg1, arg2)] = res
         for arg1i in get(type_conversions, arg1, (arg1,))
             for arg2i in get(type_conversions, arg2, (arg2,))

@@ -59,7 +59,8 @@ ASSUME(0, typeof(pf[1][1]) == "bigint");
 
 // factorize
 setring r;
-list lf = factorize(x^3+x^2*y-x*y^2-y^3);
+p = x^3+x^2*y-x*y^2-y^3;
+list lf = factorize(p);
 // ASSUME(0, lf == list(ideal(1, x-y, x+y), intvec(1, 1, 2)));
 ASSUME(0, size(lf) == 2);
 def lf1 = lf[1];
@@ -69,6 +70,10 @@ ASSUME(0, size(lf1) == 3);
 ASSUME(0, list(lf1[1], lf1[2], lf1[3]) == list(1, x-y, x+y));
 ASSUME(0, typeof(lf2) == "intvec");
 ASSUME(0, lf2 == intvec(1, 1, 2));
+
+ASSUME(0, typeof(factorize(p, 0)) == "list");
+ASSUME(0, typeof(factorize(p, 1)) == "ideal");
+ASSUME(0, typeof(factorize(p, 2)) == "list");
 
 // chinrem
 ASSUME(0, chinrem(intvec(2,-3),intvec(7,11)) == 30);
