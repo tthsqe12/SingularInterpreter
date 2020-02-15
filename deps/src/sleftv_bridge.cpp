@@ -236,6 +236,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         case INTMAT_CMD:
                             d = (void*)ivCopy((intvec*)e.data); break;
                         case LIST_CMD:
+                        case INTVEC_CMD:
                         case INT_CMD:
                         case BIGINT_CMD: // deep-copied on the julia side
                             d = (void*)e.data; break;
