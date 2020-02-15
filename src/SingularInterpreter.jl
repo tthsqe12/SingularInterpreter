@@ -29,12 +29,25 @@ function __init__()
     rtGlobal.SearchPath = filter(isdir, s)
 
     if isinteractive() # Base.active_repl not defined otherwise
-        initrepl(SingularInterpreter.execute,
-                 prompt_text  = "Sing> ",
-                 prompt_color = :blue,
-                 start_key    = '}',
-                 mode_name    = :singular_mode,
-                 startup_text = false)
+        @async begin
+            iter = 0
+            # wait for active_repl to exist
+            while !isdefined(Base, :active_repl) && iter < 20
+                sleep(0.05)
+                iter += 1
+            end
+            if isdefined(Base, :active_repl)
+                initrepl(SingularInterpreter.execute,
+                         prompt_text  = "sing> ",
+                         prompt_color = :yellow,
+                         start_key    = '}',
+                         mode_name    = :singular_mode,
+                         startup_text = false,
+                         )
+            else
+                @warn "REPL initialization for Singular mode failed"
+            end
+        end
     end
 end
 
