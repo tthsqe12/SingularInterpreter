@@ -17,3 +17,10 @@ ASSUME(0, -v == v2);
 
 ASSUME(0, v[1] == x);
 ASSUME(0, v[2] == 0);
+
+// NOTE: if this `vector` / `int` command gets implemented directly (without
+// the sleftv-bridge), try to find another bridge operation which can test
+// that returning a non-inferred vector works
+ASSUME(0, size(v/2) == 2);
+ASSUME(0, (v/2)[1] == 1/2*x);
+ASSUME(0, (v/2)[3] == 1/2*x*y^2);

@@ -73,8 +73,8 @@ end
 get_res(::Type{Spoly}, data=get_res(POLY_CMD)) =
     Spoly(libSingular.internal_void_to_poly_helper(data), rt_basering())
 
-get_res(::Type{Svector}) =
-    Svector(libSingular.internal_void_to_poly_helper(get_res(VECTOR_CMD)), rt_basering())
+get_res(::Type{Svector}, data=get_res(VECTOR_CMD)) =
+    Svector(libSingular.internal_void_to_poly_helper(data), rt_basering())
 
 get_res(::Type{Snumber}, data=get_res(NUMBER_CMD)) =
     Snumber(libSingular.internal_void_to_number_helper(data), rt_basering())
