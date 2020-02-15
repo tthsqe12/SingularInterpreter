@@ -315,6 +315,7 @@ const op_to_string = Dict{Int, String}(Int(c) => s for (c, s) in [
     EQUAL_EQUAL => "equalequal",
     GE          => "greaterequal",
     LE          => "lessequal",
+    '['         => "getindex",
 ])
 # '|', '&' exist only for Int
 

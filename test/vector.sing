@@ -14,3 +14,6 @@ v2 = [-x, 0, -x*y^2];
 
 ASSUME(0, size(v) == 2);
 ASSUME(0, -v == v2);
+
+ASSUME(0, v[1] == x);
+ASSUME(0, v[2] == 0);
