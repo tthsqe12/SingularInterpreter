@@ -1,5 +1,12 @@
 ##################### the lazy way: use sleftv's ##########
 
+rChangeCurrRing(r::Sring) = libSingular.rChangeCurrRing(r.value)
+
+function rChangeCurrRing(r::Ptr{Cvoid})
+    @assert r == C_NULL
+    libSingular.rChangeCurrRing(libSingular.rDefault_null_helper())
+end
+
 const _sleftvs = Ptr{Cvoid}[]
 
 function sleftv(i::Int)
@@ -152,10 +159,10 @@ function maybe_get_res(err, T)
     # we assume the currRing didn't change on the Singular side
     if err == 0
         r = get_res(T)
-        libSingular.clear_currRing()
+        rChangeCurrRing(C_NULL)
         r
     else
-        libSingular.clear_currRing()
+        rChangeCurrRing(C_NULL)
         rt_error("failed operation")
     end
 end
@@ -163,13 +170,13 @@ end
 # return true when no-error
 function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
     # this sets the value to NULL if basering not defined
-    libSingular.rChangeCurrRing(rt_basering().value)
+    rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
     maybe_get_res(libSingular.iiExprArith1(Int(cmd), sleftv(1)), T)
 end
 
 function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
-    libSingular.rChangeCurrRing(rt_basering().value)
+    rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
     set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix})) # do we need to copy for a Sring?
     maybe_get_res(libSingular.iiExprArith2(Int(cmd), sleftv(1), sleftv(2)), T)
