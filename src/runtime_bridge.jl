@@ -70,7 +70,10 @@ function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD))
     end
 end
 
-get_res(T::Type{<:Union{Spoly,Svector}}) =
+get_res(T::Type{Spoly}, data=get_res(POLY_CMD)) =
+    T(libSingular.internal_void_to_poly_helper(data), rt_basering())
+
+get_res(T::Type{Svector}) =
     T(libSingular.internal_void_to_poly_helper(get_res(type_id(T))), rt_basering())
 
 get_res(::Type{Snumber}) =

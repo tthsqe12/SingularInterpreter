@@ -74,6 +74,8 @@ ASSUME(0, lf2 == intvec(1, 1, 2));
 ASSUME(0, typeof(factorize(p, 0)) == "list");
 ASSUME(0, typeof(factorize(p, 1)) == "ideal");
 ASSUME(0, typeof(factorize(p, 2)) == "list");
+ASSUME(0, typeof(factorize(p, 3)) == "poly");
+ASSUME(0, factorize(p, 3) == x^2-y^2);
 
 // chinrem
 ASSUME(0, chinrem(intvec(2,-3),intvec(7,11)) == 30);
