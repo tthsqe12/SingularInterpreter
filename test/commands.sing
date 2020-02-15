@@ -81,3 +81,6 @@ ASSUME(0, factorize(p, 3) == x^2-y^2);
 ASSUME(0, chinrem(intvec(2,-3),intvec(7,11)) == 30);
 ASSUME(0, chinrem(list(2, -3), intvec(7, 11)) == 30);
 ASSUME(0, chinrem(list(2, -3), list(7, 11)) == 30);
+
+// extgcd
+extgcd(x^2+x+1, x) == list(1, 1, -x-1);
