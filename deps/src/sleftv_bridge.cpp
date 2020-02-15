@@ -157,12 +157,9 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
     Singular.method("get_leftv_res",
-                    [](bool clear_curr_ring) {
+                    [] {
                         void *res = (void*)lvres.Data();
                         int t = lvres.Typ();
-                        if (clear_curr_ring)
-                            rChangeCurrRing(NULL); // must happen *after* lvres.Data(), as
-                                                   // this can check for its validity
                         return std::make_tuple(t, res);
                     });
 
@@ -171,10 +168,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         if (next == NULL) // start the iteration
                             next = &lvres;
                         leftv lvres_next = (leftv)next;
-                        auto r = std::make_tuple(lvres_next->Typ(), lvres_next->Data(), (void*)lvres_next->next);
-                        if (lvres_next->next == NULL)
-                            rChangeCurrRing(NULL);
-                        return r;
+                        return std::make_tuple(lvres_next->Typ(), lvres_next->Data(), (void*)lvres_next->next);
                     });
 
     Singular.method("lvres_array_get_dims",
@@ -213,7 +207,6 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         else
                             for (int i=0; i<iv.length(); ++i)
                                 a[i] = iv[i];
-                        rChangeCurrRing(NULL);
                     });
 
     Singular.method("lvres_bim_get_elt_ij",
@@ -222,9 +215,6 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         bigintmat &bim = *(bigintmat*)data;
                         assert(1 <= i && i <= bim.rows() &&
                                1 <= j && j <= bim.cols());
-                        if (i == bim.rows() && j == bim.cols())
-                            // TODO: fix this ugly hack
-                            rChangeCurrRing(NULL);
                         return (void*)BIMATELEM(bim, i, j);
                     });
 
@@ -258,10 +248,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("iiExprArith1",
                     [](int op, void* lv) {
                         int err = iiExprArith1(&lvres, (leftv)lv, op);
-                        if (err) {
+                        if (err)
                             errorreported = 0;
-                            rChangeCurrRing(NULL); // done somewhere else when !err
-                        }
                         return err;
                     });
 
@@ -269,10 +257,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     [](int op, void* lv1, void* lv2) {
                         // TODO: check what is the default proccall argument
                         int err = iiExprArith2(&lvres, (leftv)lv1, op, (leftv)lv2);
-                        if (err) {
+                        if (err)
                             errorreported = 0;
-                            rChangeCurrRing(NULL);
-                        }
                         return err;
                     });
 

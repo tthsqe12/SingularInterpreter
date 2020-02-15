@@ -17,7 +17,6 @@ function set_arg(lv, x::BigInt; withcopy=false, withname=false)
 end
 
 function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}; withcopy=true, withname=false)
-    libSingular.rChangeCurrRing(sing_ring(x).value)
     libSingular.set_sleftv(lv, x.value, Int(type_id(typeof(x))), withcopy)
 end
 
@@ -26,9 +25,6 @@ function set_arg(lv, x::Sring; withcopy=true, withname=false)
 end
 
 function set_arg(lv, x::Sstring; withcopy=false, withname=false)
-    # TODO: handle gracefully when basering is not valid
-    # (not that Singular would handle that gracefully...)
-    libSingular.rChangeCurrRing(rt_basering().value)
     libSingular.set_sleftv(lv, x.value, withname)
 end
 
@@ -52,20 +48,20 @@ end
 set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1), x; withcopy=withcopy, withname=withname)
 set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2), x; withcopy=withcopy, withname=withname)
 
-function get_res(expectedtype::CMDS; clear_curr_ring=true)
-    t, d = libSingular.get_leftv_res(clear_curr_ring)
+function get_res(expectedtype::CMDS)
+    t, d = libSingular.get_leftv_res()
     @assert t == Int(expectedtype)
     d
 end
 
-function get_res(::Type{Any}, ring=nothing; clear_curr_ring=true)
-    t, d = libSingular.get_leftv_res(clear_curr_ring)
-    get_res(convertible_types[CMDS(t)], ring, d)
+function get_res(::Type{Any})
+    t, d = libSingular.get_leftv_res()
+    get_res(convertible_types[CMDS(t)], d)
 end
 
-get_res(::Type{Int}, ring=nothing, data=get_res(INT_CMD)) = Int(data)
+get_res(::Type{Int}, data=get_res(INT_CMD)) = Int(data)
 
-function get_res(::Type{BigInt}, ring=nothing, data=get_res(BIGINT_CMD))
+function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD))
     d = Int(data)
     if d & 1 != 0 # immediate int
         BigInt(d >> 2)
@@ -74,47 +70,44 @@ function get_res(::Type{BigInt}, ring=nothing, data=get_res(BIGINT_CMD))
     end
 end
 
-get_res(T::Type{<:Union{Spoly,Svector}}, r::Sring) =
-    T(libSingular.internal_void_to_poly_helper(get_res(type_id(T))), r)
+get_res(T::Type{<:Union{Spoly,Svector}}) =
+    T(libSingular.internal_void_to_poly_helper(get_res(type_id(T))), rt_basering())
 
-get_res(::Type{Snumber}, r::Sring) =
-    Snumber(libSingular.internal_void_to_number_helper(get_res(NUMBER_CMD)), r)
+get_res(::Type{Snumber}) =
+    Snumber(libSingular.internal_void_to_number_helper(get_res(NUMBER_CMD)), rt_basering())
 
-get_res(::Type{Sideal}, r::Sring, data=get_res(IDEAL_CMD)) =
-    Sideal(libSingular.internal_void_to_ideal_helper(data), r, true)
+get_res(::Type{Sideal}, data=get_res(IDEAL_CMD)) =
+    Sideal(libSingular.internal_void_to_ideal_helper(data), rt_basering(), true)
 
-get_res(::Type{Smatrix}, r::Sring, data=get_res(MATRIX_CMD)) =
-    Smatrix(libSingular.internal_void_to_matrix_helper(data), r, true)
+get_res(::Type{Smatrix}, data=get_res(MATRIX_CMD)) =
+    Smatrix(libSingular.internal_void_to_matrix_helper(data), rt_basering(), true)
 
-function get_res(::Type{Sintvec}, ring=nothing, data=get_res(INTVEC_CMD))
+function get_res(::Type{Sintvec}, data=get_res(INTVEC_CMD))
     d = libSingular.lvres_array_get_dims(data, Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv, data, Int(INTVEC_CMD))
     Sintvec(iv, true)
 end
 
-function get_res(::Type{Sintmat}, ring=nothing, data=get_res(INTMAT_CMD))
+function get_res(::Type{Sintmat}, data=get_res(INTMAT_CMD))
     d = libSingular.lvres_array_get_dims(data, Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im), data, Int(INTMAT_CMD))
     Sintmat(im, true)
 end
 
-function get_res(::Type{Sbigintmat}, ring=nothing, data=get_res(BIGINTMAT_CMD))
+function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD))
     r, c = libSingular.lvres_array_get_dims(data, Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
-        bim[i,j] = get_res(BigInt, nothing,
+        bim[i,j] = get_res(BigInt,
                            libSingular.lvres_bim_get_elt_ij(data, Int(BIGINTMAT_CMD), i,j))
     end
     Sbigintmat(bim, true)
 end
 
-function get_res(::Type{Slist}, ring=nothing, data=nothing)
-    clear_curr_ring = isnothing(data) # WARNING: only the top level call to get_res must clear the currRing
-                                      # (and not the recursive calls)
-                                      # ==> check this correct behavior is maintained when refactoring
-    data = something(data, get_res(LIST_CMD, clear_curr_ring=false)) # TODO: clear_curr_ring later when possible
+function get_res(::Type{Slist}, data=nothing)
+    data = something(data, get_res(LIST_CMD))
     n = libSingular.list_length(data)
     a = Vector{Any}(undef, n)
     cnt = 0
@@ -122,15 +115,20 @@ function get_res(::Type{Slist}, ring=nothing, data=nothing)
         (t, d) = libSingular.list_elt_i(data, i)
         @assert d != C_NULL
         T = convertible_types[CMDS(t)]
-        a[i] = get_res(T, ring, d)
+        a[i] = get_res(T, d)
         cnt += rt_is_ring_dep(a[i])
     end
-
-    clear_curr_ring && libSingular.clear_currRing()
-    Slist(a, cnt == 0 ? rtInvalidRing : something(ring), cnt, nothing, true)
+    ring = if cnt == 0
+        rtInvalidRing
+    else
+        r = rt_basering()
+        @assert r.valid
+        r
+    end
+    Slist(a, ring, cnt, nothing, true)
 end
 
-function get_res(::Type{STuple}, ring=nothing)
+function get_res(::Type{STuple})
     a = Any[]
     next = C_NULL
     while true
@@ -145,22 +143,34 @@ function get_res(::Type{STuple}, ring=nothing)
     end
 end
 
-get_res(::Type{Sstring}, ring=nothing) = Sstring(unsafe_string(Ptr{Cchar}(get_res(STRING_CMD))))
+get_res(::Type{Sstring}) = Sstring(unsafe_string(Ptr{Cchar}(get_res(STRING_CMD))))
 
 function maybe_get_res(err, T)
+    # we assume the currRing didn't change on the Singular side
     if err == 0
-        get_res(T...)
+        r = get_res(T)
+        libSingular.clear_currRing()
+        r
     else
+        libSingular.clear_currRing()
         rt_error("failed operation")
     end
 end
 
 # return true when no-error
-cmd1(cmd::Union{Int,CMDS,Char}, T...) =
+function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
+    # this sets the value to NULL if basering not defined
+    libSingular.rChangeCurrRing(rt_basering().value)
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
     maybe_get_res(libSingular.iiExprArith1(Int(cmd), sleftv(1)), T)
+end
 
-cmd2(cmd::Union{Int,CMDS,Char}, T...) =
+function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
+    libSingular.rChangeCurrRing(rt_basering().value)
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix})) # do we need to copy for a Sring?
     maybe_get_res(libSingular.iiExprArith2(Int(cmd), sleftv(1), sleftv(2)), T)
+end
 
 result_type(::Sintvec, ::Sintvec) = Sintvec
 result_type(::Sintvec, ::Int) = Sintvec
@@ -170,11 +180,7 @@ result_type(::Sintmat, ::Sintmat) = Sintmat
 result_type(::Sintmat, ::Int) = Sintmat
 result_type(::Int, ::Sintmat) = Sintmat
 
-function rtgetindex(x::Sstring, y)
-    set_arg1(x, withname=(y isa Sintvec))
-    set_arg2(y, withcopy=!(y isa Sring))
-    cmd2('[', y isa Sintvec ? STuple : Sstring)
-end
+rtgetindex(x::Sstring, y) = cmd2('[', y isa Sintvec ? STuple : Sstring, x, y)
 
 const unimplemented_input = [ANY_TYPE]
 const unimplemented_output = [RING_CMD]
@@ -331,29 +337,9 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
             push!(seen, (cmd, length(args)))
         end
         if length(Sargs) == 1
-            @eval function $rtauto(x::$(Sargs[1]))
-                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-                cmd1($cmd, $Sres, sing_ring(x))
-            end
+            @eval $rtauto(x::$(Sargs[1])) = cmd1($cmd, $Sres, x)
         else
-            @eval function $rtauto(x::$(Sargs[1]), y::$(Sargs[2]))
-                ring = nothing
-                if x isa SingularRingType
-                    ring = sing_ring(x)
-                    if y isa SingularRingType
-                        rtname = $rtname
-                        # TODO: check that it's really necessary to check, in other words can a situation
-                        # happen in Singular where both objects don't depend on the same ring
-                        @error_check_rings(ring, sing_ring(y), "binary command $rtname requires same base ring")
-                    end
-                elseif y isa SingularRingType
-                    ring = sing_ring(y)
-                end
-
-                set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-                set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-                cmd2($cmd, $Sres, ring)
-            end
+            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2])) = cmd2($cmd, $Sres, x, y)
         end
     end
 end
