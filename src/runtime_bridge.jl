@@ -70,14 +70,14 @@ function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD))
     end
 end
 
-get_res(T::Type{Spoly}, data=get_res(POLY_CMD)) =
-    T(libSingular.internal_void_to_poly_helper(data), rt_basering())
+get_res(::Type{Spoly}, data=get_res(POLY_CMD)) =
+    Spoly(libSingular.internal_void_to_poly_helper(data), rt_basering())
 
-get_res(T::Type{Svector}) =
-    T(libSingular.internal_void_to_poly_helper(get_res(type_id(T))), rt_basering())
+get_res(::Type{Svector}) =
+    Svector(libSingular.internal_void_to_poly_helper(get_res(VECTOR_CMD)), rt_basering())
 
-get_res(::Type{Snumber}) =
-    Snumber(libSingular.internal_void_to_number_helper(get_res(NUMBER_CMD)), rt_basering())
+get_res(::Type{Snumber}, data=get_res(NUMBER_CMD)) =
+    Snumber(libSingular.internal_void_to_number_helper(data), rt_basering())
 
 get_res(::Type{Sideal}, data=get_res(IDEAL_CMD)) =
     Sideal(libSingular.internal_void_to_ideal_helper(data), rt_basering(), true)
