@@ -230,6 +230,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         sleftv &e = l->m[i-1];
                         void *d;
                         int t;
+                        bool ok = true;
                         switch (e.rtyp) {
                         case NUMBER_CMD:
                             d = (void*)nCopy((number)e.data); break;
@@ -246,8 +247,11 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                             d = (void*)e.data; break;
                         default:
                             d = (void*)NULL;
+                            ok = false; // merely returning d=NULL is not enough, some pointer types
+                                        // might return 0 as a valid object, e.g. for POLY_CMD it
+                                        // means the null polynomial
                         }
-                        return std::make_tuple(e.rtyp, d);
+                        return std::make_tuple(ok, e.rtyp, d);
                     });
 
     Singular.method("iiExprArith1",

@@ -115,8 +115,8 @@ function get_res(::Type{Slist}, data=nothing)
     a = Vector{Any}(undef, n)
     cnt = 0
     for i = 1:n
-        (t, d) = libSingular.list_elt_i(data, i)
-        @assert d != C_NULL
+        (ok, t, d) = libSingular.list_elt_i(data, i)
+        @assert ok
         T = convertible_types[CMDS(t)]
         a[i] = get_res(T, d)
         cnt += rt_is_ring_dep(a[i])
