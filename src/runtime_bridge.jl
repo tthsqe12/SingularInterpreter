@@ -16,6 +16,12 @@ function sleftv(i::Int)
     _sleftvs[i]
 end
 
+### getindex ###
+
+rtgetindex(x::Sstring, y) = cmd2('[', y isa Sintvec ? STuple : Sstring, x, y)
+
+
+### set_arg ###
 
 set_arg(lv, x::Int; kw...) = libSingular.set_sleftv(lv, x)
 
@@ -54,6 +60,9 @@ end
 
 set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1), x; withcopy=withcopy, withname=withname)
 set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2), x; withcopy=withcopy, withname=withname)
+
+
+### get_res ###
 
 function get_res(expectedtype::CMDS)
     t, d = libSingular.get_leftv_res()
@@ -116,8 +125,7 @@ function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD))
     Sbigintmat(bim, true)
 end
 
-function get_res(::Type{Slist}, data=nothing)
-    data = something(data, get_res(LIST_CMD))
+function get_res(::Type{Slist}, data=get_res(LIST_CMD))
     n = libSingular.list_length(data)
     a = Vector{Any}(undef, n)
     cnt = 0
@@ -129,12 +137,12 @@ function get_res(::Type{Slist}, data=nothing)
         cnt += rt_is_ring_dep(a[i])
     end
     ring = if cnt == 0
-        rtInvalidRing
-    else
-        r = rt_basering()
-        @assert r.valid
-        r
-    end
+               rtInvalidRing
+           else
+               r = rt_basering()
+               @assert r.valid
+               r
+           end
     Slist(a, ring, cnt, nothing, true)
 end
 
@@ -155,6 +163,9 @@ end
 
 get_res(::Type{Sstring}, data=get_res(STRING_CMD)) =
     Sstring(unsafe_string(Ptr{Cchar}(data)))
+
+
+### cmd ###
 
 function maybe_get_res(err, T)
     # we assume the currRing didn't change on the Singular side
@@ -183,15 +194,8 @@ function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     maybe_get_res(libSingular.iiExprArith2(Int(cmd), sleftv(1), sleftv(2)), T)
 end
 
-result_type(::Sintvec, ::Sintvec) = Sintvec
-result_type(::Sintvec, ::Int) = Sintvec
-result_type(::Int, ::Sintvec) = Sintvec
 
-result_type(::Sintmat, ::Sintmat) = Sintmat
-result_type(::Sintmat, ::Int) = Sintmat
-result_type(::Int, ::Sintmat) = Sintmat
-
-rtgetindex(x::Sstring, y) = cmd2('[', y isa Sintvec ? STuple : Sstring, x, y)
+### generating commands from tables ###
 
 const unimplemented_input = [ANY_TYPE]
 const unimplemented_output = [RING_CMD]
