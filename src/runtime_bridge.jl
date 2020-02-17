@@ -16,10 +16,6 @@ function sleftv(i::Int)
     _sleftvs[i]
 end
 
-### getindex ###
-
-rtgetindex(x::Sstring, y) = cmd2('[', y isa Sintvec ? STuple : Sstring, x, y)
-
 
 ### set_arg ###
 
@@ -197,7 +193,7 @@ end
 
 ### generating commands from tables ###
 
-const unimplemented_input = [ANY_TYPE]
+const unimplemented_input = [ANY_TYPE, STUPLE_CMD]
 const unimplemented_output = [RING_CMD]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the
@@ -217,6 +213,7 @@ const convertible_types = Dict{CMDS, Type}(
     VECTOR_CMD    => Svector,
     LIST_CMD      => Slist,
     ANY_TYPE      => Any,   # migth be better to put `SingularType` ?
+    STUPLE_CMD    => STuple,
 )
 # NOTE: ANY_TYPE is used only for result types automatically (this has to be done
 # on a case by case basis for input, as in most cases the name of the variable is
@@ -247,9 +244,11 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                                 (Int(':'), 2)])
     # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
 
-    # fix incorrectly specified return types in the table
+    # fix incorrectly specified return types in the table,
+    # or set return type to Stuple, which is handled implicitly by Singular
     overrides = Dict{Tuple{Vararg{Int}}, Int}(
-        Int.((FAC_CMD, IDEAL_CMD, POLY_CMD, INT_CMD)) => Int(ANY_TYPE),
+        Int.((FAC_CMD, IDEAL_CMD,  POLY_CMD,   INT_CMD))    => Int(ANY_TYPE),
+        Int.(('[',     STRING_CMD, STRING_CMD, INTVEC_CMD)) => Int(STUPLE_CMD)
     )
 
     valid_input_types = Int.(setdiff(keys(convertible_types), unimplemented_input))

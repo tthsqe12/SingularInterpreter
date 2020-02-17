@@ -2,6 +2,8 @@
 const _UMINUS = 342
 
 @enum CMDS begin
+# SingularInterpreter only
+    STUPLE_CMD = 100
 # must match deps/ast_generator/grammar.tab.h
     DOTDOT = 258
     EQUAL_EQUAL = 259
