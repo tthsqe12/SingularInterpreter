@@ -11,15 +11,14 @@ ring r = 0, x, lp;
 map f = s, x, x^2, x^3;
 ASSUME(0, f(p) == x + x^2 + x^3);
 
-kill r, s;
-
-// test some bizarre behaviour
+// some bizarre behaviour
 
 proc g() {
     int i;
     return(f(i));
 }
 
+kill r, s;
 ring s = 0,a,lp;
 poly i = 1 + a + a^2;
 ring r = 0,x,lp;
@@ -29,3 +28,14 @@ ASSUME(0, g() == 1 + x^2 + x^4);
 kill f;
 proc f(a) {return(a)}
 ASSUME(0, g() == 0);
+
+// more bad behaviour
+
+kill r, s, f;
+ring s = 0,a,lp;
+poly p(1) = a^6;
+ring r = 0,x,lp;
+poly p(1) = 1 + x;
+map f = s, x^2;
+ASSUME(0, f(p(1)) == x^12);
+

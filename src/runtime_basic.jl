@@ -399,6 +399,42 @@ function rt_make_return(a::SName)
     return rt_copy_tmp(rt_make(a)) # global variables must be copied
 end
 
+function rt_try_call_lookup(a::SName)
+
+    n = length(rtGlobal.callstack)
+
+    # local
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            return vars[i].second
+        end
+    end
+
+    # global ring dependent - probably map
+    R = rt_basering()
+    if haskey(R.vars, a.name)
+        return R.vars[a.name]
+    end
+
+    # global ring independent - proc
+    for p in (rtGlobal.callstack[end].current_package, :Top)
+        if haskey(rtGlobal.vars, p)
+            d = rtGlobal.vars[p]
+            if haskey(d, a.name)
+                return d[a.name]
+            end
+        end
+    end
+
+    return a
+end
+
+function rt_try_call_lookup(a)
+    @assert !isa(a, SName)
+    return a
+end
+
 # same as make but we just return a if nothing was found
 function rt_make_allow_name_ret(a::SName)
 
@@ -450,7 +486,6 @@ function rt_make_allow_name_ret(a::SName)
 
     return a
 end
-
 
 
 function rtdefined(a::SName)
@@ -652,6 +687,11 @@ function rt_set_current_ring(a::Sring)
     rtGlobal.callstack[n].current_ring = a
 end
 
+function rtcall(::Bool, f::Smap, a::Vector{SName})
+    @error_check(length(a) == 1, "maps can only be called on one name")
+    return rtcall(false, f, a[1])
+end
+
 function rtcall(::Bool, f::Smap, a::SName)
     n = length(rtGlobal.callstack)
     # from all local variables look for something called a.name from f.source
@@ -743,6 +783,7 @@ function rtcall(allow_name_ret::Bool, a::SName, v...)
     # indexed variable constructor
     return rtcall(allow_name_ret, SName[a], v...)
 end
+
 
 function rtcall(allow_name_ret::Bool, a::Vector{SName}, v::SName)
     return rtcall(allow_name_ret, a, rt_make(v))

@@ -151,32 +151,31 @@ end
 # commands in convert_elemexpr that require special constructs
 
 function convert_DEFINED_CMD(arg1, env::AstEnv)
-    arg1 = convert_expr(arg1, env)
-    if isa(arg1, SName) && haskey(env.declared_identifiers, String(arg1.name))
-        @warn "transpilation warning: variable "*String(arg1.name)*" is trivially defined"
-        return Expr(:call, :rt_get_voice)
+    @assert 0 < arg1.rule - @RULE_expr(0) < 100
+    l = Any[]
+    if arg1.rule == @RULE_expr(2) && arg1.child[1].rule == @RULE_elemexpr(37)
+        push_exprlist_expr!(l, arg1.child[1].child[1], env)
     else
-        if isa(arg1, Expr) && arg1.head == :call
-            if length(arg1.args) >= 2 && arg1.args[1] == :rtcall
-                # the argument is a call; allow the call to return a name
-                arg1.args[2] = true
-            elseif isa(arg1, Expr) && arg1.head == :call && !is_empty(arg1.args) && args1.args[1] == :rt_maketuple
-                # the argument is a tuple
-                for i in 2:length(arg1.args)
-                    b = arg1.args[i]
-                    # allow calls inside to return names
-                    if isa(b, Expr) && b.head == :call &&
-                            length(b.args) >= 2 && b.args[1] == :rtcall
-                        b.args[2] = true
-                    end
-                    # thread rtdefined over the tuple
-                    arg1.args[i] = Expr(:call, :rtdefined, b)
-                end
-                return arg1
-            end
-        end
-        return Expr(:call, :rtdefined, arg1)
+        push!(l, arg1)
     end
+    r = Any[]
+    for a in l
+        if a.rule == @RULE_expr(2)
+            b, ok = convert_elemexpr_name_call(arg1.child[1], env)
+            if ok
+                if isa(b, SName) && haskey(env.declared_identifiers, String(b.name))
+                    @warn "transpilation warning: variable "*String(b.name)*" is trivially defined"
+                    push!(r, Expr(:call, :rt_get_voice))
+                else
+                    push!(r, Expr(:call, :rtdefined, b))
+                end
+                continue
+            end
+        else
+            push!(r, convert_expr(arg1, env))
+        end
+    end
+    return Expr(:call, :rt_maketuple, make_tuple_array_copy(r)...)
 end
 
 
@@ -377,19 +376,24 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
     elseif a.rule == @RULE_elemexpr(6)
         h = convert_elemexpr(a.child[1], env, a.child[1].rule == @RULE_elemexpr(6))
         b = a.child[2].child
+        c = convert_exprlist(a.child[2], env)
         if length(b) == 1 && b[1].rule == @RULE_expr(2)
             b, ok = convert_elemexpr_name_call(b[1].child[1], env)
             if ok
-                if isa(b, SName) && haskey(env.declared_identifiers, string(b.name))
-                    return Expr(:call, :rtcall, nested, h, b.name)
-                else
-                    return Expr(:call, :rtcall, nested, h, b)
-                end
+                # we could eval to a map because in syntax we are a fxn of one argument
+                t = gensym()
+                r = Expr(:block,
+                        Expr(:(=), t, Expr(:call, :rt_try_call_lookup, h)),
+                        Expr(:if, Expr(:call, :isa, t, :Smap),
+                            Expr(:call, :rtcall, nested, t, b),
+                            Expr(:call, :rtcall, nested, t, make_tuple_array_nocopy(c)...)
+                        )
+                    )
+                return r
             end
         end
-        b = convert_exprlist(a.child[2], env)::Array{Any}
         # x(1)(2) => rtcall(false, rtcall(true, x, 1), 2)
-        return Expr(:call, :rtcall, nested, h, make_tuple_array_nocopy(b)...)
+        return Expr(:call, :rtcall, nested, h, make_tuple_array_nocopy(c)...)
     elseif a.rule == @RULE_elemexpr(7)
         b = convert_exprlist(a.child[1], env)::Array{Any}
         return Expr(:call, :rt_bracket_constructor, make_tuple_array_nocopy(b)...)
