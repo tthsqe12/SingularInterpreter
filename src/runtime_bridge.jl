@@ -11,7 +11,7 @@ const _sleftvs = Ptr{Cvoid}[]
 
 function sleftv(i::Int)
     if isempty(_sleftvs)
-        libSingular.allocate_sleftv_array(resize!(_sleftvs, 2))
+        libSingular.allocate_sleftv_array(resize!(_sleftvs, 3))
     end
     _sleftvs[i]
 end
@@ -56,6 +56,7 @@ end
 
 set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1), x; withcopy=withcopy, withname=withname)
 set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2), x; withcopy=withcopy, withname=withname)
+set_arg3(x; withcopy=false, withname=false) = set_arg(sleftv(3), x; withcopy=withcopy, withname=withname)
 
 
 ### get_res ###
@@ -192,6 +193,14 @@ function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     maybe_get_res(libSingular.iiExprArith2(Int(cmd), sleftv(1), sleftv(2)), T)
 end
 
+function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
+    rChangeCurrRing(rt_basering())
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
+    set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
+    maybe_get_res(libSingular.iiExprArith3(Int(cmd), sleftv(1), sleftv(2), sleftv(3)), T)
+end
+
 
 ### generating commands from tables ###
 
@@ -258,7 +267,8 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
 
     todo = Dict{Pair{Int,                      # cmd
                      Union{Int,                # arg for 1-arg cmds
-                           Tuple{Int,Int}}},   # arg1 & arg2
+                           Tuple{Int,Int},     # arg1 & arg2
+                           NTuple{3,Int}}},    # arg1 & arg2 & arg3
                 Union{Int,                     # res when explicitly in the table
                       Vector{Int}}}()          # possible res resulting from conversions
 
@@ -279,6 +289,7 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
             end
         end
     end
+
     i = 0
     while true
         (cmd, res, arg1, arg2) = libSingular.dArith2(i)
@@ -291,6 +302,25 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                 restypes = get!(todo, cmd => (arg1i, arg2i), Int[])
                 if restypes isa Vector
                     push!(restypes, res)
+                end
+            end
+        end
+    end
+
+    i = 0
+    while true
+        (cmd, res, arg1, arg2, arg3) = libSingular.dArith3(i)
+        cmd == 0 && break # end of dArith3
+        i += 1
+        res = get(overrides, (cmd, res, arg1, arg2, arg3), res)
+        todo[cmd => (arg1, arg2, arg3)] = res
+        for arg1i in get(type_conversions, arg1, (arg1,))
+            for arg2i in get(type_conversions, arg2, (arg2,))
+                for arg3i in get(type_conversions, arg3, (arg3,))
+                    restypes = get!(todo, cmd => (arg1i, arg2i, arg3i), Int[])
+                    if restypes isa Vector
+                        push!(restypes, res)
+                    end
                 end
             end
         end
@@ -354,7 +384,14 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                 @eval begin
                     $rtname(x, y) = $rtauto(x, y)
                     $rtauto(x, y) = rt_error(string($name,
-                                                    "(`$(rt_typestring(x))`, `$(rt_typestring(y))`) failed",
+                                        "(`$(rt_typestring(x))`, `$(rt_typestring(y))`) failed",
+                                                    $expected))
+                end
+            elseif length(args) == 3
+                @eval begin
+                    $rtname(x, y, z) = $rtauto(x, y, z)
+                    $rtauto(x, y, z) = rt_error(string($name,
+                                           "(`$(rt_typestring(x))`, `$(rt_typestring(y)), `$(rt_typestring(z))`) failed",
                                                     $expected))
                 end
             end
@@ -362,8 +399,12 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         end
         if length(Sargs) == 1
             @eval $rtauto(x::$(Sargs[1])) = cmd1($cmd, $Sres, x)
-        else
+        elseif length(Sargs) == 2
             @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2])) = cmd2($cmd, $Sres, x, y)
+        elseif length(Sargs) == 3
+            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3])) = cmd3($cmd, $Sres, x, y, z)
+        else
+            @assert false, "unimplemented command"
         end
     end
 end

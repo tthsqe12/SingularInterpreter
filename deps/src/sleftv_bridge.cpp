@@ -273,6 +273,14 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return err;
                     });
 
+    Singular.method("iiExprArith3",
+                    [](int op, void* lv1, void* lv2, void* lv3) {
+                        int err = iiExprArith3(&lvres, op, (leftv)lv1, (leftv)lv2, (leftv)lv3);
+                        if (err)
+                            errorreported = 0;
+                        return err;
+                    });
+
     Singular.method("rChangeCurrRing", [](ring r) {
                                            ring old = currRing;
                                            rChangeCurrRing(r);
@@ -392,11 +400,20 @@ static void singular_define_table_h(jlcxx::Module & Singular) {
                         sValCmd1 r = dArith1[i];
                         return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg);
                     });
+
     Singular.method("dArith2",
                     [](int i) {
                         sValCmd2 r = dArith2[i];
                         return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg1, (jint)r.arg2);
                     });
+
+    Singular.method("dArith3",
+                    [](int i) {
+                        sValCmd3 r = dArith3[i];
+                        return std::make_tuple((jint)r.cmd, (jint)r.res,
+                                               (jint)r.arg1, (jint)r.arg2, (jint)r.arg3);
+                    });
+
     Singular.method("dConvertTypes",
                     [](int i) {
                         sConvertTypes r = dConvertTypes[i];

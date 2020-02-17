@@ -95,3 +95,18 @@ list lfarey = farey(list(2, 3), 32003);
 ASSUME(0, lfarey == list(2, 3));
 ASSUME(0, typeof(lfarey[1]) == "number");
 ASSUME(0, typeof(lfarey[2]) == "number");
+
+// random
+def randmat = random(2, 3, 4);
+ASSUME(0, typeof(randmat) == "intmat");
+ASSUME(0, size(randmat) == 12);
+ASSUME(0, ncols(randmat) == 4);
+
+// vandermonde
+// example from the docs
+kill r;
+ring r=0,(x,y),dp;
+ideal p=2,3;
+ideal v=1,2,3,4,5,6,7,8,9;
+poly ip=vandermonde(p,v,2);
+ASSUME(0, ip[1..5] == -1/9797760*x^2*y^2-595/85536*x^2*y+55/396576*x*y^2+935/384*x^2-1309/3240*x*y);
