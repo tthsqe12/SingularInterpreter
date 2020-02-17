@@ -61,13 +61,15 @@ set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2), x; withcopy=wit
 ### get_res ###
 
 function get_res(expectedtype::CMDS)
-    t, d = libSingular.get_leftv_res()
+    isnotatuple, t, d = libSingular.get_leftv_res()
+    @assert isnotatuple
     @assert t == Int(expectedtype)
     d
 end
 
 function get_res(::Type{Any})
-    t, d = libSingular.get_leftv_res()
+    isnotatuple, t, d = libSingular.get_leftv_res()
+    @assert isnotatuple # TODO: handle when it's a tuple!
     get_res(convertible_types[CMDS(t)], d)
 end
 

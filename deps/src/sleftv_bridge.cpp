@@ -160,7 +160,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     [] {
                         void *res = (void*)lvres.Data();
                         int t = lvres.Typ();
-                        return std::make_tuple(t, res);
+                        bool isnotatuple = lvres.next == NULL;
+                        return std::make_tuple(isnotatuple, t, res);
                     });
 
     Singular.method("get_leftv_res_next",
