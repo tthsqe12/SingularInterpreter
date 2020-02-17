@@ -966,6 +966,20 @@ because we have no choice but to delay the evaluation of `i` in `f(i)`.
 If `f` turns out to be a map, the map will receive `:i` from the delayed evaluation.
 If `f` turns out to not be a map, the runtime call operator has to lookup `:i` before continuing.
 
+Here are some more difficulties:
+```
+> ring s = 0,a,lp;
+> poly p(1) = a^6;
+> ring r = 0,x,lp;
+> poly p(1) = 1 + x;
+> map f = s, x^2;
+> f(p(1));
+x12
+```
+
+What is one supposed to do with the singular code `a(b(c(d(i))))` ???
+
+
 
 
 -------------------------------
