@@ -145,7 +145,7 @@ function get_res(::Type{STuple})
         t, p, next = libSingular.get_leftv_res_next(next)
         @assert p != C_NULL
         if t == Int(STRING_CMD)
-            push!(a, Sstring(unsafe_string(Ptr{Cchar}(p))))
+            push!(a, get_res(Sstring, p))
         else
             rt_error("unknown type in the result of last command")
         end
@@ -153,7 +153,8 @@ function get_res(::Type{STuple})
     end
 end
 
-get_res(::Type{Sstring}) = Sstring(unsafe_string(Ptr{Cchar}(get_res(STRING_CMD))))
+get_res(::Type{Sstring}, data=get_res(STRING_CMD)) =
+    Sstring(unsafe_string(Ptr{Cchar}(data)))
 
 function maybe_get_res(err, T)
     # we assume the currRing didn't change on the Singular side
