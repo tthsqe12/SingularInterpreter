@@ -31,80 +31,110 @@ struct bigintmat_twin
 
 static void singular_define_table_h(jlcxx::Module & Singular);
 
-void init_sleftv(void* _lv, void* data, int type) {
-    leftv lv = (leftv)_lv;
+// sleftv simplified, for communication with Julia
+struct Sleftv {
+   void* lv; // leftv value
+   jint typ;
+};
+
+struct Dum {
+   leftv lv; // leftv value
+   jint typ;
+};
+
+void init_sleftv(Sleftv _lv, void* data) {
+    leftv lv = (leftv)_lv.lv;
     lv->Init();
     lv->data = data;
-    lv->rtyp = type;
+    lv->rtyp = _lv.typ;
+}
+
+namespace jlcxx
+{
+  template<> struct IsImmutable<Sleftv> : std::true_type {};
+  template<> struct IsBits<Sleftv> : std::true_type {};
+
+// template<> struct IsImmutable<Dum> : std::true_type {};
+  template<> struct IsBits<sleftv> : std::true_type {};
 }
 
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
-    Singular.method("set_sleftv", [](void* lv, jint x) { init_sleftv(lv, (void*)x, INT_CMD); });
+    jlcxx::static_type_mapping<Sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Sleftv"));
+    jlcxx::static_type_mapping<sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("_sleftv"));
 
+//    Singular.method("dumm", [](const Dum& d) { std::cout << d.typ << " --> " << d.lv << " > " << &d <<std::endl; });
+
+    // set_sleftv: the Sleftv arg will have its .lv field initialized,
+    // and its .typ field must contain the destination type
     Singular.method("set_sleftv",
-                    [](void* lv, poly x, int type, bool copy) {
-                        assert(type == POLY_CMD || type == VECTOR_CMD);
-                        init_sleftv(lv, copy ? pCopy(x) : x, type);
+                    [](Sleftv lv, jint x) {
+                        assert(lv.typ == INT_CMD);
+                        init_sleftv(lv, (void*)x);
                     });
 
     Singular.method("set_sleftv",
-                    [](void* lv, ideal x, int type, bool copy) {
-                        assert(type == IDEAL_CMD);
-                        init_sleftv(lv, copy ? idCopy(x) : x, IDEAL_CMD);
+                    [](Sleftv lv, poly x, bool copy) {
+                        assert(lv.typ == POLY_CMD || lv.typ == VECTOR_CMD);
+                        init_sleftv(lv, copy ? pCopy(x) : x);
                     });
 
     Singular.method("set_sleftv",
-                    [](void* lv, matrix x, int type, bool copy) {
-                        assert(type == MATRIX_CMD);
-                        init_sleftv(lv, copy ? mp_Copy(x, currRing) : x, MATRIX_CMD);
+                    [](Sleftv lv, ideal x, bool copy) {
+                        assert(lv.typ == IDEAL_CMD);
+                        init_sleftv(lv, copy ? idCopy(x) : x);
                     });
 
     Singular.method("set_sleftv",
-                    [](void* lv, number x, int type, bool copy) {
-                        assert(type == NUMBER_CMD);
-                        init_sleftv(lv, copy ? nCopy(x) : x, NUMBER_CMD);
+                    [](Sleftv lv, matrix x, bool copy) {
+                        assert(lv.typ == MATRIX_CMD);
+                        init_sleftv(lv, copy ? mp_Copy(x, currRing) : x);
+                    });
+
+    Singular.method("set_sleftv",
+                    [](Sleftv lv, number x, bool copy) {
+                        assert(lv.typ == NUMBER_CMD);
+                        init_sleftv(lv, copy ? nCopy(x) : x);
                     });
 
     Singular.method("set_sleftv_bigint",
-                    [](void* lv, void *p) {
+                    [](Sleftv lv, void *p) {
+                        assert(lv.typ = BIGINT_CMD);
                         auto b = reinterpret_cast<__mpz_struct*>(p) ;
                         number n = n_InitMPZ(b, coeffs_BIGINT);
-                        init_sleftv(lv, n, BIGINT_CMD);
+                        init_sleftv(lv, n);
                     });
 
 
     Singular.method("set_sleftv",
-                    [](void* lv, ring x, bool copy) {
-                        init_sleftv(lv, (void*)(copy ? rCopy(x) : x), RING_CMD);
-                    });
-
-    // experimental
-    Singular.method("set_sleftv",
-                    [](void* lv, void *x, bool copy) {
-                        assert(!copy);
-                        init_sleftv(lv, x, ANY_TYPE);
+                    [](Sleftv lv, ring x, bool copy) {
+                        assert(lv.typ = RING_CMD);
+                        init_sleftv(lv, (void*)(copy ? rCopy(x) : x));
                     });
 
     Singular.method("set_sleftv",
-                    [](void* lv, const std::string& x, bool withname) {
+                    [](Sleftv lv, const std::string& x, bool withname) {
+                        assert(lv.typ = STRING_CMD);
                         // TODO (or not): avoid copying this poor string 2 or 3 times
                         if (withname) {
                             idhdl id = string_idhdl(1); // TODO: fix this 1 !! so that it's not overwritten in the same call
                                                         // (for now only one argument can use this, so it's temporarily safe)
                             IDDATA(id) = omStrDup(x.c_str());
-                            init_sleftv(lv, id, IDHDL);
-                            leftv(lv)->name = id->id; // Hans says it's necessary to have the name both in the
+                            lv.typ = IDHDL;
+                            init_sleftv(lv, id);
+                            leftv(lv.lv)->name = id->id; // Hans says it's necessary to have the name both in the
                                                         // idhdl and as the name field of the sleftv, but they can
                                                         // be the same pointer
                         }
                         else
-                            init_sleftv(lv, (void*)(omStrDup(x.c_str())), STRING_CMD);
+                            init_sleftv(lv, (void*)(omStrDup(x.c_str())));
                     });
 
     // for `Vector{Int}`
     Singular.method("set_sleftv",
-                    [](void* lv, jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2) {
+                    [](Sleftv lv, jlcxx::ArrayRef<ssize_t> a, int d1, int d2) {
+                        bool ismatrix = lv.typ == INTMAT_CMD;
+                        assert(lv.typ == INTVEC_CMD || ismatrix);
                         assert(d1 * d2 == a.size());
                         assert(ismatrix || d2 == 1);
 
@@ -122,11 +152,12 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                             for (int i=0; i<a.size(); ++i)
                                 (*iv)[i] = a[i];
                         }
-                        init_sleftv(lv, iv, ismatrix ? (int)INTMAT_CMD : (int)INTVEC_CMD);
+                        init_sleftv(lv, iv);
                     });
 
     Singular.method("set_sleftv_bigintmat",
-                    [](void* lv, jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2) {
+                    [](Sleftv lv, jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2) {
+                        assert(lv.typ == BIGINTMAT_CMD);
                         assert(d1 * d2 == a.size());
                         assert(d1 >= 0 && d2 >= 0);
 
@@ -144,14 +175,15 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                                 auto b = reinterpret_cast<__mpz_struct*>(a[i++]);
                                 BIMATELEM(*bim, i1, i2) = n_InitMPZ(b, coeffs_BIGINT);
                             }
-                        init_sleftv(lv, bim, BIGINTMAT_CMD);
+                        init_sleftv(lv, bim);
                     });
 
     Singular.method("set_sleftv_list",
-                    [](void* lv, jint len) {
+                    [](Sleftv lv, jint len) {
+                        assert(lv.typ == LIST_CMD);
                         slists* list = (lists)omAllocBin(slists_bin); // segfaults with: `new slists`
                         list->Init(len);
-                        init_sleftv(lv, list, LIST_CMD);
+                        init_sleftv(lv, list);
                         return std::make_tuple((void*)list->m, sizeof(sleftv));
                     });
 
@@ -161,7 +193,9 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         void *res = (void*)lvres.Data();
                         int t = lvres.Typ();
                         bool isnotatuple = lvres.next == NULL;
+//                        return std::make_tuple(isnotatuple, Sleftv(res, t));
                         return std::make_tuple(isnotatuple, t, res);
+
                     });
 
     Singular.method("get_leftv_res_next",

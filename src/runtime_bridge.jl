@@ -1,5 +1,7 @@
 ##################### the lazy way: use sleftv's ##########
 
+using .libSingular: Sleftv
+
 rChangeCurrRing(r::Sring) = libSingular.rChangeCurrRing(r.value)
 
 function rChangeCurrRing(r::Ptr{Cvoid})
@@ -16,6 +18,7 @@ function sleftv(i::Int)
     _sleftvs[i]
 end
 
+sleftv(i::Int, x) = Sleftv(sleftv(i), Int(type_id(typeof(x))))
 
 ### set_arg ###
 
@@ -26,7 +29,7 @@ function set_arg(lv, x::BigInt; withcopy=false, withname=false)
 end
 
 function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}; withcopy=true, withname=false)
-    libSingular.set_sleftv(lv, x.value, Int(type_id(typeof(x))), withcopy)
+    libSingular.set_sleftv(lv, x.value, withcopy)
 end
 
 function set_arg(lv, x::Sring; withcopy=true, withname=false)
@@ -39,7 +42,7 @@ end
 
 function set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false)
     x = x.value
-    libSingular.set_sleftv(lv, vec(x), x isa Matrix, size(x, 1), size(x, 2))
+    libSingular.set_sleftv(lv, vec(x), size(x, 1), size(x, 2))
 end
 
 function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
@@ -50,13 +53,13 @@ end
 function set_arg(lv, x::Slist; kwargs...)
     m::Ptr{Cvoid}, sz::Int = libSingular.set_sleftv_list(lv, length(x.value))
     for (i, elt) in enumerate(x.value)
-        set_arg(m+(i-1)*sz, elt, withcopy=true)
+        set_arg(Sleftv(m+(i-1)*sz, Int(type_id(typeof(elt)))), elt, withcopy=true)
     end
 end
 
-set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1), x; withcopy=withcopy, withname=withname)
-set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2), x; withcopy=withcopy, withname=withname)
-set_arg3(x; withcopy=false, withname=false) = set_arg(sleftv(3), x; withcopy=withcopy, withname=withname)
+set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1, x), x; withcopy=withcopy, withname=withname)
+set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2, x), x; withcopy=withcopy, withname=withname)
+set_arg3(x; withcopy=false, withname=false) = set_arg(sleftv(3, x), x; withcopy=withcopy, withname=withname)
 
 
 ### get_res ###
