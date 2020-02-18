@@ -61,12 +61,15 @@ namespace jlcxx
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     jlcxx::static_type_mapping<Sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Sleftv"));
-    jlcxx::static_type_mapping<sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("_sleftv"));
+//    jlcxx::static_type_mapping<sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("_sleftv"));
 
 //    Singular.method("dumm", [](const Dum& d) { std::cout << d.typ << " --> " << d.lv << " > " << &d <<std::endl; });
-
+    Singular.method("coeffs_BIGINT_fun", []{std::cout << coeffs_BIGINT <<std::endl; return coeffs_BIGINT;});
     // set_sleftv: the Sleftv arg will have its .lv field initialized,
     // and its .typ field must contain the destination type
+
+    Singular.set_const("coeffs_BIGINT", coeffs_BIGINT);
+
     Singular.method("set_sleftv",
                     [](Sleftv lv, jint x) {
                         assert(lv.typ == INT_CMD);

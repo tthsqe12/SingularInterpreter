@@ -2,6 +2,11 @@ module libSingular
 
 import Libdl
 using CxxWrap
+
+struct Sleftv
+    lv::Ptr{Cvoid}
+    typ::Int
+end
 @wrapmodule(realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularwrap." * Libdl.dlext)))
 
 function __init__()
