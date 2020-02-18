@@ -300,6 +300,9 @@ function rtsetindex_last(a::Sintvec, i::Sintvec, b::STuple)
     return
 end
 
+#### resolution getindex ####
+
+# TODO: rtgetindex(a::Sresolution, b::Int) => Union{Sideal, Smodule}
 
 
 #### intmat/bigintmat/matrix get/setindex ####

@@ -454,6 +454,37 @@ function rt_parameter_vector(a::SName, b)
     push!(rtGlobal.local_vars, Pair(a.name, rt_convert2vector(b)))
 end
 
+#### resolution
+function rt_defaultconstructor_resolution()
+    R = rt_basering()
+    @error_check(R.valid, "cannot construct a resolution when no basering is active")
+    r1 = libSingular.syInit()
+    return Sresolution(r1, R)
+end
+
+function rt_declare_resolution(a::Vector{SName})
+    for i in a
+        rt_declare_resolution(i)
+    end
+end
+
+function rt_declare_resolution(a::SName)
+    n = length(rtGlobal.callstack)
+    if n > 1
+        rt_check_declaration_local(a.name, Sresolution)
+        push!(rtGlobal.local_vars, Pair(a.name, rt_defaultconstructor_resolution()))
+    else
+        d = rt_check_declaration_global_ring_dep(a.name, Sresolution)
+        d[a.name] = rt_defaultconstructor_resolution()
+    end
+    return nothing
+end
+
+function rt_parameter_resolution(a::SName, b)
+    @expensive_assert !rt_local_identifier_exists(a.name)
+    push!(rtGlobal.local_vars, Pair(a.name, rt_convert2resolution(b)))
+end
+
 #### ideal
 function rt_defaultconstructor_ideal()
     R = rt_basering()

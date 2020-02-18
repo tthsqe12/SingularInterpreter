@@ -548,6 +548,27 @@ function rt_assign_last(a::Svector, b::STuple)
     return rt_convert2vector(b.list[1])
 end
 
+#### assignment to resolution
+function rt_assign_more(a::Sresolution, b)
+    @assert !isa(b, STuple)
+    return rt_convert2resolution(b), empty_tuple
+end
+
+function rt_assign_more(a::Sresolution, b::STuple)
+    @error_check(!isempty(b), "argument mismatch in assignment")
+    return rt_convert2resolution(popfirst!(b.list)), b
+end
+
+function rt_assign_last(a::Sresolution, b)
+    @assert !isa(b, STuple)
+    return rt_convert2resolution(b)
+end
+
+function rt_assign_last(a::Sresolution, b::STuple)
+    @error_check(length(b.list) == 1, "argument mismatch in assignment")
+    return rt_convert2resolution(b.list[1])
+end
+
 #### assignment to ideal
 function rt_assign_more(a::Sideal, b)
     @assert !isa(b, STuple)

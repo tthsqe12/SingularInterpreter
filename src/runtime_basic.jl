@@ -46,6 +46,8 @@ Base.iterate(a::Spoly) = iterate(a, 0)
 Base.iterate(a::Spoly, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Svector) = iterate(a, 0)
 Base.iterate(a::Svector, state) = (state == 0 ? (a, 1) : nothing)
+Base.iterate(a::Sresolution) = iterate(a, 0)
+Base.iterate(a::Sresolution, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Sideal) = iterate(a, 0)
 Base.iterate(a::Sideal, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::Smodule) = iterate(a, 0)
@@ -91,11 +93,11 @@ rt_copy_own(a::STuple) = error("internal error: The tuple $a leaked through. Ple
 
 # immutable types
 
-object_is_tmp(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = true
-object_is_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = true
+object_is_tmp(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector, Sresolution}) = true
+object_is_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector, Sresolution}) = true
 
-rt_copy_tmp(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = a
-rt_copy_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector}) = a
+rt_copy_tmp(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector, Sresolution}) = a
+rt_copy_own(a::Union{Sproc, Int, BigInt, Sstring, Sring, Snumber, Spoly, Svector, Sresolution}) = a
 
 # mutable types
 
@@ -216,6 +218,8 @@ rt_promote(a::Snumber) = a
 rt_promote(a::Spoly) = a
 
 rt_promote(a::Svector) = a
+
+rt_promote(a::Sresolution) = a
 
 function rt_promote(a::Union{Slist, Sideal, Smodule, Smatrix, Smap})
     a.tmp = true
@@ -857,6 +861,7 @@ rt_typedata(::Sring)       = "ring"
 rt_typedata(::Snumber)     = "number"
 rt_typedata(::Spoly)       = "poly"
 rt_typedata(::Svector)     = "vector"
+rt_typedata(::Sresolution) = "resolution"
 rt_typedata(::Sideal)      = "ideal"
 rt_typedata(::Smodule)     = "module"
 rt_typedata(::Smatrix)     = "matrix"

@@ -70,7 +70,7 @@ void singular_define_matrices(jlcxx::Module & Singular)
             p_Delete(a->m + i, r);  // sets it back to zero
     });
 
-    /* append b to a starting at zero index ai; b is completely consumed by this operation */
+    /* append b to a starting at index ai; b is completely consumed by this operation */
     Singular.method("mp_append", [](matrix a, int ai, matrix b, ring r) {
         int bi = 0;
         while (ai < a->nrows*a->ncols && bi < b->nrows*b->ncols)
@@ -85,4 +85,18 @@ void singular_define_matrices(jlcxx::Module & Singular)
         return ai;
     });
 
+    Singular.method("syInit", []() {
+        return (ssyStrategy *) omAlloc0(sizeof(ssyStrategy));
+    });
+
+    Singular.method("syKillComputation", &syKillComputation);
+
+    Singular.method("syPrint", [](syStrategy a, const std::string r) {
+        SPrintStart();
+        syPrint(a, r.c_str());
+        char * s = SPrintEnd();
+        std::string S(s);
+        omFree(s);
+        return S;
+    });
 }

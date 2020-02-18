@@ -93,6 +93,12 @@ function rt_print(a::Svector)
     return s
 end
 
+function rt_print(a::Sresolution)
+    @warn_check_rings(a.parent, rt_basering(), "printing a resolution outside of basering")
+    s = libSingular.syPrint(a.value, "?R?") # TODO let Sring store a name
+    return s
+end
+
 function rt_print(a::Sideal)
     @warn_check_rings(a.parent, rt_basering(), "printing an ideal outside of basering")
     s = ""

@@ -214,7 +214,7 @@ sing_ptr(s::Snumber) = s.number_ptr
 
 #### singular type "poly"       immutable in the singular language
 mutable struct Spoly
-    value::libSingular.poly     # singly linked list of terms
+    value::libSingular.poly     # singly linked list of terms, copy is expensive
     parent::Sring
 
     function Spoly(value_::libSingular.poly, parent_::Sring)
@@ -237,7 +237,7 @@ end
 
 #### singular type "vector"     immutable in the singular language
 mutable struct Svector
-    value::libSingular.poly     # singly linked list of terms*gen(i), like a sparse array of poly
+    value::libSingular.poly     # singly linked list of terms*gen(i), copy is expensive
     parent::Sring
 
     function Svector(value_::libSingular.poly, parent_::Sring)
@@ -254,6 +254,29 @@ sing_ptr(p::Svector) = p.value
 
 function rt_vector_finalizer(a::Svector)
     libSingular.p_Delete(a.value, a.parent.value)
+    rt_ring_finalizer(a.parent)
+end
+
+
+#### singular type "resolution"     immutable in the singular language
+mutable struct Sresolution
+    value::libSingular.resolution   # opaque data type, kernel uses prefix "sy", copy is free
+    parent::Sring
+
+    function Sresolution(value_::libSingular.resolution, parent_::Sring)
+        a = new(value_, parent_)
+        finalizer(rt_resolution_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
+end
+
+sing_ptr(i::Sresolution) = i.value
+sing_ring(i::Sresolution) = i.parent
+
+function rt_resolution_finalizer(a::Sresolution)
+    libSingular.syKillComputation(a.value, a.parent.value)
     rt_ring_finalizer(a.parent)
 end
 
@@ -355,12 +378,9 @@ function rt_map_finalizer(a::Smap)
 end
 
 
-
-
-
 # the types that are always ring dependent, i.e. the .parent member is always valid
 # Slist is not included. lists are just special.
-const SingularRingType = Union{Snumber, Spoly, Svector, Sideal, Smodule, Smatrix, Smap}
+const SingularRingType = Union{Snumber, Spoly, Svector, Sresolution, Sideal, Smodule, Smatrix, Smap}
 
 
 # TODO: a SingularType encompassing all types including newstruct's

@@ -369,8 +369,23 @@ end
 function rt_cast2vector(a...)
     rt_error("vector(...) is unavailable; use brackets [...] for `vector` cast")
     return rt_defaultconstructor_vector()
-
 end
+
+#### resolution
+
+# TODO: need rt_convert2resolution(a::Slist)
+
+function rt_convert2resolution(a::Sresolution)
+    return a
+end
+
+function rt_convert2resolution(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `resolution`")
+    return rt_defaultconstructor_vector()
+end
+
+# TODO: need rt_cast2resolution(a...)
+
 
 #### ideal
 

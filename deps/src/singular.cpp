@@ -43,14 +43,14 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
     Singular.add_type<snumber>("number");
     Singular.add_type<__mpz_struct>("__mpz_struct");
     Singular.add_type<ip_sring>("ring");
-    Singular.add_type<spolyrec>("poly");
+    Singular.add_type<spolyrec>("poly"); // also vector
     // Singular.add_type<nMapFunc>("nMapFunc");
     // Singular.add_type<spolyrec>("vector");
     //Singular.add_bits<rRingOrder_t>("rRingOrder_t");
-    Singular.add_type<sip_sideal>("ideal");
+    Singular.add_type<sip_sideal>("ideal"); // also module
     Singular.add_type<ip_smatrix>("matrix");
     Singular.add_type<sip_smap>("map");
-    Singular.add_type<ssyStrategy>("syStrategy");
+    Singular.add_type<ssyStrategy>("resolution");
     //Singular.add_type<sip_smap>("sip_smap");
 
     /* monomial orderings */
