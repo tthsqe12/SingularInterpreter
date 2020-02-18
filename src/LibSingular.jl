@@ -1,12 +1,23 @@
 module libSingular
 
+
 import Libdl
 using CxxWrap
 
-struct Sleftv
-    lv::Ptr{Cvoid}
-    typ::Int
+# it seems that this needs to be defined before @wrapmodule
+mutable struct Sleftv
+    next::Ptr{Sleftv}
+    name::Ptr{Cchar}
+    data::Ptr{Cvoid}
+    attribute::Ptr{Cvoid} # not Cvoid in Singular
+    flag::Cuint # BITSET == unsigned int
+    rtyp::Cint
+    s::Ptr{Cvoid} # not Cvoid in Singular
+    req_packhdl::Ptr{Cvoid} # not Cvoid in Singular
 end
+
+const Leftv = Ptr{Sleftv}
+
 @wrapmodule(realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularwrap." * Libdl.dlext)))
 
 function __init__()

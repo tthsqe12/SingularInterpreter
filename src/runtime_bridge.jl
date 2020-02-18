@@ -1,6 +1,24 @@
 ##################### the lazy way: use sleftv's ##########
+using .libSingular: Sleftv, Leftv
 
-using .libSingular: Sleftv
+Sleftv() = Sleftv(0, 0, 0, 0, 0, 0, 0, 0)
+
+function lv_init(lv, typ, data)
+    slv = unsafe_load(lv)
+    slv.rtyp = Cint(typ)
+    slv.data = Ptr{Cvoid}(_ptr(data))
+end
+
+_copy(x::Sring) = libSingular.rCopy(x.value)
+_copy(x::Union{Spoly,Svector}) = libSingular.p_Copy(x.value, x.parent.value)
+_copy(x::Sideal) = libSingular.id_Copy(x.value, x.parent.value)
+_copy(x::Smatrix) = libSingular.mp_Copy(x.value, x.parent.value)
+_copy(x::Snumber) = libSingular.n_Copy(x.value, x.parent.value)
+
+_ptr(x::Ptr) = x
+#_ptr(x::Sleftv) = Leftv(pointer_from_objref(x))
+
+_ptr(x::Union{Sring,Spoly,Svector,Sideal,Smatrix,Snumber}) = Ptr{Cvoid}(x.value.cpp_object)
 
 rChangeCurrRing(r::Sring) = libSingular.rChangeCurrRing(r.value)
 
@@ -9,40 +27,42 @@ function rChangeCurrRing(r::Ptr{Cvoid})
     libSingular.rChangeCurrRing(libSingular.rDefault_null_helper())
 end
 
-const _sleftvs = Ptr{Cvoid}[]
+const _sleftvs = Sleftv[]
 
-function sleftv(i::Int)
+function get_sleftv(i::Int)
     if isempty(_sleftvs)
-        libSingular.allocate_sleftv_array(resize!(_sleftvs, 3))
+        #        libSingular.allocate_sleftv_array(resize!(_sleftvs, 3))
+        for j = 1:3
+            push!(_sleftvs, Sleftv())
+        end
     end
     _sleftvs[i]
 end
 
-sleftv(i::Int, x) = Sleftv(sleftv(i), Int(type_id(typeof(x))))
+#get_leftv(i::Int) = Leftv(pointer_from_objref(get_sleftv(i)))
+get_leftv(i::Int) = pointer(_sleftvs) + (i-1)*sizeof(Sleftv)
 
 ### set_arg ###
 
-set_arg(lv, x::Int; kw...) = libSingular.set_sleftv(lv, x)
+set_arg(lv, x::Int; kw...) = lv_init(lv, INT_CMD, Ptr{Cvoid}(x))
 
 function set_arg(lv, x::BigInt; withcopy=false, withname=false)
-    GC.@preserve x libSingular.set_sleftv_bigint(lv, pointer_from_objref(x))
+    n = GC.@preserve x libSingular.n_InitMPZ_internal(pointer_from_objref(x), libSingular.coeffs_BIGINT())
+    lv_init(lv, BIGINT_CMD, n)
 end
 
-function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}; withcopy=true, withname=false)
-    libSingular.set_sleftv(lv, x.value, withcopy)
-end
-
-function set_arg(lv, x::Sring; withcopy=true, withname=false)
-    libSingular.set_sleftv(lv, x.value, withcopy)
+function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber,Sring}; withcopy=true, withname=false)
+    val = withcopy ? _copy(x) : x.value
+    lv_init(lv, type_id(typeof(x)), val.cpp_object)
 end
 
 function set_arg(lv, x::Sstring; withcopy=false, withname=false)
-    libSingular.set_sleftv(lv, x.value, withname)
+    libSingular.set_sleftv_string(lv, x.value, withname)
 end
 
 function set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false)
-    x = x.value
-    libSingular.set_sleftv(lv, vec(x), size(x, 1), size(x, 2))
+    xval = x.value
+    libSingular.set_sleftv_intvec(lv, vec(xval), x isa Sintmat, size(xval, 1), size(xval, 2))
 end
 
 function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
@@ -51,15 +71,17 @@ function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
 end
 
 function set_arg(lv, x::Slist; kwargs...)
-    m::Ptr{Cvoid}, sz::Int = libSingular.set_sleftv_list(lv, length(x.value))
+    m::Leftv = libSingular.set_sleftv_list(lv, length(x.value))
+#    m::Leftv = libSingular.set_sleftv_list(_ptr(lv), length(x.value))
     for (i, elt) in enumerate(x.value)
-        set_arg(Sleftv(m+(i-1)*sz, Int(type_id(typeof(elt)))), elt, withcopy=true)
+        @show m + sizeof(Sleftv) * (i-1)
+        set_arg(m + sizeof(Sleftv) * (i-1), elt, withcopy=true)
     end
 end
 
-set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1, x), x; withcopy=withcopy, withname=withname)
-set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2, x), x; withcopy=withcopy, withname=withname)
-set_arg3(x; withcopy=false, withname=false) = set_arg(sleftv(3, x), x; withcopy=withcopy, withname=withname)
+set_arg1(x; withcopy=false, withname=false) = set_arg(get_leftv(1), x; withcopy=withcopy, withname=withname)
+set_arg2(x; withcopy=false, withname=false) = set_arg(get_leftv(2), x; withcopy=withcopy, withname=withname)
+set_arg3(x; withcopy=false, withname=false) = set_arg(get_leftv(3), x; withcopy=withcopy, withname=withname)
 
 
 ### get_res ###
@@ -186,14 +208,14 @@ function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
     # this sets the value to NULL if basering not defined
     rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-    maybe_get_res(libSingular.iiExprArith1(Int(cmd), sleftv(1)), T)
+    maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_leftv(1)), T)
 end
 
 function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
     set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix})) # do we need to copy for a Sring?
-    maybe_get_res(libSingular.iiExprArith2(Int(cmd), sleftv(1), sleftv(2)), T)
+    maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_leftv(1), get_leftv(2)), T)
 end
 
 function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
@@ -201,7 +223,7 @@ function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
     set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
     set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-    maybe_get_res(libSingular.iiExprArith3(Int(cmd), sleftv(1), sleftv(2), sleftv(3)), T)
+    maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_leftv(1), get_leftv(2), get_leftv(3)), T)
 end
 
 

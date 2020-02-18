@@ -52,7 +52,7 @@ std::string rPrint_helper(ring r)
     SPrintStart();
     // unfortunately we have static BOOLEAN ipPrint_RING in ipprint.cc
     PrintS("polynomial ring, over a ");
-    PrintS(!rField_is_Ring(r) ? "field" : 
+    PrintS(!rField_is_Ring(r) ? "field" :
             rField_is_Domain(r) ? "domain"
                                 : "ring (with zero-divisors)");
     PrintS(r->OrdSgn == 1     ? ", global" :
@@ -601,8 +601,8 @@ void singular_define_rings(jlcxx::Module & Singular)
 		       long res;
                        if( p != NULL)
 		       {  res = p_GetOrder(p, r);}
-		       else 
+		       else
 		       {  res = -1;}
-		       return res; 
+		       return res;
     });
 }
