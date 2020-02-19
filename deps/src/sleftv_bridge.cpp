@@ -4,7 +4,6 @@
 typedef ssize_t jint; // julia Int
 
 // for calling interpreter routines from SingularInterpreter
-static sleftv lvres;
 
 static const char* lv_string_names[3] = {"", "__string_name_1", "__string_name_2"};
 
@@ -68,6 +67,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("sleftv_type", [](leftv lv, int typ) { lv->rtyp = typ; });
     Singular.method("sleftv_data", [](leftv lv) { return lv->Data(); });
     Singular.method("sleftv_data", [](leftv lv, void* data) { lv->data = data; });
+    Singular.method("sleftv_next", [](leftv lv) { return lv->next; });
+    Singular.method("sleftv_next", [](leftv lv, leftv next) { lv->next = next; });
     Singular.method("sleftv_at", [](leftv lv, int i) { return lv + i; });
     Singular.set_const("sleftv_sizeof", sizeof(sleftv));
 
@@ -148,19 +149,10 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return list->m;
                     });
 
-    // TODO: check if lvres must be somehow de-allocated / does not leak
-    Singular.method("get_sleftv_res",
-                    [] {
-                        void *res = (void*)lvres.Data();
-                        int t = lvres.Typ();
-                        bool isnotatuple = lvres.next == NULL;
-                        return std::make_tuple(isnotatuple, t, res);
-                    });
-
     Singular.method("get_sleftv_res_next",
-                    [](void *next) {
+                    [](leftv lvres, void *next) {
                         if (next == NULL) // start the iteration
-                            next = &lvres;
+                            next = (void*)lvres;
                         leftv lvres_next = (leftv)next;
                         return std::make_tuple(lvres_next->Typ(), lvres_next->Data(), (void*)lvres_next->next);
                     });
@@ -250,25 +242,25 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("iiExprArith1",
-                    [](int op, leftv lv) {
-                        int err = iiExprArith1(&lvres, (leftv)lv, op);
+                    [](int op, leftv res, leftv lv) {
+                        int err = iiExprArith1(res, lv, op);
                         if (err)
                             errorreported = 0;
                         return err;
                     });
 
     Singular.method("iiExprArith2",
-                    [](int op, leftv lv1, leftv lv2) {
+                    [](int op, leftv res, leftv lv1, leftv lv2) {
                         // TODO: check what is the default proccall argument
-                        int err = iiExprArith2(&lvres, (leftv)lv1, op, (leftv)lv2);
+                        int err = iiExprArith2(res, lv1, op, lv2);
                         if (err)
                             errorreported = 0;
                         return err;
                     });
 
     Singular.method("iiExprArith3",
-                    [](int op, leftv lv1, leftv lv2, leftv lv3) {
-                        int err = iiExprArith3(&lvres, op, (leftv)lv1, (leftv)lv2, (leftv)lv3);
+                    [](int op, leftv res, leftv lv1, leftv lv2, leftv lv3) {
+                        int err = iiExprArith3(res, op, lv1, lv2, lv3);
                         if (err)
                             errorreported = 0;
                         return err;

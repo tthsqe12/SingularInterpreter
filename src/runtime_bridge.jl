@@ -28,11 +28,11 @@ const _MAX_ARGS = 3
 
 function get_sleftv(i::Int)
     if isempty(_sleftvs)
-        for i=1:_MAX_ARGS
+        for i=1:_MAX_ARGS+1
             push!(_sleftvs, Sleftv())
         end
     end
-    _sleftvs[i]
+    _sleftvs[i+1]
 end
 
 
@@ -74,24 +74,31 @@ function set_arg(lv, x::Slist; kwargs...)
     end
 end
 
-set_arg1(x; withcopy=false, withname=false) = set_arg(get_sleftv(1), x; withcopy=withcopy, withname=withname)
-set_arg2(x; withcopy=false, withname=false) = set_arg(get_sleftv(2), x; withcopy=withcopy, withname=withname)
-set_arg3(x; withcopy=false, withname=false) = set_arg(get_sleftv(3), x; withcopy=withcopy, withname=withname)
+set_arg1(x; withcopy=false, withname=false) =
+    set_arg(get_sleftv(1), x; withcopy=withcopy, withname=withname)
+
+set_arg2(x; withcopy=false, withname=false) =
+    set_arg(get_sleftv(2), x; withcopy=withcopy, withname=withname)
+
+set_arg3(x; withcopy=false, withname=false) =
+    set_arg(get_sleftv(3), x; withcopy=withcopy, withname=withname)
 
 
 ### get_res ###
 
 function get_res(expectedtype::CMDS)
-    isnotatuple, t, d = libSingular.get_sleftv_res()
-    @assert isnotatuple
-    @assert t == Int(expectedtype)
-    d
+    res = get_sleftv(0)
+    @assert libSingular.sleftv_next(res).cpp_object == C_NULL
+    @assert libSingular.sleftv_type(res) == Int(expectedtype)
+    libSingular.sleftv_data(res)
 end
 
 function get_res(::Type{Any})
-    isnotatuple, t, d = libSingular.get_sleftv_res()
-    @assert isnotatuple # TODO: handle when it's a tuple!
-    get_res(convertible_types[CMDS(t)], d)
+    res = get_sleftv(0)
+    @assert libSingular.sleftv_next(res).cpp_object == C_NULL # TODO: handle when it's a tuple!
+    typ = libSingular.sleftv_type(res)
+    data = libSingular.sleftv_data(res)
+    get_res(convertible_types[CMDS(typ)], data)
 end
 
 get_res(::Type{Int}, data=get_res(INT_CMD)) = Int(data)
@@ -168,8 +175,9 @@ end
 function get_res(::Type{STuple})
     a = Any[]
     next = C_NULL
+    res = get_sleftv(0)
     while true
-        t, p, next = libSingular.get_sleftv_res_next(next)
+        t, p, next = libSingular.get_sleftv_res_next(res, next)
         @assert p != C_NULL
         if t == Int(STRING_CMD)
             push!(a, get_res(Sstring, p))
@@ -203,14 +211,14 @@ function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
     # this sets the value to NULL if basering not defined
     rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-    maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_sleftv(1)), T)
+    maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_sleftv(0), get_sleftv(1)), T)
 end
 
 function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
     set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix})) # do we need to copy for a Sring?
-    maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_sleftv(1), get_sleftv(2)), T)
+    maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2)), T)
 end
 
 function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
@@ -218,7 +226,7 @@ function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
     set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
     set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-    maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(1), get_sleftv(2), get_sleftv(3)), T)
+    maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2), get_sleftv(3)), T)
 end
 
 
