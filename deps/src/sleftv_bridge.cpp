@@ -20,6 +20,29 @@ static idhdl string_idhdl(int i) {
     return x;
 }
 
+/*
+  the following could be used to "mirror" types between C++ & Julia
+  it's unfortunately unconvenient, because of some restrictions:
+  + we want a `mutable struct` for sleftv on the Julia side, as it's big and we want
+    mutation for convenience
+  + but then Julia arrays use boxed values, and it's not easy to mirror on the Julia side
+    a heap-allocated array created on the c++ side
+  + moreover, unsafe_load creates copies, so it's not possible to mutate in Julia a value
+    which was sent to Julia as a pointer
+
+namespace jlcxx
+{
+ template<> struct IsImmutable<leftv> : std::true_type {};
+ template<> struct IsBits<leftv> : std::true_type {};
+
+ template<> struct IsBits<sleftv> : std::true_type {};
+}
+
+// to put in singular_define_sleftv_bridge:
+jlcxx::static_type_mapping<sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Sleftv_"));
+jlcxx::static_type_mapping<leftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Leftv_"));
+*/
+
 // hack to work around private members from bigintmat
 struct bigintmat_twin
 {
