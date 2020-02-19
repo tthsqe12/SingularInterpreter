@@ -149,14 +149,6 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return list->m;
                     });
 
-    Singular.method("get_sleftv_res_next",
-                    [](leftv lvres, void *next) {
-                        if (next == NULL) // start the iteration
-                            next = (void*)lvres;
-                        leftv lvres_next = (leftv)next;
-                        return std::make_tuple(lvres_next->Typ(), lvres_next->Data(), (void*)lvres_next->next);
-                    });
-
     Singular.method("lvres_array_get_dims",
                     [] (void* data, int type){
                         jint r, c;

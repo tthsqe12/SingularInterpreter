@@ -205,16 +205,17 @@ function get_res(::Type{STuple})
     a = Any[]
     next = C_NULL
     res = get_sleftv(0)
-    while true
-        t, p, next = libSingular.get_sleftv_res_next(res, next)
-        @assert p != C_NULL
-        if t == Int(STRING_CMD)
-            push!(a, get_res(Sstring, p))
+    while res.cpp_object != C_NULL
+        data = res.data
+        @assert data != C_NULL
+        if res.rtyp == Int(STRING_CMD)
+            push!(a, get_res(Sstring, data))
         else
             rt_error("unknown type in the result of last command")
         end
-        next == C_NULL && return STuple(a)
+        res = res.next
     end
+    STuple(a)
 end
 
 get_res(::Type{Sstring}, data=get_res(STRING_CMD)) =
