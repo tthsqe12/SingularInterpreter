@@ -9,12 +9,19 @@ function rChangeCurrRing(r::Ptr{Cvoid})
     libSingular.rChangeCurrRing(libSingular.rDefault_null_helper())
 end
 
-_copy(x::Sring) = libSingular.rCopy(x.value)
-_copy(x::Union{Spoly,Svector}) = libSingular.p_Copy(x.value, x.parent.value)
-_copy(x::Sideal) = libSingular.id_Copy(x.value, x.parent.value)
-_copy(x::Smatrix) = libSingular.mp_Copy(x.value, x.parent.value)
-_copy(x::Snumber) = libSingular.n_Copy(x.value, x.parent.value)
+_copy(x::libSingular.ring) = libSingular.rCopy(x)
+_copy(x::libSingular.poly, ring) = libSingular.p_Copy(x, ring.value)
+_copy(x::libSingular.ideal, ring) = libSingular.id_Copy(x, ring.value)
+_copy(x::libSingular.matrix, ring) = libSingular.mp_Copy(x, ring.value)
+_copy(x::libSingular.number, ring) = libSingular.n_Copy(x, ring.value)
 
+_copy(x::Sring) = _copy(x.value)
+_copy(x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}) = _copy(x.value, x.parent)
+
+internal_void_to(::Type{<:Union{Spoly,Svector}}, ptr::Ptr) = libSingular.internal_void_to_poly_helper(ptr)
+internal_void_to(::Type{Snumber}, ptr::Ptr) = libSingular.internal_void_to_number_helper(ptr)
+internal_void_to(::Type{Sideal}, ptr::Ptr) = libSingular.internal_void_to_ideal_helper(ptr)
+internal_void_to(::Type{Smatrix}, ptr::Ptr) = libSingular.internal_void_to_matrix_helper(ptr)
 
 ### sleftv ###
 
@@ -117,6 +124,10 @@ set_arg3(x; withcopy=false, withname=false) =
 
 ### get_res ###
 
+# Singular functions iiExprArith1 and friends 0-initialize the res parameter immediately
+# so the data there, if any, is not reclaimed
+# TODO: cleanup result data when appropriate between calls
+
 function get_res(expectedtype::CMDS)
     res = get_sleftv(0)
     @assert res.next.cpp_object == C_NULL
@@ -130,9 +141,9 @@ function get_res(::Type{Any})
     get_res(convertible_types[CMDS(res.rtyp)], res.data)
 end
 
-get_res(::Type{Int}, data=get_res(INT_CMD)) = Int(data)
+get_res(::Type{Int}, data=get_res(INT_CMD); copy=nothing) = Int(data)
 
-function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD))
+function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD); copy=nothing)
     d = Int(data)
     if d & 1 != 0 # immediate int
         BigInt(d >> 2)
@@ -141,36 +152,41 @@ function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD))
     end
 end
 
-get_res(::Type{Spoly}, data=get_res(POLY_CMD)) =
-    Spoly(libSingular.internal_void_to_poly_helper(data), rt_basering())
+# TODO: check that a copy is necessary, and if yes why not other types?
+# cf. get_res(Slist, ...)
+function get_res(::Type{T},
+                 data=get_res(type_id(T));
+                 copy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smatrix}
+    r = rt_basering()
+    x = internal_void_to(T, data)
+    if copy
+        x = _copy(x, r)
+    end
+    if T == Sideal || T == Smatrix
+        T(x, r, true)
+    else
+        T(x, r)
+    end
+end
 
-get_res(::Type{Svector}, data=get_res(VECTOR_CMD)) =
-    Svector(libSingular.internal_void_to_poly_helper(data), rt_basering())
-
-get_res(::Type{Snumber}, data=get_res(NUMBER_CMD)) =
-    Snumber(libSingular.internal_void_to_number_helper(data), rt_basering())
-
-get_res(::Type{Sideal}, data=get_res(IDEAL_CMD)) =
-    Sideal(libSingular.internal_void_to_ideal_helper(data), rt_basering(), true)
-
-get_res(::Type{Smatrix}, data=get_res(MATRIX_CMD)) =
-    Smatrix(libSingular.internal_void_to_matrix_helper(data), rt_basering(), true)
-
-function get_res(::Type{Sintvec}, data=get_res(INTVEC_CMD))
+function get_res(::Type{Sintvec}, data=get_res(INTVEC_CMD); copy=false)
+    @assert !copy
     d = libSingular.lvres_array_get_dims(data, Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv, data, Int(INTVEC_CMD))
     Sintvec(iv, true)
 end
 
-function get_res(::Type{Sintmat}, data=get_res(INTMAT_CMD))
+function get_res(::Type{Sintmat}, data=get_res(INTMAT_CMD); copy=false)
+    @assert !copy
     d = libSingular.lvres_array_get_dims(data, Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im), data, Int(INTMAT_CMD))
     Sintmat(im, true)
 end
 
-function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD))
+function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD); copy=false)
+    @assert !copy
     r, c = libSingular.lvres_array_get_dims(data, Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
@@ -180,15 +196,16 @@ function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD))
     Sbigintmat(bim, true)
 end
 
-function get_res(::Type{Slist}, data=get_res(LIST_CMD))
-    n = libSingular.list_length(data)
+function get_res(::Type{Slist}, data=get_res(LIST_CMD); copy=false)
+    @assert !copy
+    n::Int, lv0::Sleftv = libSingular.internal_void_to_lists(data)
     a = Vector{Any}(undef, n)
     cnt = 0
     for i = 1:n
-        (ok, t, d) = libSingular.list_elt_i(data, i)
-        @assert ok
-        T = convertible_types[CMDS(t)]
-        a[i] = get_res(T, d)
+        lv = libSingular.sleftv_at(lv0, i-1)
+        typ = CMDS(lv.rtyp)
+        T = convertible_types[typ]
+        a[i] = get_res(T, lv.data, copy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
         cnt += rt_is_ring_dep(a[i])
     end
     ring = if cnt == 0

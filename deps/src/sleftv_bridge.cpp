@@ -196,41 +196,10 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return (void*)BIMATELEM(bim, i, j);
                     });
 
-    Singular.method("list_length", [](void* data) {
-                                       lists l = (lists)data;
-                                       return (jint)(l->nr+1);
-                                   });
-
-    Singular.method("list_elt_i",
-                    [](void* data, int i) {
+    Singular.method("internal_void_to_lists",
+                    [](void* data) {
                         lists l = (lists)data;
-                        assert(0 < i && i <= l->nr+1);
-                        sleftv &e = l->m[i-1];
-                        void *d;
-                        int t;
-                        bool ok = true;
-                        switch (e.rtyp) {
-                        case NUMBER_CMD:
-                            d = (void*)nCopy((number)e.data); break;
-                        case POLY_CMD:
-                            d = (void*)pCopy((poly)e.data); break;
-                        case IDEAL_CMD:
-                            d = (void*)idCopy((ideal)e.data); break;
-                        case INTMAT_CMD:
-                            d = (void*)ivCopy((intvec*)e.data); break;
-                        case LIST_CMD:
-                        case INTVEC_CMD:
-                        case INT_CMD:
-                        case STRING_CMD: // deep-copied on the julia side
-                        case BIGINT_CMD: // deep-copied on the julia side
-                            d = (void*)e.data; break;
-                        default:
-                            d = (void*)NULL;
-                            ok = false; // merely returning d=NULL is not enough, some pointer types
-                                        // might return 0 as a valid object, e.g. for POLY_CMD it
-                                        // means the null polynomial
-                        }
-                        return std::make_tuple(ok, e.rtyp, d);
+                        return std::make_tuple((jint)(l->nr + 1), l->m);
                     });
 
     Singular.method("iiExprArith1",
