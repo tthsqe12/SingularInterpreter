@@ -31,80 +31,50 @@ struct bigintmat_twin
 
 static void singular_define_table_h(jlcxx::Module & Singular);
 
-void init_sleftv(void* _lv, void* data, int type) {
-    leftv lv = (leftv)_lv;
+void init_sleftv(leftv lv, void* data, int type) {
     lv->Init();
     lv->data = data;
     lv->rtyp = type;
 }
-
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
-    Singular.method("set_sleftv", [](void* lv, jint x) { init_sleftv(lv, (void*)x, INT_CMD); });
+    Singular.add_type<sleftv>("Sleftv");
 
-    Singular.method("set_sleftv",
-                    [](void* lv, poly x, int type, bool copy) {
-                        assert(type == POLY_CMD || type == VECTOR_CMD);
-                        init_sleftv(lv, copy ? pCopy(x) : x, type);
-                    });
+    Singular.method("sleftv_init", [](leftv lv) { return lv->Init(); });
+    Singular.method("sleftv_type", [](leftv lv) { return lv->Typ(); });
+    Singular.method("sleftv_type", [](leftv lv, int typ) { lv->rtyp = typ; });
+    Singular.method("sleftv_data", [](leftv lv) { return lv->Data(); });
+    Singular.method("sleftv_data", [](leftv lv, void* data) { lv->data = data; });
+    Singular.method("sleftv_at", [](leftv lv, int i) { return lv + i; });
+    Singular.set_const("sleftv_sizeof", sizeof(sleftv));
 
-    Singular.method("set_sleftv",
-                    [](void* lv, ideal x, int type, bool copy) {
-                        assert(type == IDEAL_CMD);
-                        init_sleftv(lv, copy ? idCopy(x) : x, IDEAL_CMD);
-                    });
+    // can't be a constant, because at the time of module initialization, the constant is invalid
+    // it could also be created on the Julia side via:
+    // coeffs_BIGINT = libSingular.nInitChar(libSingular.n_Q, Ptr{Nothing}(0))
+    Singular.method("coeffs_BIGINT", []{ return coeffs_BIGINT; });
 
-    Singular.method("set_sleftv",
-                    [](void* lv, matrix x, int type, bool copy) {
-                        assert(type == MATRIX_CMD);
-                        init_sleftv(lv, copy ? mp_Copy(x, currRing) : x, MATRIX_CMD);
-                    });
+    Singular.method("rCopy", &rCopy);
 
-    Singular.method("set_sleftv",
-                    [](void* lv, number x, int type, bool copy) {
-                        assert(type == NUMBER_CMD);
-                        init_sleftv(lv, copy ? nCopy(x) : x, NUMBER_CMD);
-                    });
-
-    Singular.method("set_sleftv_bigint",
-                    [](void* lv, void *p) {
-                        auto b = reinterpret_cast<__mpz_struct*>(p) ;
-                        number n = n_InitMPZ(b, coeffs_BIGINT);
-                        init_sleftv(lv, n, BIGINT_CMD);
-                    });
-
-
-    Singular.method("set_sleftv",
-                    [](void* lv, ring x, bool copy) {
-                        init_sleftv(lv, (void*)(copy ? rCopy(x) : x), RING_CMD);
-                    });
-
-    // experimental
-    Singular.method("set_sleftv",
-                    [](void* lv, void *x, bool copy) {
-                        assert(!copy);
-                        init_sleftv(lv, x, ANY_TYPE);
-                    });
-
-    Singular.method("set_sleftv",
-                    [](void* lv, const std::string& x, bool withname) {
+    Singular.method("set_sleftv_string",
+                    [](leftv lv, const std::string& x, bool withname) {
                         // TODO (or not): avoid copying this poor string 2 or 3 times
+
                         if (withname) {
                             idhdl id = string_idhdl(1); // TODO: fix this 1 !! so that it's not overwritten in the same call
                                                         // (for now only one argument can use this, so it's temporarily safe)
                             IDDATA(id) = omStrDup(x.c_str());
                             init_sleftv(lv, id, IDHDL);
-                            leftv(lv)->name = id->id; // Hans says it's necessary to have the name both in the
-                                                        // idhdl and as the name field of the sleftv, but they can
-                                                        // be the same pointer
+                            lv->name = id->id; // Hans says it's necessary to have the name both in the
+                                               // idhdl and as the name field of the sleftv, but they can
+                                               // be the same pointer
                         }
                         else
-                            init_sleftv(lv, (void*)(omStrDup(x.c_str())), STRING_CMD);
+                            init_sleftv(lv, (void*)omStrDup(x.c_str()), STRING_CMD);
                     });
 
     // for `Vector{Int}`
-    Singular.method("set_sleftv",
-                    [](void* lv, jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2) {
+    Singular.method("set_sleftv_intvec",
+                    [](leftv lv, jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2) {
                         assert(d1 * d2 == a.size());
                         assert(ismatrix || d2 == 1);
 
@@ -126,7 +96,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("set_sleftv_bigintmat",
-                    [](void* lv, jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2) {
+                    [](leftv lv, jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2) {
                         assert(d1 * d2 == a.size());
                         assert(d1 >= 0 && d2 >= 0);
 
@@ -148,15 +118,15 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("set_sleftv_list",
-                    [](void* lv, jint len) {
+                    [](leftv lv, jint len) {
                         slists* list = (lists)omAllocBin(slists_bin); // segfaults with: `new slists`
                         list->Init(len);
                         init_sleftv(lv, list, LIST_CMD);
-                        return std::make_tuple((void*)list->m, sizeof(sleftv));
+                        return list->m;
                     });
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
-    Singular.method("get_leftv_res",
+    Singular.method("get_sleftv_res",
                     [] {
                         void *res = (void*)lvres.Data();
                         int t = lvres.Typ();
@@ -164,7 +134,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return std::make_tuple(isnotatuple, t, res);
                     });
 
-    Singular.method("get_leftv_res_next",
+    Singular.method("get_sleftv_res_next",
                     [](void *next) {
                         if (next == NULL) // start the iteration
                             next = &lvres;
@@ -257,7 +227,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("iiExprArith1",
-                    [](int op, void* lv) {
+                    [](int op, leftv lv) {
                         int err = iiExprArith1(&lvres, (leftv)lv, op);
                         if (err)
                             errorreported = 0;
@@ -265,7 +235,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("iiExprArith2",
-                    [](int op, void* lv1, void* lv2) {
+                    [](int op, leftv lv1, leftv lv2) {
                         // TODO: check what is the default proccall argument
                         int err = iiExprArith2(&lvres, (leftv)lv1, op, (leftv)lv2);
                         if (err)
@@ -274,7 +244,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     Singular.method("iiExprArith3",
-                    [](int op, void* lv1, void* lv2, void* lv3) {
+                    [](int op, leftv lv1, leftv lv2, leftv lv3) {
                         int err = iiExprArith3(&lvres, op, (leftv)lv1, (leftv)lv2, (leftv)lv3);
                         if (err)
                             errorreported = 0;

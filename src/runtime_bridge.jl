@@ -1,4 +1,6 @@
 ##################### the lazy way: use sleftv's ##########
+using .libSingular: Sleftv
+
 
 rChangeCurrRing(r::Sring) = libSingular.rChangeCurrRing(r.value)
 
@@ -7,11 +9,28 @@ function rChangeCurrRing(r::Ptr{Cvoid})
     libSingular.rChangeCurrRing(libSingular.rDefault_null_helper())
 end
 
-const _sleftvs = Ptr{Cvoid}[]
+_copy(x::Sring) = libSingular.rCopy(x.value)
+_copy(x::Union{Spoly,Svector}) = libSingular.p_Copy(x.value, x.parent.value)
+_copy(x::Sideal) = libSingular.id_Copy(x.value, x.parent.value)
+_copy(x::Smatrix) = libSingular.mp_Copy(x.value, x.parent.value)
+_copy(x::Snumber) = libSingular.n_Copy(x.value, x.parent.value)
 
-function sleftv(i::Int)
+
+### sleftv ###
+
+function lv_init(lv::Sleftv, typ, data)
+    libSingular.sleftv_type(lv, Cint(typ))
+    libSingular.sleftv_data(lv, data)
+end
+
+const _sleftvs = Sleftv[]
+const _MAX_ARGS = 3
+
+function get_sleftv(i::Int)
     if isempty(_sleftvs)
-        libSingular.allocate_sleftv_array(resize!(_sleftvs, 3))
+        for i=1:_MAX_ARGS
+            push!(_sleftvs, Sleftv())
+        end
     end
     _sleftvs[i]
 end
@@ -19,27 +38,26 @@ end
 
 ### set_arg ###
 
-set_arg(lv, x::Int; kw...) = libSingular.set_sleftv(lv, x)
+set_arg(lv, x::Int; kw...) = lv_init(lv, INT_CMD, Ptr{Cvoid}(x))
 
 function set_arg(lv, x::BigInt; withcopy=false, withname=false)
-    GC.@preserve x libSingular.set_sleftv_bigint(lv, pointer_from_objref(x))
+    n = GC.@preserve x libSingular.n_InitMPZ_internal(pointer_from_objref(x),
+                                                      libSingular.coeffs_BIGINT())
+    lv_init(lv, BIGINT_CMD, n.cpp_object)
 end
 
-function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}; withcopy=true, withname=false)
-    libSingular.set_sleftv(lv, x.value, Int(type_id(typeof(x))), withcopy)
-end
-
-function set_arg(lv, x::Sring; withcopy=true, withname=false)
-    libSingular.set_sleftv(lv, x.value, withcopy)
+function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber,Sring}; withcopy=true, withname=false)
+    val = withcopy ? _copy(x) : x.value
+    lv_init(lv, type_id(typeof(x)), val.cpp_object)
 end
 
 function set_arg(lv, x::Sstring; withcopy=false, withname=false)
-    libSingular.set_sleftv(lv, x.value, withname)
+    libSingular.set_sleftv_string(lv, x.value, withname)
 end
 
 function set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false)
     x = x.value
-    libSingular.set_sleftv(lv, vec(x), x isa Matrix, size(x, 1), size(x, 2))
+    libSingular.set_sleftv_intvec(lv, vec(x), x isa Matrix, size(x, 1), size(x, 2))
 end
 
 function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
@@ -48,28 +66,30 @@ function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
 end
 
 function set_arg(lv, x::Slist; kwargs...)
-    m::Ptr{Cvoid}, sz::Int = libSingular.set_sleftv_list(lv, length(x.value))
+    m::Sleftv = libSingular.set_sleftv_list(lv, length(x.value))
+    # m is in fact the first element of an array,
+    # sleftv_at below allows to reach subsequent elements
     for (i, elt) in enumerate(x.value)
-        set_arg(m+(i-1)*sz, elt, withcopy=true)
+        set_arg(libSingular.sleftv_at(m, i - 1), elt, withcopy=true)
     end
 end
 
-set_arg1(x; withcopy=false, withname=false) = set_arg(sleftv(1), x; withcopy=withcopy, withname=withname)
-set_arg2(x; withcopy=false, withname=false) = set_arg(sleftv(2), x; withcopy=withcopy, withname=withname)
-set_arg3(x; withcopy=false, withname=false) = set_arg(sleftv(3), x; withcopy=withcopy, withname=withname)
+set_arg1(x; withcopy=false, withname=false) = set_arg(get_sleftv(1), x; withcopy=withcopy, withname=withname)
+set_arg2(x; withcopy=false, withname=false) = set_arg(get_sleftv(2), x; withcopy=withcopy, withname=withname)
+set_arg3(x; withcopy=false, withname=false) = set_arg(get_sleftv(3), x; withcopy=withcopy, withname=withname)
 
 
 ### get_res ###
 
 function get_res(expectedtype::CMDS)
-    isnotatuple, t, d = libSingular.get_leftv_res()
+    isnotatuple, t, d = libSingular.get_sleftv_res()
     @assert isnotatuple
     @assert t == Int(expectedtype)
     d
 end
 
 function get_res(::Type{Any})
-    isnotatuple, t, d = libSingular.get_leftv_res()
+    isnotatuple, t, d = libSingular.get_sleftv_res()
     @assert isnotatuple # TODO: handle when it's a tuple!
     get_res(convertible_types[CMDS(t)], d)
 end
@@ -149,7 +169,7 @@ function get_res(::Type{STuple})
     a = Any[]
     next = C_NULL
     while true
-        t, p, next = libSingular.get_leftv_res_next(next)
+        t, p, next = libSingular.get_sleftv_res_next(next)
         @assert p != C_NULL
         if t == Int(STRING_CMD)
             push!(a, get_res(Sstring, p))
@@ -183,14 +203,14 @@ function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
     # this sets the value to NULL if basering not defined
     rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-    maybe_get_res(libSingular.iiExprArith1(Int(cmd), sleftv(1)), T)
+    maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_sleftv(1)), T)
 end
 
 function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     rChangeCurrRing(rt_basering())
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
     set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix})) # do we need to copy for a Sring?
-    maybe_get_res(libSingular.iiExprArith2(Int(cmd), sleftv(1), sleftv(2)), T)
+    maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_sleftv(1), get_sleftv(2)), T)
 end
 
 function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
@@ -198,7 +218,7 @@ function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
     set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
     set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
     set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-    maybe_get_res(libSingular.iiExprArith3(Int(cmd), sleftv(1), sleftv(2), sleftv(3)), T)
+    maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(1), get_sleftv(2), get_sleftv(3)), T)
 end
 
 
