@@ -19,6 +19,17 @@ static idhdl string_idhdl(int i) {
     }
     return x;
 }
+/*
+namespace jlcxx
+{
+// template<> struct IsImmutable<leftv> : std::true_type {};
+// template<> struct IsBits<leftv> : std::true_type {};
+
+ template<> struct IsBits<sleftv> : std::true_type {};
+}
+*/
+    //  jlcxx::static_type_mapping<sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Sleftv"));
+//    jlcxx::static_type_mapping<leftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("_Leftv"));
 
 // hack to work around private members from bigintmat
 struct bigintmat_twin
@@ -31,42 +42,22 @@ struct bigintmat_twin
 
 static void singular_define_table_h(jlcxx::Module & Singular);
 
-// sleftv simplified, for communication with Julia
-struct Sleftv {
-   void* lv; // leftv value
-   jint typ;
-};
-
-struct Dum {
-   leftv lv; // leftv value
-   jint typ;
-};
-
 void init_sleftv(leftv lv, void* data, int typ) {
     lv->Init();
     lv->data = data;
     lv->rtyp = typ;
 }
-
-namespace jlcxx
-{
-  template<> struct IsImmutable<Sleftv> : std::true_type {};
-  template<> struct IsBits<Sleftv> : std::true_type {};
-
- template<> struct IsImmutable<leftv> : std::true_type {};
-  template<> struct IsBits<leftv> : std::true_type {};
-
-// template<> struct IsImmutable<Dum> : std::true_type {};
-  template<> struct IsBits<sleftv> : std::true_type {};
-}
-
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
-//    jlcxx::static_type_mapping<Sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Sleftv"));
-    jlcxx::static_type_mapping<sleftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Sleftv"));
-    jlcxx::static_type_mapping<leftv>::set_julia_type((jl_datatype_t*)jlcxx::julia_type("Leftv"));
+    Singular.add_type<sleftv>("Sleftv");
 
-//    Singular.method("dumm", [](const Dum& d) { std::cout << d.typ << " --> " << d.lv << " > " << &d <<std::endl; });
+    Singular.method("sleftv_init", [](leftv lv) { return lv->Init(); });
+    Singular.method("sleftv_type", [](leftv lv) { return lv->Typ(); });
+    Singular.method("sleftv_type", [](leftv lv, int typ) { lv->rtyp = typ; });
+    Singular.method("sleftv_data", [](leftv lv) { return lv->Data(); });
+    Singular.method("sleftv_data", [](leftv lv, void* data) { lv->data = data; });
+    Singular.method("sleftv_at", [](leftv lv, int i) { return lv + i; });
+    Singular.set_const("sleftv_sizeof", sizeof(sleftv));
 
     // can't be a constant, because at the time of module initialization, the constant is invalid
     // it could also be created on the Julia side via:
@@ -145,15 +136,17 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     [](leftv lv, jint len) {
                         slists* list = (lists)omAllocBin(slists_bin); // segfaults with: `new slists`
                         list->Init(len);
-                        init_sleftv(lv, list, LIST_CMD);
+
+                        if (lv != NULL)
+                            init_sleftv(lv, list, LIST_CMD);
                         // have to convert list->m from leftv to void* for some reason...
                         //                      return std::make_tuple((void*)list->m, sizeof(sleftv));
-                        std::cout << "list->m: " <<list->m<<std::endl;
+//                        std::cout << "list->m: " <<list->m << " || lv: " << lv <<std::endl;
                         return list->m;
                     });
 
     // TODO: check if lvres must be somehow de-allocated / does not leak
-    Singular.method("get_leftv_res",
+    Singular.method("get_sleftv_res",
                     [] {
                         void *res = (void*)lvres.Data();
                         int t = lvres.Typ();
@@ -163,7 +156,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
                     });
 
-    Singular.method("get_leftv_res_next",
+    Singular.method("get_sleftv_res_next",
                     [](void *next) {
                         if (next == NULL) // start the iteration
                             next = &lvres;

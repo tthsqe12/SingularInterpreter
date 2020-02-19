@@ -5,8 +5,8 @@ import Libdl
 using CxxWrap
 
 # it seems that this needs to be defined before @wrapmodule
-mutable struct Sleftv
-    next::Ptr{Sleftv}
+mutable struct _Sleftv
+    next::Ptr{_Sleftv}
     name::Ptr{Cchar}
     data::Ptr{Cvoid}
     attribute::Ptr{Cvoid} # not Cvoid in Singular
@@ -16,7 +16,9 @@ mutable struct Sleftv
     req_packhdl::Ptr{Cvoid} # not Cvoid in Singular
 end
 
-const Leftv = Ptr{Sleftv}
+_Sleftv() = _Sleftv(0, 0, 0, 0, 0, 0, 0, 0)
+
+const _Leftv = Ptr{_Sleftv}
 
 @wrapmodule(realpath(joinpath(@__DIR__, "..", "local", "lib", "libsingularwrap." * Libdl.dlext)))
 
