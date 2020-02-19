@@ -18,9 +18,40 @@ _copy(x::Snumber) = libSingular.n_Copy(x.value, x.parent.value)
 
 ### sleftv ###
 
-function lv_init(lv::Sleftv, typ, data)
-    libSingular.sleftv_type(lv, Cint(typ))
-    libSingular.sleftv_data(lv, data)
+function Base.getproperty(lv::Sleftv, name::Symbol)
+    if name == :next
+        libSingular.sleftv_next(lv)
+    elseif name == :data
+        libSingular.sleftv_data(lv)
+    elseif name == :rtyp
+        libSingular.sleftv_type(lv)
+    elseif name == :Init
+        () -> libSingular.sleftv_init(lv)
+    elseif name == :cpp_object
+        getfield(lv, :cpp_object)
+    else
+        error("type Sleftv has not field $name")
+    end
+end
+
+function Base.setproperty!(lv::Sleftv, name::Symbol, x)
+    if name == :next
+        libSingular.sleftv_next(lv, x)
+    elseif name == :data
+        libSingular.sleftv_data(lv, x)
+    elseif name == :rtyp
+        libSingular.sleftv_type(lv, x)
+    else
+        error("type Sleftv has not field $name")
+    end
+end
+
+Base.propertynames(lv::Sleftv, private=false) = (:next, :data, :rtyp, :Init, :cpp_object)
+
+function lv_init!(lv::Sleftv, typ, data)
+    lv.Init()
+    lv.rtyp = Cint(typ)
+    lv.data = data
 end
 
 const _sleftvs = Sleftv[]
@@ -38,17 +69,17 @@ end
 
 ### set_arg ###
 
-set_arg(lv, x::Int; kw...) = lv_init(lv, INT_CMD, Ptr{Cvoid}(x))
+set_arg(lv, x::Int; kw...) = lv_init!(lv, INT_CMD, Ptr{Cvoid}(x))
 
 function set_arg(lv, x::BigInt; withcopy=false, withname=false)
     n = GC.@preserve x libSingular.n_InitMPZ_internal(pointer_from_objref(x),
                                                       libSingular.coeffs_BIGINT())
-    lv_init(lv, BIGINT_CMD, n.cpp_object)
+    lv_init!(lv, BIGINT_CMD, n.cpp_object)
 end
 
 function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber,Sring}; withcopy=true, withname=false)
     val = withcopy ? _copy(x) : x.value
-    lv_init(lv, type_id(typeof(x)), val.cpp_object)
+    lv_init!(lv, type_id(typeof(x)), val.cpp_object)
 end
 
 function set_arg(lv, x::Sstring; withcopy=false, withname=false)
@@ -88,17 +119,15 @@ set_arg3(x; withcopy=false, withname=false) =
 
 function get_res(expectedtype::CMDS)
     res = get_sleftv(0)
-    @assert libSingular.sleftv_next(res).cpp_object == C_NULL
-    @assert libSingular.sleftv_type(res) == Int(expectedtype)
-    libSingular.sleftv_data(res)
+    @assert res.next.cpp_object == C_NULL
+    @assert res.rtyp == Int(expectedtype)
+    res.data
 end
 
 function get_res(::Type{Any})
     res = get_sleftv(0)
-    @assert libSingular.sleftv_next(res).cpp_object == C_NULL # TODO: handle when it's a tuple!
-    typ = libSingular.sleftv_type(res)
-    data = libSingular.sleftv_data(res)
-    get_res(convertible_types[CMDS(typ)], data)
+    @assert res.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
+    get_res(convertible_types[CMDS(res.rtyp)], res.data)
 end
 
 get_res(::Type{Int}, data=get_res(INT_CMD)) = Int(data)
