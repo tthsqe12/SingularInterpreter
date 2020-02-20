@@ -120,10 +120,15 @@ set_arg3(x; withcopy=false, withname=false) =
 
 function set_argm(xs)
     @assert length(xs) > 0
-    lv = lv1 = get_sleftv(1)
+    # have to use Sleftv_cpp, i.e. Singular-allocated sleftv objects,
+    # because it deletes them, even if they are IDHDL (the .rtyp field,
+    # at the end of the Singular routine, is set to 0 *before* .Cleanup()
+    # is called, which means that Cleanup has no chance to avoid deleting
+    # stuff because it doesn't see it's an IDHDL
+    lv = lv1 = libSingular.Sleftv_cpp()
     set_arg(lv1, xs[1])
     for i=2:length(xs)
-        lvi = get_sleftv(i)
+        lvi = libSingular.Sleftv_cpp()
         set_arg(lvi, xs[i])
         lv.next = lvi # by default set to 0, by a call to Init() in set_arg
         lv = lvi

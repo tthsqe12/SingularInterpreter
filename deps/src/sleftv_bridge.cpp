@@ -71,6 +71,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("sleftv_next", [](leftv lv) { return lv->next; });
     Singular.method("sleftv_next", [](leftv lv, leftv next) { lv->next = next; });
     Singular.method("sleftv_at", [](leftv lv, int i) { return lv + i; });
+    // c++ allocated constructor, which will/should be deleted by Singular
+    Singular.method("Sleftv_cpp", [] { return (leftv)omAllocBin(sleftv_bin); });
     Singular.set_const("sleftv_sizeof", sizeof(sleftv));
 
     // can't be a constant, because at the time of module initialization, the constant is invalid
