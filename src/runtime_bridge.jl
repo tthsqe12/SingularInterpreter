@@ -62,13 +62,10 @@ function lv_init!(lv::Sleftv, typ, data)
 end
 
 const _sleftvs = Sleftv[]
-const _MAX_ARGS = 3
 
 function get_sleftv(i::Int)
-    if isempty(_sleftvs)
-        for i=1:_MAX_ARGS+1
-            push!(_sleftvs, Sleftv())
-        end
+    while i >= length(_sleftvs)
+        push!(_sleftvs, Sleftv())
     end
     _sleftvs[i+1]
 end
@@ -121,6 +118,18 @@ set_arg2(x; withcopy=false, withname=false) =
 set_arg3(x; withcopy=false, withname=false) =
     set_arg(get_sleftv(3), x; withcopy=withcopy, withname=withname)
 
+function set_argm(xs)
+    @assert length(xs) > 0
+    lv = lv1 = get_sleftv(1)
+    set_arg(lv1, xs[1])
+    for i=2:length(xs)
+        lvi = get_sleftv(i)
+        set_arg(lvi, xs[i])
+        lv.next = lvi # by default set to 0, by a call to Init() in set_arg
+        lv = lvi
+    end
+    lv1
+end
 
 ### get_res ###
 
@@ -276,11 +285,16 @@ function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
     maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2), get_sleftv(3)), T)
 end
 
+function cmdm(cmd::Union{Int,CMDS,Char}, T, xs)
+    rChangeCurrRing(rt_basering())
+    lvs = set_argm(xs)
+    maybe_get_res(libSingular.iiExprArithM(Int(cmd), get_sleftv(0), lvs), T)
+end
 
 ### generating commands from tables ###
 
 const unimplemented_input = [ANY_TYPE, STUPLE_CMD]
-const unimplemented_output = [RING_CMD]
+const unimplemented_output = [RING_CMD, HANDLED_TYPES]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the
 # unimplemented lists above
@@ -292,12 +306,13 @@ const convertible_types = Dict{CMDS, Type}(
     INTVEC_CMD    => Sintvec,
     INTMAT_CMD    => Sintmat,
     MATRIX_CMD    => Smatrix,
-    RING_CMD      => Sring,  # return type not implemented
+    RING_CMD      => Sring,
     NUMBER_CMD    => Snumber,
     POLY_CMD      => Spoly,
     IDEAL_CMD     => Sideal,
     VECTOR_CMD    => Svector,
     LIST_CMD      => Slist,
+    HANDLED_TYPES => Any,   # represents a union for input, like ANY_TYPE does for output
     ANY_TYPE      => Any,   # migth be better to put `SingularType` ?
     STUPLE_CMD    => STuple,
 )
@@ -306,7 +321,7 @@ const convertible_types = Dict{CMDS, Type}(
 # needed)
 
 for (id, T) in convertible_types
-    id == ANY_TYPE && continue
+    id ∈ (ANY_TYPE, HANDLED_TYPES) && continue
     @eval type_id(::Type{$T}) = $id
 end
 
@@ -340,12 +355,16 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
     valid_input_types = Int.(setdiff(keys(convertible_types), unimplemented_input))
     valid_output_types = Int.(setdiff(keys(convertible_types), unimplemented_output))
 
-    todo = Dict{Pair{Int,                      # cmd
-                     Union{Int,                # arg for 1-arg cmds
-                           Tuple{Int,Int},     # arg1 & arg2
-                           NTuple{3,Int}}},    # arg1 & arg2 & arg3
-                Union{Int,                     # res when explicitly in the table
-                      Vector{Int}}}()          # possible res resulting from conversions
+    # overwrite the value for HANDLED_TYPES, for a more tight signature
+    # (could be done earlier, but it's easy here)
+    convertible_types[HANDLED_TYPES] =
+        Union{(convertible_types[CMDS(k)] for k in valid_input_types
+                                              if k != Int(HANDLED_TYPES))...}
+
+    todo = Dict{Pair{Int,                  # cmd
+                     Tuple{Vararg{Int}}},  # args
+                Union{Int,                 # res when explicitly in the table
+                      Vector{Int}}}()      # possible res resulting from conversions
 
     i = 0
     while true
@@ -353,12 +372,12 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         cmd == 0 && break # end of dArith1
         i += 1
         res = get(overrides, (cmd, res, arg), res)
-        todo[cmd => arg] = res # unconditional, might overwrite a previous entry resulting from
-                               # conversion(s)
+        todo[cmd => (arg,)] = res # unconditional, might overwrite a previous entry resulting from
+                                  # conversion(s)
         for argi in get(type_conversions, arg, ())
             # conversions work according to the table order, so the first one might be the correct one,
             # but at run-time, it might fail and try other possibilities, so we keep them all
-            restypes = get!(todo, cmd => argi, Int[])
+            restypes = get!(todo, cmd => (argi,), Int[])
             if restypes isa Vector # if not, it's an Int which is then the only admissible "res" type
                 push!(restypes, res)
             end
@@ -401,6 +420,20 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         end
     end
 
+    i = 0
+    _any = Int(HANDLED_TYPES)
+    overridesM = Dict(
+        Int.((REDUCE_CMD, IDEAL_CMD, 4)) => Int(POLY_CMD)
+    )
+    while true
+        (cmd, res, nargs) = libSingular.dArithM(i)
+        cmd == 0 && break
+        i += 1
+        nargs < 1 && continue # not implemented yet
+        res = get(overridesM, (cmd, res, nargs), res)
+        todo[cmd => ntuple(_ -> _any, nargs)] = res
+    end
+
     # the todo table has to first be created without consideration for what we support yet,
     # in order to get the conversion business right (as is intended in Singular)
     # once the "extended" table (from table.h, extended with conversion entries) is created,
@@ -420,9 +453,7 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         else
             unique!(res)
         end
-        if args isa Int
-            args = (args,)
-        end
+
         @assert !isempty(res)
         @assert issubset(res, valid_output_types) && issubset(args, valid_input_types)
         res = CMDS.(res)
@@ -469,6 +500,17 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                                            "(`$(rt_typestring(x))`, `$(rt_typestring(y)), `$(rt_typestring(z))`) failed",
                                                     $expected))
                 end
+            elseif length(args) == 4
+                @eval begin
+                    $rtname(x, y, z, t) = $rtauto(x, y, z, t)
+                    $rtauto(x, y, z, t) = rt_error(string($name,
+                                           "(`$(rt_typestring(x))`, `$(rt_typestring(y)), `$(rt_typestring(z)), `$(rt_typestring(t))`) failed",
+                                                    $expected))
+                end
+            else # TODO: implement manually these 2 commands
+                @assert length(args) == 5 && CMDS(cmd) == REDUCE_CMD ||
+                        length(args) == 6 && CMDS(cmd) == SIMPLEX_CMD "please notify the implementor of these new commands"
+                continue
             end
             push!(seen, (cmd, length(args)))
         end
@@ -477,9 +519,15 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         elseif length(Sargs) == 2
             @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2])) = cmd2($cmd, $Sres, x, y)
         elseif length(Sargs) == 3
-            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3])) = cmd3($cmd, $Sres, x, y, z)
+            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3])) =
+                cmd3($cmd, $Sres, x, y, z)
+        elseif length(Sargs) == 3
+            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3])) =
+                cmd3($cmd, $Sres, x, y, z)
         else
-            @assert false, "unimplemented command"
+            @assert length(Sargs) == 4
+            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3]), t::$(Sargs[4])) =
+                cmdm($cmd, $Sres, (x, y, z, t))
         end
     end
 end

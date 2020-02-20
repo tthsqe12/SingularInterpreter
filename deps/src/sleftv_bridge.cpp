@@ -7,6 +7,7 @@ typedef ssize_t jint; // julia Int
 
 static const char* lv_string_names[3] = {"", "__string_name_1", "__string_name_2"};
 
+// idhdl == idrec* (cf. idrec.h)
 static idhdl string_idhdls[3] = {NULL, NULL, NULL};
 
 static idhdl string_idhdl(int i) {
@@ -227,6 +228,14 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return err;
                     });
 
+    Singular.method("iiExprArithM",
+                    [](int op, leftv res, leftv lvs) {
+                        int err = iiExprArithM(res, lvs, op);
+                        if (err)
+                            errorreported = 0;
+                        return err;
+                    });
+
     Singular.method("rChangeCurrRing", [](ring r) {
                                            ring old = currRing;
                                            rChangeCurrRing(r);
@@ -358,6 +367,13 @@ static void singular_define_table_h(jlcxx::Module & Singular) {
                         sValCmd3 r = dArith3[i];
                         return std::make_tuple((jint)r.cmd, (jint)r.res,
                                                (jint)r.arg1, (jint)r.arg2, (jint)r.arg3);
+                    });
+
+    Singular.method("dArithM",
+                    [](int i) {
+                        sValCmdM r = dArithM[i];
+                        return std::make_tuple((jint)r.cmd, (jint)r.res,
+                                               (jint)r.number_of_args);
                     });
 
     Singular.method("dConvertTypes",

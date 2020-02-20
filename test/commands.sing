@@ -110,3 +110,21 @@ ideal p=2,3;
 ideal v=1,2,3,4,5,6,7,8,9;
 poly ip=vandermonde(p,v,2);
 ASSUME(0, ip[1..5] == -1/9797760*x^2*y^2-595/85536*x^2*y+55/396576*x*y^2+935/384*x^2-1309/3240*x*y);
+
+// division, reduce
+// (totally dummy examples, like many others here, just to check that the function call works)
+kill r;
+ring r=0,(x,y),dp;
+poly p = x*y^2;
+ideal i = std(ideal(x+y^3, y-x));
+
+// NOTE: this will show a warning "** _ is no standard basis" as long as attributes are not implemented
+// TODO: remove this comment when attributes are implemented!
+def redres = reduce(p, i, 2, 1..3);
+ASSUME(0, typeof(redres) == "poly");
+ASSUME(0, redres == -y);
+
+def divres = division(i, i, 2, 1..3);
+ASSUME(0, typeof(divres) == "list");
+ASSUME(0, typeof(divres[1]) == "matrix");
+ASSUME(0, typeof(divres[2]) == "ideal");
