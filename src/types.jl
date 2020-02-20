@@ -67,10 +67,6 @@ struct STuple
     list::Vector{Any}
 end
 
-#### singular type none
-struct Snone
-end
-
 #### singular type ?unknown type?
 # TODO: possibly make this the same as Symbol. makeunknown would become a quote
 struct SName
@@ -81,7 +77,67 @@ makeunknown(s::String) = SName(Symbol(s))
 show(io::IO, a::SName) = print(io, ":"*string(a.name))
 
 
+######## special type for the attributes of selected ring dependent types ########
+struct SAttributes
+    # TODO: the builtin boolean attributes like isSB could be stored in a bit vector
+    map::Vector{Pair{String, Any}}  # really a map from String -> SingularType
+end
+
+function SAttributes()
+    return SAttributes(Pair{String, Any}[])
+end
+
+function Base.haskey(a::SAttributes, k::String)
+    for i in a.map
+        if i.first == k
+            return true
+        end
+    end
+    return false
+end
+
+function Base.getindex(a::SAttributes, k::String)
+    for i in a.map
+        if i.first == k
+            return i.second
+        end
+    end
+    return Sstring("")
+end
+
+function Base.setindex!(a::SAttributes, b::Any, k::String)
+    B = rt_copy_own(b)
+    for i in 1:length(a.map)
+        if a.map[i].first == k
+            a.map[i] = Pair(k, B)
+            return nothing
+        end
+    end
+    push!(a.map, Pair(k, B))
+    return nothing
+end
+
+function Base.delete!(a::SAttributes, k::String)
+    filter!(x -> x.first != k, a.map)
+end
+
+function Base.empty!(a::SAttributes)
+    empty!(a.map)
+end
+
+function Base.length(a::SAttributes)
+    return length(a.map)
+end
+
+Base.iterate(a::SAttributes) = iterate(a.map)
+Base.iterate(a::SAttributes, state) = iterate(a.map, state)
+
+
 ########################## ring independent types #############################
+
+#### singular type "none"
+struct Snone
+end
 
 ##### singular type "proc"      immutable in the singular language
 struct Sproc
@@ -286,9 +342,18 @@ mutable struct Sideal
     value::libSingular.ideal        # dense 1d array of poly
     parent::Sring
     tmp::Bool
+    attributes::SAttributes
 
     function Sideal(value_::libSingular.ideal, parent_::Sring, tmp_::Bool)
-        a = new(value_, parent_, tmp_)
+        a = new(value_, parent_, tmp_, SAttributes())
+        finalizer(rt_ideal_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
+
+    function Sideal(value_::libSingular.ideal, parent_::Sring, tmp_::Bool, attributes_::SAttributes)
+        a = new(value_, parent_, tmp_, attributes_)
         finalizer(rt_ideal_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -310,9 +375,18 @@ mutable struct Smodule
     value::libSingular.ideal        # dense 1d array of vector
     parent::Sring
     tmp::Bool
+    attributes::SAttributes
 
     function Smodule(value_::libSingular.ideal, parent_::Sring, tmp_::Bool)
-        a = new(value_, parent_, tmp_)
+        a = new(value_, parent_, tmp_, SAttributes())
+        finalizer(rt_module_finalizer, a)
+        parent_.refcount += 1
+        @assert parent_.refcount > 1
+        return a
+    end
+
+    function Smodule(value_::libSingular.ideal, parent_::Sring, tmp_::Bool, attributes_::SAttributes)
+        a = new(value_, parent_, tmp_, attributes_)
         finalizer(rt_module_finalizer, a)
         parent_.refcount += 1
         @assert parent_.refcount > 1
@@ -382,6 +456,8 @@ end
 # Slist is not included. lists are just special.
 const SingularRingType = Union{Snumber, Spoly, Svector, Sresolution, Sideal, Smodule, Smatrix, Smap}
 
+# types with attributes implemented
+const SingularAttributeType = Union{Sideal, Smodule}
 
 # TODO: a SingularType encompassing all types including newstruct's
 

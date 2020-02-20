@@ -60,8 +60,6 @@ Base.iterate(a::Smap, state) = (state == 0 ? (a, 1) : nothing)
 Base.iterate(a::STuple) = iterate(a.list)
 Base.iterate(a::STuple, state) = iterate(a.list, state)
 
-
-
 ########################## copying, ect. ######################################
 
 # copiers returning tmp/own objects, usually so that we can put it in a tuple/assign it somewhere
@@ -90,6 +88,11 @@ object_is_tmp(a::STuple) = true
 object_is_own(a::STuple) = error("internal error: The tuple $a leaked through. Please report this.")
 rt_copy_tmp(a::STuple) = a
 rt_copy_own(a::STuple) = error("internal error: The tuple $a leaked through. Please report this.")
+
+function rt_copy_own(a::SAttributes)
+    data = Pair{String, Any}[Pair(x.first, rt_copy_own(x.second)) for x in a]
+    return SAttributes(data)
+end
 
 # immutable types
 
@@ -143,7 +146,7 @@ function rt_copy_tmp(a::Union{Sideal, Smodule})
     if object_is_tmp(a)
         return a
     else
-        return typeof(a)(libSingular.id_Copy(a.value, a.parent.value), a.parent, true)
+        return typeof(a)(libSingular.id_Copy(a.value, a.parent.value), a.parent, true, rt_copy_own(a.attributes))
     end
 end
 
@@ -152,7 +155,7 @@ function rt_copy_own(a::Union{Sideal, Smodule})
         a.tmp = false
         return a
     else
-        return typeof(a)(libSingular.id_Copy(a.value, a.parent.value), a.parent, false)
+        return typeof(a)(libSingular.id_Copy(a.value, a.parent.value), a.parent, false, rt_copy_own(a.attributes))
     end
 end
 

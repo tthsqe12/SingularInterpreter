@@ -430,6 +430,10 @@ function rt_convert2ideal(a)
     return rt_defaultconstructor_ideal()
 end
 
+function rt_cast2ideal(a::Sideal)
+    return a
+end
+
 function rt_cast2ideal(a...)
     # answer must be wrapped in Sideal at all times because rt_convert2ideal_ptr might throw
     r::Sideal = rt_new_empty_ideal()
@@ -496,6 +500,10 @@ end
 function rt_convert2module(a)
     rt_error("cannot convert `$(rt_typestring(a))` to `module`")
     return rt_defaultconstructor_module()
+end
+
+function rt_cast2module(a::Smodule)
+    return a
 end
 
 function rt_cast2module(a...)

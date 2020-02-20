@@ -434,6 +434,7 @@ function rt_setindex(a::Sideal, i::Int, b)
     @error_check(i > 0, "ideal index must be positive for assignment")
     b1 = rt_convert2poly_ptr(b, a.parent)
     libSingular.id_setindex_fancy(a.value, Cint(i), b1, a.parent.value)
+    empty!(a.attributes)
     return
 end
 
@@ -442,6 +443,7 @@ function rt_setindex(a::Smodule, i::Int, b)
     @error_check(i > 0, "ideal index must be positive for assignment")
     b1 = rt_convert2vector_ptr(b, a.parent)
     libSingular.mo_setindex_fancy(a.value, Cint(i), b1, a.parent.value)
+    empty!(a.attributes)
     return
 end
 

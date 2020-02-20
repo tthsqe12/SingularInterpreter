@@ -1,3 +1,51 @@
+#### attrib/killattrib ####
+
+function rtattrib(a)
+    first = true
+    if isa(a, SingularAttributeType)
+        for i in a.attributes
+            println("attr:" * i.first * ", type " * rt_typestring(i.second))
+            first = false
+        end
+    end
+    if first
+        println("no attributes")
+    end
+    return rtnothing
+end
+
+function rtattrib(a, b::Sstring)
+    if isa(a, SingularAttributeType)
+        return a.attributes[b.value]
+    else
+        return Sstring("")
+    end
+end
+
+function rtattrib(a, b::Sstring, c)
+    if isa(a, SingularAttributeType)
+        a.attributes[b.value] = c
+    else
+        rt_error("Sorry, type `$(rt_typestring(a))` does not attributes implemented.")
+    end
+    return rtnothing
+end
+
+function rtkillattrib(a)
+    if isa(a, SingularAttributeType)
+        empty!(a.attributes)
+    end
+    return rtnothing
+end
+
+function rtkillattrib(a, b::Sstring)
+    if isa(a, SingularAttributeType)
+        delete!(a.attributes, b.value)
+    end
+    return rtnothing
+end
+
+
 #### insert ####
 
 # insert(a, b, i) is supposed to return a tmp list with b inserted at position i+1
@@ -184,7 +232,9 @@ end
 
 function rtstd(a::Sideal)
     r = libSingular.id_Std(a.value, a.parent.value, false)
-    return Sideal(r, a.parent, true)
+    at = SAttributes()
+    at["isSB"] = Int(1)
+    return Sideal(r, a.parent, true, at)
 end
 
 

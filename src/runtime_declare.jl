@@ -491,7 +491,9 @@ function rt_defaultconstructor_ideal()
     @error_check(R.valid, "cannot construct an ideal when no basering is active")
     id = libSingular.idInit(1,1)
     libSingular.setindex_internal(id, libSingular.p_null_helper(), 0)
-    return Sideal(id, R, false)
+    at = SAttributes()
+    at["isSB"] = Int(1)
+    return Sideal(id, R, false, at)
 end
 
 function rt_new_empty_ideal(temp::Bool = true)
@@ -530,7 +532,9 @@ function rt_defaultconstructor_module()
     @error_check(R.valid, "cannot construct an module when no basering is active")
     id = libSingular.idInit(1,1)
     libSingular.setindex_internal(id, libSingular.p_null_helper(), 0)
-    return Smodule(id, R, false)
+    at = SAttributes()
+    at["isSB"] = Int(1)
+    return Smodule(id, R, false, at)
 end
 
 function rt_new_empty_module(temp::Bool = true)
