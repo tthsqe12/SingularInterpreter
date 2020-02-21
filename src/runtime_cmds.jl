@@ -402,7 +402,7 @@ function rtbasering()
     if R.valid
         return R
     else
-        return rt_make(SName(:basering))
+        return rt_lookup(SName(:basering))
     end
 end
 

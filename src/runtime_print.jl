@@ -30,7 +30,7 @@ function rt_print(a::Snone)
 end
 
 function rt_print(a::SName)
-    return rt_print(rt_make(a))
+    return rt_print(rt_lookup(a))
 end
 
 function rt_print(a::Sproc)

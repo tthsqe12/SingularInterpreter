@@ -448,7 +448,7 @@ simply calling a proc leads to unexpected behaviour:
    ? error occurred in or before STDIN line 3: `_;`
 ```
 
-(17) (should fix) The grammar of singular is terribly ambiguous. https://www.gnu.org/software/bison/manual/html_node/Reduce_002fReduce.html
+(17) (should fix) The grammar of singular is ambiguous because of reduce-reduce conflicts: https://www.gnu.org/software/bison/manual/html_node/Reduce_002fReduce.html
 If the following behaviour is the desired one, the current grammar.y is providing this behaviour seemingly _only by accident_.
 
 ```
@@ -511,7 +511,7 @@ proc lsum(list L)
 Both of these functions suffer from an error on `lsum(list(5, bigint(6)))`
 because the variable `s` is bound to the type of the first element of `L`. If
 someone wanted an "improved" version that totals arbitrary types and handles
-the empty list, they would have to write this nonsense.
+the empty list, they would have to write:
 ```
 proc lsum(list L)
 {
@@ -526,37 +526,6 @@ proc lsum(list L)
     return(s);
 }
 ```
-
-This brings us to the main curiosity of the Singular language:
-
-**Interpreter types are not even needed at all.**
-
-Of course the objects themselves have types, but there is no good reason for
-the type restriction on the binding of identifiers. Half of the language deals
-with these functionless restrictions on types, and the other half of the
-language is meant to circumvent the difficulties and limitations caused by the
-first half. Interpreter types do:
-
-* give the lanaguage a superficial resemblance to C.
-
-* govern the operation of pure assignments `a=b` where the new value of `a`
-  depends on both the old value of `a` and the value of `b`. This is a terrible
-  feature anyways because its complexities ripples across the entire
-  implementation of the language, and it makes code harder to understand.
-```
-intmat m[2][3]; // m is [0 0 0; 0 0 0]
-m = 1, 2, 3, 4; // m is [1 2 3; 4 0 0]
-```
-
-* generate errors and warnings when an attempt to assign the wrong type to a
-  variable is made. This is not always desired, hence `kill`.
-
-* give the progammer a hint about what type was roughly intended to be held in
-  an identifier. This is only a hint as the existence of constructs such as
-  `execute`, backticks, `kill`  and the current ring in the language mean that
-  the mere presense of an `int i` or a `list l` in code has no bearing on
-  other `i`'s or other `l`'s in the same code.
-
 
 
 `execute` seems to be broken with respect to `return`.
@@ -938,6 +907,18 @@ proc f(int n)
 ```
 
 (28) Singuar's maps -- and, anything that touches them -- destroy compilation.
+
+Here is a difficulty with the resolution of `p(1)`:
+```
+> ring s = 0,a,lp;
+> poly p(1) = a^6;
+> ring r = 0,x,lp;
+> poly p(1) = 1 + x;
+> map f = s, x^2;
+> f(p(1));
+x12
+```
+
 The possibility of maps in the system forces `i` into the symbol table for this proc.
 ```
 > proc g() {
@@ -966,18 +947,137 @@ because we have no choice but to delay the evaluation of `i` in `f(i)`.
 If `f` turns out to be a map, the map will receive `:i` from the delayed evaluation.
 If `f` turns out to not be a map, the runtime call operator has to lookup `:i` before continuing.
 
-Here are some more difficulties:
+**TODO: maybe `i` does not have to go into a symbol table because we now do a pre-lookup with `rt_try_lookup_call`**
+
+The output of the transpile is not human-readable anymore.
 ```
-> ring s = 0,a,lp;
-> poly p(1) = a^6;
-> ring r = 0,x,lp;
-> poly p(1) = 1 + x;
-> map f = s, x^2;
-> f(p(1));
-x12
+julia> using SingularInterpreter
+
+julia> execute("proc f(int a) {return(b(a));}", debuglevel=1)
+
+---------- transpiled code ----------
+function ##f(#a)
+    rt_enterfunction(:Top)
+    rt_parameter_int(:a, #a)
+    ##362 = rt_copy_tmp(begin
+                ##361 = rt_try_lookup_call(:b)
+                if ##361 isa Smap
+                    rtcall(false, ##361, :a)
+                else
+                    rtcall(false, ##361, rt_lookup(:a))
+                end
+            end)
+    rt_leavefunction()
+    return ##362
+    rt_leavefunction()
+    return rtnothing
+end
+rt_declare_proc(:f)
+rtassign_last(:f, Sproc(##f, "f", :Top))
+------- transpiled in 23.0 ms -------
+
+
+julia> execute("proc f(int a) {return(b(a+0));}", debuglevel=1)
+
+---------- transpiled code ----------
+function ##f(#a)
+    rt_enterfunction(:Top)
+    local a::Int
+    a = rt_convert2int(#a)
+    ##363 = rt_copy_tmp(rtcall(false, :b, rt_copy_tmp(rtplus(a, 0))...))
+    rt_leavefunction()
+    return ##363
+    rt_leavefunction()
+    return rtnothing
+end
+rt_declare_proc(:f)
+rtassign_last(:f, Sproc(##f, "f", :Top))
+------- transpiled in 81.0 ms -------
+
+┌ Warning: redeclaration of proc f
+└ @ SingularInterpreter ~/git/SingularInterpreter/src/runtime_cmds.jl:429
+
+julia> execute("proc f(int a) {return(c(b(a)));}", debuglevel=1)
+
+---------- transpiled code ----------
+function ##f(#a)
+    rt_enterfunction(:Top)
+    rt_parameter_int(:a, #a)
+    ##366 = rt_copy_tmp(begin
+                ##365 = rt_try_lookup_call(:c)
+                if ##365 isa Smap
+                    rtcall(false, ##365, rt_name_cross(:b, rt_lookup(:a)))
+                else
+                    rtcall(false, ##365, rt_copy_tmp(begin
+                                ##364 = rt_try_lookup_call(:b)
+                                if ##364 isa Smap
+                                    rtcall(false, ##364, :a)
+                                else
+                                    rtcall(false, ##364, rt_lookup(:a))
+                                end
+                            end)...)
+                end
+            end)
+    rt_leavefunction()
+    return ##366
+    rt_leavefunction()
+    return rtnothing
+end
+rt_declare_proc(:f)
+rtassign_last(:f, Sproc(##f, "f", :Top))
+------- transpiled in 0.0 ms -------
+
+┌ Warning: redeclaration of proc f
+└ @ SingularInterpreter ~/git/SingularInterpreter/src/runtime_cmds.jl:429
+
+julia> execute("proc f(int a) {return(d(c(b(a))));}", debuglevel=1)
+
+---------- transpiled code ----------
+function ##f(#a)
+    rt_enterfunction(:Top)
+    rt_parameter_int(:a, #a)
+    ##371 = rt_copy_tmp(begin
+                ##370 = rt_try_lookup_call(:d)
+                if ##370 isa Smap
+                    rtcall(false, ##370, rt_name_cross(:c, rt_copy_tmp(begin
+                                    ##369 = rt_try_lookup_call(:b)
+                                    if ##369 isa Smap
+                                        rtcall(false, ##369, :a)
+                                    else
+                                        rtcall(false, ##369, rt_lookup(:a))
+                                    end
+                                end)...))
+                else
+                    rtcall(false, ##370, rt_copy_tmp(begin
+                                ##368 = rt_try_lookup_call(:c)
+                                if ##368 isa Smap
+                                    rtcall(false, ##368, rt_name_cross(:b, rt_lookup(:a)))
+                                else
+                                    rtcall(false, ##368, rt_copy_tmp(begin
+                                                ##367 = rt_try_lookup_call(:b)
+                                                if ##367 isa Smap
+                                                    rtcall(false, ##367, :a)
+                                                else
+                                                    rtcall(false, ##367, rt_lookup(:a))
+                                                end
+                                            end)...)
+                                end
+                            end)...)
+                end
+            end)
+    rt_leavefunction()
+    return ##371
+    rt_leavefunction()
+    return rtnothing
+end
+rt_declare_proc(:f)
+rtassign_last(:f, Sproc(##f, "f", :Top))
+------- transpiled in 0.0 ms -------
+
+┌ Warning: redeclaration of proc f
+└ @ SingularInterpreter ~/git/SingularInterpreter/src/runtime_cmds.jl:429
 ```
 
-What is one supposed to do with the singular code `a(b(c(d(i))))` ???
 
 
 

@@ -55,7 +55,7 @@ macro RULE_procarg(i)             ;return(4600 + i); end
 
 
 function we_know_splat_is_trivial(a)
-    if a isa Expr && a.head == :call && length(a.args) == 2 && a.args[1] == :rt_make
+    if a isa Expr && a.head == :call && length(a.args) == 2 && a.args[1] == :rt_lookup
         return true
     elseif a isa Symbol
         return true
@@ -90,7 +90,7 @@ function make_tuple_array_nocopy(a::Array{Any})
         if isa(b, Expr) && b.head == :call && !isempty(b.args) && b.args[1] == :rt_maketuple
             append!(r, b.args[2:end])
         elseif is_a_name(b)
-            push!(r, Expr(:call, :rt_make, b))
+            push!(r, Expr(:call, :rt_lookup, b))
         elseif we_know_splat_is_trivial(b)
             push!(r, b)
         else
@@ -103,7 +103,7 @@ end
 # will not generate names!
 function make_nocopy(a)
     if is_a_name(a)
-        return Expr(:call, :rt_make, a)
+        return Expr(:call, :rt_lookup, a)
     else
         return a
     end
@@ -119,7 +119,7 @@ function make_tuple_array_copy(a::Array{Any})
         if isa(b, Expr) && b.head == :call && !isempty(b.args) && b.args[1] == :rt_maketuple
             append!(r, b.args[2:end])
         elseif is_a_name(b)
-            push!(r, Expr(:call, :rt_copy_tmp, Expr(:call, :rt_make, b)))
+            push!(r, Expr(:call, :rt_copy_tmp, Expr(:call, :rt_lookup, b)))
         elseif we_know_splat_is_trivial(b)
             push!(r, Expr(:call, :rt_copy_tmp, b))
         else
@@ -132,7 +132,7 @@ end
 # will not generate names!
 function make_copy(a)
     if is_a_name(a)
-        return Expr(:call, :rt_copy_tmp, Expr(:call, :rt_make, a))
+        return Expr(:call, :rt_copy_tmp, Expr(:call, :rt_lookup, a))
     else
         return Expr(:call, :rt_copy_tmp, a)
     end
@@ -383,7 +383,7 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
                 # we could eval to a map because in syntax we are a fxn of one argument
                 t = gensym()
                 r = Expr(:block,
-                        Expr(:(=), t, Expr(:call, :rt_try_call_lookup, h)),
+                        Expr(:(=), t, Expr(:call, :rt_try_lookup_call, h)),
                         Expr(:if, Expr(:call, :isa, t, :Smap),
                             Expr(:call, :rtcall, nested, t, b),
                             Expr(:call, :rtcall, nested, t, make_tuple_array_nocopy(c)...)
@@ -591,7 +591,7 @@ end
 
 
 function rt_assume_level_ok(a::Int)
-    level = rt_make_allow_name_ret(SName(:assumeLevel))
+    level = rt_try_lookup(SName(:assumeLevel))
     if isa(level, SName)
         # assumeLevel is undefined
         return a == 0
@@ -698,7 +698,7 @@ function convert_returncmd(a::AstNode, env::AstEnv)
                 @assert haskey(env.declared_identifiers, string(c))
                 push!(r.args, Expr(:(=), t, Expr(:call, :rt_promote, c)))
             elseif is_a_name(c)
-                push!(r.args, Expr(:(=), t, Expr(:call, :rt_make_return, c)))
+                push!(r.args, Expr(:(=), t, Expr(:call, :rt_lookup_return, c)))
             else
                 push!(r.args, Expr(:(=), t, Expr(:call, :rt_copy_tmp, c)))
             end
@@ -1456,7 +1456,7 @@ function rt_parse_coeff(coeff)
         if a.name == :real || a.name == :complex
             a = String(a.name)
         else
-            a = rt_make(a)
+            a = rt_lookup(a)
             isa(a, Int) || rt_error("bad coefficient specification")
         end
     else
@@ -1465,7 +1465,7 @@ function rt_parse_coeff(coeff)
     push!(r, a)
     for a in coeff[2:end]
         if isa(a, SName)
-            a = rt_make_allow_name_ret(a)
+            a = rt_try_lookup(a)
             if isa(a, SName)
                 a = String(a.name)
             else

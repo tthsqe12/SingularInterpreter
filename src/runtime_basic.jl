@@ -326,7 +326,7 @@ function rt_basering()
     return rtGlobal.callstack[end].current_ring
 end
 
-########################## make and friends ###################################
+########################## lookup and friends ###################################
 
 function rt_box_it_with_ring(n::libSingular.number, r::Sring)
     return Snumber(n, r)
@@ -337,9 +337,9 @@ function rt_box_it_with_ring(p::libSingular.poly, r::Sring)
 end
 
 
-# make takes a name and looks it up according to singular's resolution rules
+# lookup takes a name and looks it up according to singular's resolution rules
 # this function is named make in the c singular interpreter code
-function rt_make(a::SName)
+function rt_lookup(a::SName)
 
     n = length(rtGlobal.callstack)
 
@@ -392,7 +392,7 @@ end
 
 # Since our local variables are going to disappear after we return, we can avoid
 # the extra copy in the code sequence return rt_copy_tmp(localvar)
-function rt_make_return(a::SName)
+function rt_lookup_return(a::SName)
     n = length(rtGlobal.callstack)
 
     # local
@@ -403,10 +403,10 @@ function rt_make_return(a::SName)
         end
     end
 
-    return rt_copy_tmp(rt_make(a)) # global variables must be copied
+    return rt_copy_tmp(rt_lookup(a)) # global variables must be copied
 end
 
-function rt_try_call_lookup(a::SName)
+function rt_try_lookup_call(a::SName)
 
     n = length(rtGlobal.callstack)
 
@@ -437,13 +437,13 @@ function rt_try_call_lookup(a::SName)
     return a
 end
 
-function rt_try_call_lookup(a)
+function rt_try_lookup_call(a)
     @assert !isa(a, SName)
     return a
 end
 
-# same as make but we just return a if nothing was found
-function rt_make_allow_name_ret(a::SName)
+# same as lookup but we just return the name if nothing was found
+function rt_try_lookup(a::SName)
 
     n = length(rtGlobal.callstack)
 
@@ -741,7 +741,7 @@ function rtcall(::Bool, f::Smap, a)
 end
 
 function rtcall(allow_name_ret::Bool, f::Sproc, a::SName)
-    return f.func(rt_make(a))
+    return f.func(rt_lookup(a))
 end
 
 function rtcall(allow_name_ret::Bool, f::Sproc, v...)
@@ -793,7 +793,7 @@ end
 
 
 function rtcall(allow_name_ret::Bool, a::Vector{SName}, v::SName)
-    return rtcall(allow_name_ret, a, rt_make(v))
+    return rtcall(allow_name_ret, a, rt_lookup(v))
 end
 
 function rtcall(allow_name_ret::Bool, a::Vector{SName}, v...)
@@ -802,7 +802,7 @@ function rtcall(allow_name_ret::Bool, a::Vector{SName}, v...)
     if allow_name_ret
         r = Any[]
         for s in av
-            c = rt_make_allow_name_ret(s)
+            c = rt_try_lookup(s)
             if isa(c, Sproc)    # TODO extend this to a list of "callable" types
                 push!(r, rt_copy_tmp(c))
             else
@@ -813,7 +813,7 @@ function rtcall(allow_name_ret::Bool, a::Vector{SName}, v...)
     else
         r = Any[]
         for s in av
-            c = rt_make_allow_name_ret(s)
+            c = rt_try_lookup(s)
             if isa(c, SName)
                 rt_error("bad indexed variable construction")
             else
