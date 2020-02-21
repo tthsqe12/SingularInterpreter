@@ -975,8 +975,10 @@ end
 rt_declare_proc(:f)
 rtassign_last(:f, Sproc(##f, "f", :Top))
 ------- transpiled in 23.0 ms -------
+```
 
-
+`b` is not allowed to be a map here.
+```
 julia> execute("proc f(int a) {return(b(a+0));}", debuglevel=1)
 
 ---------- transpiled code ----------
@@ -996,7 +998,10 @@ rtassign_last(:f, Sproc(##f, "f", :Top))
 
 ┌ Warning: redeclaration of proc f
 └ @ SingularInterpreter ~/git/SingularInterpreter/src/runtime_cmds.jl:429
+```
 
+If `c` is a map, then `b` is only used as the name of an indexed variable.
+```
 julia> execute("proc f(int a) {return(c(b(a)));}", debuglevel=1)
 
 ---------- transpiled code ----------
@@ -1029,7 +1034,13 @@ rtassign_last(:f, Sproc(##f, "f", :Top))
 
 ┌ Warning: redeclaration of proc f
 └ @ SingularInterpreter ~/git/SingularInterpreter/src/runtime_cmds.jl:429
+````
 
+This code can be improved slightly for the following reason:
+If `d` is a map, then `b(a)` must be an int for the indexed variable construction.
+Since maps can't return int, we don't need to check if `b` is a map after finding out that `d` is a map.
+
+```
 julia> execute("proc f(int a) {return(d(c(b(a))));}", debuglevel=1)
 
 ---------- transpiled code ----------
