@@ -10,12 +10,13 @@ function rChangeCurrRing(r::Ptr{Cvoid})
 end
 
 _copy(x::libSingular.ring) = libSingular.rCopy(x)
+_copy(x::libSingular.resolution) = libSingular.syCopy(x)
 _copy(x::libSingular.poly, ring) = libSingular.p_Copy(x, ring.value)
 _copy(x::libSingular.ideal, ring) = libSingular.id_Copy(x, ring.value)
 _copy(x::libSingular.matrix, ring) = libSingular.mp_Copy(x, ring.value)
 _copy(x::libSingular.number, ring) = libSingular.n_Copy(x, ring.value)
 
-_copy(x::Sring) = _copy(x.value)
+_copy(x::Union{Sring,Sresolution}) = _copy(x.value)
 _copy(x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}) = _copy(x.value, x.parent)
 
 internal_void_to(::Type{<:Union{Spoly,Svector}}, ptr::Ptr) = libSingular.internal_void_to_poly_helper(ptr)
@@ -83,7 +84,7 @@ function set_arg(lv, x::BigInt; withcopy=false, withname=false)
     lv_init!(lv, BIGINT_CMD, n.cpp_object)
 end
 
-function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber,Sring}; withcopy=true, withname=false)
+function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber,Sring,Sresolution}; withcopy=true, withname=false)
     val = withcopy ? _copy(x) : x.value
     lv_init!(lv, type_id(typeof(x)), val.cpp_object)
 end
@@ -273,22 +274,22 @@ end
 function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
     # this sets the value to NULL if basering not defined
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}))
     maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_sleftv(0), get_sleftv(1)), T)
 end
 
 function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
-    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix})) # do we need to copy for a Sring?
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution})) # do we need to copy for a Sring?
     maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2)), T)
 end
 
 function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix}), withname=(y isa Sintvec && x isa Sstring))
-    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
-    set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Svector,Sring,Smatrix}))
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}))
+    set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}))
     maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2), get_sleftv(3)), T)
 end
 
@@ -300,7 +301,7 @@ end
 
 ### generating commands from tables ###
 
-const unimplemented_input = [ANY_TYPE, STUPLE_CMD, RESOLUTION_CMD]
+const unimplemented_input = [ANY_TYPE, STUPLE_CMD]
 const unimplemented_output = [RING_CMD, HANDLED_TYPES]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the

@@ -89,6 +89,8 @@ void singular_define_matrices(jlcxx::Module & Singular)
         return (ssyStrategy *) omAlloc0(sizeof(ssyStrategy));
     });
 
+    Singular.method("syCopy", &syCopy);
+
     Singular.method("syKillComputation", &syKillComputation);
 
     Singular.method("syPrint", [](syStrategy a, const std::string r) {
