@@ -22,6 +22,8 @@ internal_void_to(::Type{<:Union{Spoly,Svector}}, ptr::Ptr) = libSingular.interna
 internal_void_to(::Type{Snumber}, ptr::Ptr) = libSingular.internal_void_to_number_helper(ptr)
 internal_void_to(::Type{Sideal}, ptr::Ptr) = libSingular.internal_void_to_ideal_helper(ptr)
 internal_void_to(::Type{Smatrix}, ptr::Ptr) = libSingular.internal_void_to_matrix_helper(ptr)
+internal_void_to(::Type{Sresolution}, ptr::Ptr) =
+    libSingular.internal_void_to_resolution_helper(ptr)
 
 ### sleftv ###
 
@@ -170,7 +172,7 @@ end
 # cf. get_res(Slist, ...)
 function get_res(::Type{T},
                  data=get_res(type_id(T));
-                 copy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smatrix}
+                 copy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smatrix,Sresolution}
     r = rt_basering()
     x = internal_void_to(T, data)
     if copy
@@ -298,28 +300,29 @@ end
 
 ### generating commands from tables ###
 
-const unimplemented_input = [ANY_TYPE, STUPLE_CMD]
+const unimplemented_input = [ANY_TYPE, STUPLE_CMD, RESOLUTION_CMD]
 const unimplemented_output = [RING_CMD, HANDLED_TYPES]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the
 # unimplemented lists above
 const convertible_types = Dict{CMDS, Type}(
-    INT_CMD       => Int,
-    BIGINT_CMD    => BigInt,
-    BIGINTMAT_CMD => Sbigintmat,
-    STRING_CMD    => Sstring,
-    INTVEC_CMD    => Sintvec,
-    INTMAT_CMD    => Sintmat,
-    MATRIX_CMD    => Smatrix,
-    RING_CMD      => Sring,
-    NUMBER_CMD    => Snumber,
-    POLY_CMD      => Spoly,
-    IDEAL_CMD     => Sideal,
-    VECTOR_CMD    => Svector,
-    LIST_CMD      => Slist,
-    HANDLED_TYPES => Any,   # represents a union for input, like ANY_TYPE does for output
-    ANY_TYPE      => Any,   # migth be better to put `SingularType` ?
-    STUPLE_CMD    => STuple,
+    INT_CMD        => Int,
+    BIGINT_CMD     => BigInt,
+    BIGINTMAT_CMD  => Sbigintmat,
+    STRING_CMD     => Sstring,
+    INTVEC_CMD     => Sintvec,
+    INTMAT_CMD     => Sintmat,
+    MATRIX_CMD     => Smatrix,
+    RING_CMD       => Sring,
+    NUMBER_CMD     => Snumber,
+    POLY_CMD       => Spoly,
+    IDEAL_CMD      => Sideal,
+    VECTOR_CMD     => Svector,
+    LIST_CMD       => Slist,
+    RESOLUTION_CMD => Sresolution,
+    HANDLED_TYPES  => Any,   # represents a union for input, like ANY_TYPE does for output
+    ANY_TYPE       => Any,   # migth be better to put `SingularType` ?
+    STUPLE_CMD     => STuple,
 )
 # NOTE: ANY_TYPE is used only for result types automatically (this has to be done
 # on a case by case basis for input, as in most cases the name of the variable is
