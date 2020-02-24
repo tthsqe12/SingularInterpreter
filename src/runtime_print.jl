@@ -95,7 +95,9 @@ end
 
 function rt_print(a::Sresolution)
     @warn_check_rings(a.parent, rt_basering(), "printing a resolution outside of basering")
+    libSingular.rChangeCurrRing(rt_basering().value, "?R?")
     s = libSingular.syPrint(a.value, "?R?") # TODO let Sring store a name
+    rChangeCurrRing(C_NULL)
     return s
 end
 
@@ -223,4 +225,3 @@ end
 function rt_printouttype(a)
     println("add correct type printing here")
 end
-

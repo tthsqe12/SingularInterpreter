@@ -5,6 +5,19 @@ typedef ssize_t jint; // julia Int
 
 // for calling interpreter routines from SingularInterpreter
 
+static idhdl ring_hdl = NULL;
+
+idhdl get_ring_hdl() {
+    if (ring_hdl == NULL)
+        // from "HOWTO-libsingular"
+        ring_hdl=enterid("?R?" /* ring name*/,
+                         0, /*nesting level, 0=global*/
+                         RING_CMD,
+                         &IDROOT,
+                         FALSE);
+    return ring_hdl;
+}
+
 static const char* lv_string_names[3] = {"", "__string_name_1", "__string_name_2"};
 
 // idhdl == idrec* (cf. idrec.h)
@@ -243,6 +256,14 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                                            rChangeCurrRing(r);
                                            return old;
                                        });
+
+    Singular.method("rChangeCurrRing",
+                    [](ring r, std::string name) {
+                        assert(name == std::string("?R?"));
+                        idhdl rhdl = get_ring_hdl();
+                        IDRING(rhdl) = r;
+                        rSetHdl(rhdl);
+                    });
 
     Singular.method("clear_currRing", [] { rChangeCurrRing(NULL); });
 
