@@ -2,3 +2,6 @@ ring r;
 ideal i = x^2 - y, y^2, x+y;
 resolution s = mres(i, 1);
 ASSUME(0, size(s) == 2);
+
+// test that list -> resolution conversion ("cast") works
+ASSUME(0, typeof(resolution(list(ideal(x)))) == "resolution");

@@ -350,6 +350,13 @@ let i = 0
     end
 end
 
+# cf. table.jl, for now we just do that for resolution/lists, for which
+# conversions are annoying to re-implement
+const cmd_to_builtin_type_string_limited = Dict(
+    Int(RESOLUTION_CMD) => "resolution",
+    Int(LIST_CMD)       => "list",
+)
+
 let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                                 (Int(':'), 2)])
     # seen initially contain commands which alreay implement a catch-all method (e.g. `rtprint(::Any)`)
@@ -470,6 +477,7 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
 
         name = something(get(cmd_to_string, cmd, nothing),
                          get(op_to_string, cmd, nothing),
+                         get(cmd_to_builtin_type_string_limited, cmd, nothing),
                          "")
         name == "" && continue
 

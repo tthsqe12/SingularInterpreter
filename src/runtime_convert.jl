@@ -386,6 +386,10 @@ end
 
 # TODO: need rt_cast2resolution(a...)
 
+rt_cast2resolution(a::Slist) = rtresolution(a)
+rt_cast2resolution(a::Sresolution) = a
+rt_cast2resolution(a) = rt_error("cannot convert `$(rt_typestring(a))` to `resolution`")
+
 
 #### ideal
 
