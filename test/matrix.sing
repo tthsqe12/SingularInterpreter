@@ -79,3 +79,7 @@ ASSUME(0, deg(m) == 3);
 ASSUME(0, m+m/z*m == m2);
 m2 = 0, 3*x^2, 0, 0;
 ASSUME(0, diff(m, x) == m2);
+
+def m_minor = minor(m, 2);
+ASSUME(0, size(m_minor) == 1);
+ASSUME(0, m_minor[1] == -x^3*y+z);

@@ -122,7 +122,7 @@ set_arg3(x; withcopy=false, withname=false) =
     set_arg(get_sleftv(3), x; withcopy=withcopy, withname=withname)
 
 function set_argm(xs)
-    @assert length(xs) > 0
+    @assert length(xs) > 0 # not implemented "yet", might not be necessary
     # have to use Sleftv_cpp, i.e. Singular-allocated sleftv objects,
     # because it deletes them, even if they are IDHDL (the .rtyp field,
     # at the end of the Singular routine, is set to 0 *before* .Cleanup()
@@ -377,10 +377,11 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         Union{(convertible_types[CMDS(k)] for k in valid_input_types
                                               if k != Int(HANDLED_TYPES))...}
 
-    todo = Dict{Pair{Int,                  # cmd
-                     Tuple{Vararg{Int}}},  # args
-                Union{Int,                 # res when explicitly in the table
-                      Vector{Int}}}()      # possible res resulting from conversions
+    todo = Dict{Pair{Int,                       # cmd
+                     Union{Tuple{Vararg{Int}},  # args
+                           Bool}},              # variable number of args, true == at least one
+                Union{Int,                      # res when explicitly in the table
+                      Vector{Int}}}()           # possible res resulting from conversions
 
     i = 0
     while true
@@ -445,9 +446,14 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         (cmd, res, nargs) = libSingular.dArithM(i)
         cmd == 0 && break
         i += 1
-        nargs < 1 && continue # not implemented yet
         res = get(overridesM, (cmd, res, nargs), res)
-        todo[cmd => ntuple(_ -> _any, nargs)] = res
+        if nargs < 0
+            @assert nargs >= -2
+            args = nargs == -2
+        else
+            args = ntuple(_ -> _any, nargs)
+        end
+        todo[cmd => args] = res
     end
 
     # the todo table has to first be created without consideration for what we support yet,
@@ -460,7 +466,8 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         end
         filter!(in(valid_output_types), res)
         !isempty(res) &&
-            all(in(valid_input_types), args)
+            (args isa Bool ||
+             all(in(valid_input_types), args))
     end
 
     for ((cmd, args), res) in todo
@@ -471,9 +478,11 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         end
 
         @assert !isempty(res)
-        @assert issubset(res, valid_output_types) && issubset(args, valid_input_types)
+        @assert issubset(res, valid_output_types) && (args isa Bool || issubset(args, valid_input_types))
         res = CMDS.(res)
-        args = CMDS.(args)
+        if !(args isa Bool)
+            args = CMDS.(args)
+        end
 
         name = something(get(cmd_to_string, cmd, nothing),
                          get(op_to_string, cmd, nothing),
@@ -483,14 +492,25 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
 
         Sres = length(res) == 1 ? convertible_types[res[1]] : Any
 
-        Sargs = [convertible_types[arg] for arg in args]
-
         rtname = Symbol(:rt, name)
         rtauto = Symbol(:rt, name, :_auto)
         expected = get(error_expected_types, name, "")
         if expected != ""
             expected = ", expected $name(`$expected`)"
         end
+
+        if args isa Bool
+            # here we don't use the `$rtauto` indirection, as the method must be a variadic catch-all,
+            # we will rely on Julia warnings for the case where we overwrite a manually defined one
+            @eval function $rtname(x...)
+                $args && isempty(x) &&
+                    rt_error(string($name, "() failed, at least one argument expected"))
+                cmdm($cmd, $Sres, x)
+            end
+            continue
+        end
+
+        Sargs = [convertible_types[arg] for arg in args]
 
         if !((cmd, length(args)) in seen)
             # fall-back to rtauto so that definitions here don't overwrite
@@ -525,7 +545,8 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                                                     $expected))
                 end
             else # TODO: implement manually these 2 commands
-                @assert length(args) == 5 && CMDS(cmd) == REDUCE_CMD ||
+                @assert length(args) == 0 ||
+                        length(args) == 5 && CMDS(cmd) == REDUCE_CMD ||
                         length(args) == 6 && CMDS(cmd) == SIMPLEX_CMD "please notify the implementor of these new commands"
                 continue
             end
