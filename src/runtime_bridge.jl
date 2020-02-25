@@ -158,9 +158,9 @@ function get_res(::Type{Any})
     get_res(convertible_types[CMDS(res.rtyp)], res.data)
 end
 
-get_res(::Type{Int}, data=get_res(INT_CMD); copy=nothing) = Int(data)
+get_res(::Type{Int}, data=get_res(INT_CMD); withcopy=nothing) = Int(data)
 
-function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD); copy=nothing)
+function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD); withcopy=nothing)
     d = Int(data)
     if d & 1 != 0 # immediate int
         BigInt(d >> 2)
@@ -173,10 +173,10 @@ end
 # cf. get_res(Slist, ...)
 function get_res(::Type{T},
                  data=get_res(type_id(T));
-                 copy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,Smatrix,Sresolution}
+                 withcopy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,Smatrix,Sresolution}
     r = rt_basering()
     x = internal_void_to(T, data)
-    if copy
+    if withcopy
         x = _copy(x, r)
     end
     if T == Sideal || T == Smodule || T == Smatrix
@@ -186,24 +186,24 @@ function get_res(::Type{T},
     end
 end
 
-function get_res(::Type{Sintvec}, data=get_res(INTVEC_CMD); copy=false)
-    @assert !copy
+function get_res(::Type{Sintvec}, data=get_res(INTVEC_CMD); withcopy=false)
+    @assert !withcopy
     d = libSingular.lvres_array_get_dims(data, Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv, data, Int(INTVEC_CMD))
     Sintvec(iv, true)
 end
 
-function get_res(::Type{Sintmat}, data=get_res(INTMAT_CMD); copy=false)
-    @assert !copy
+function get_res(::Type{Sintmat}, data=get_res(INTMAT_CMD); withcopy=false)
+    @assert !withcopy
     d = libSingular.lvres_array_get_dims(data, Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im), data, Int(INTMAT_CMD))
     Sintmat(im, true)
 end
 
-function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD); copy=false)
-    @assert !copy
+function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD); withcopy=false)
+    @assert !withcopy
     r, c = libSingular.lvres_array_get_dims(data, Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
@@ -213,8 +213,8 @@ function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD); copy=false)
     Sbigintmat(bim, true)
 end
 
-function get_res(::Type{Slist}, data=get_res(LIST_CMD); copy=false)
-    @assert !copy
+function get_res(::Type{Slist}, data=get_res(LIST_CMD); withcopy=false)
+    @assert !withcopy
     n::Int, lv0::Sleftv = libSingular.internal_void_to_lists(data)
     a = Vector{Any}(undef, n)
     cnt = 0
@@ -222,7 +222,7 @@ function get_res(::Type{Slist}, data=get_res(LIST_CMD); copy=false)
         lv = libSingular.sleftv_at(lv0, i-1)
         typ = CMDS(lv.rtyp)
         T = convertible_types[typ]
-        a[i] = get_res(T, lv.data, copy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
+        a[i] = get_res(T, lv.data, withcopy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
         cnt += rt_is_ring_dep(a[i])
     end
     ring = if cnt == 0
@@ -252,7 +252,7 @@ function get_res(::Type{STuple})
     STuple(a)
 end
 
-get_res(::Type{Sstring}, data=get_res(STRING_CMD)) =
+get_res(::Type{Sstring}, data=get_res(STRING_CMD); withcopy=nothing) =
     Sstring(unsafe_string(Ptr{Cchar}(data)))
 
 
