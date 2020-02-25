@@ -124,7 +124,27 @@ def redres = reduce(p, i, 2, 1..3);
 ASSUME(0, typeof(redres) == "poly");
 ASSUME(0, redres == -y);
 
+def redres5 = reduce(p, 1, 2, 1..3);
+ASSUME(0, typeof(redres5) == "poly");
+ASSUME(0, redres5 == 0);
+
 def divres = division(i, i, 2, 1..3);
 ASSUME(0, typeof(divres) == "list");
 ASSUME(0, typeof(divres[1]) == "matrix");
 ASSUME(0, typeof(divres[2]) == "ideal");
+
+// simplex
+// example from online docs
+ring r = (real,10),(x),lp;
+poly half = 1;
+half = half / 2; // TODO: delete half once "0.5" can be parsed
+
+matrix sm[5][5]=(  0, 1, 1, 3,-half,
+                 740,-1, 0,-2, 0,
+                   0, 0,-2, 0, 7,
+                 half, 0,-1, 1,-2,
+                   9,-1,-1,-1,-1);
+def simp = simplex(sm, 4, 4, 2, 1, 1);
+ASSUME(0, typeof(simp) == "list");
+ASSUME(0, typeof(simp[1]) == "matrix");
+// etc.

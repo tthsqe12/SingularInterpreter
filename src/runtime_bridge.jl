@@ -373,7 +373,7 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
 
     # overwrite the value for HANDLED_TYPES, for a more tight signature
     # (could be done earlier, but it's easy here)
-    convertible_types[HANDLED_TYPES] =
+    convertible_types[HANDLED_TYPES] = AnyST = # Any Singular Type
         Union{(convertible_types[CMDS(k)] for k in valid_input_types
                                               if k != Int(HANDLED_TYPES))...}
 
@@ -440,7 +440,17 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
     i = 0
     _any = Int(HANDLED_TYPES)
     overridesM = Dict(
-        Int.((REDUCE_CMD, IDEAL_CMD, 4)) => Int(POLY_CMD)
+        Int.((REDUCE_CMD, IDEAL_CMD, 4))  => Int(POLY_CMD),
+        Int.((JET_CMD, POLY_CMD, 2))      => Int(ANY_TYPE),
+        Int.((JET_CMD, POLY_CMD, 3))      => Int(ANY_TYPE),
+        Int.((JET_CMD, POLY_CMD, 4))      => Int(ANY_TYPE),
+        Int.((LIFTSTD_CMD, IDEAL_CMD, 2)) => Int(ANY_TYPE),
+        Int.((LIFTSTD_CMD, IDEAL_CMD, 3)) => Int(ANY_TYPE),
+        Int.((LIFTSTD_CMD, IDEAL_CMD, 4)) => Int(ANY_TYPE),
+        Int.((REDUCE_CMD, IDEAL_CMD, 2))  => Int(ANY_TYPE),
+        Int.((REDUCE_CMD, IDEAL_CMD, 3))  => Int(ANY_TYPE),
+        Int.((REDUCE_CMD, IDEAL_CMD, 4))  => Int(ANY_TYPE),
+        Int.((REDUCE_CMD, IDEAL_CMD, 5))  => Int(ANY_TYPE),
     )
     while true
         (cmd, res, nargs) = libSingular.dArithM(i)
@@ -537,18 +547,9 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
                                            "(`$(rt_typestring(x))`, `$(rt_typestring(y)), `$(rt_typestring(z))`) failed",
                                                     $expected))
                 end
-            elseif length(args) == 4
-                @eval begin
-                    $rtname(x, y, z, t) = $rtauto(x, y, z, t)
-                    $rtauto(x, y, z, t) = rt_error(string($name,
-                                           "(`$(rt_typestring(x))`, `$(rt_typestring(y)), `$(rt_typestring(z)), `$(rt_typestring(t))`) failed",
-                                                    $expected))
-                end
-            else # TODO: implement manually these 2 commands
-                @assert length(args) == 0 ||
-                        length(args) == 5 && CMDS(cmd) == REDUCE_CMD ||
-                        length(args) == 6 && CMDS(cmd) == SIMPLEX_CMD "please notify the implementor of these new commands"
-                continue
+            else
+                @assert length(args) == 0 || length(args) ∈ 4:6
+                length(args) == 0 && continue # TODO: check whether we need to implement those
             end
             push!(seen, (cmd, length(args)))
         end
@@ -562,10 +563,14 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
         elseif length(Sargs) == 3
             @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3])) =
                 cmd3($cmd, $Sres, x, y, z)
+        elseif length(Sargs) == 4
+            @eval $rtname(a::$AnyST, b::$AnyST, c::$AnyST, d::$AnyST) = cmdm($cmd, $Sres, (a, b, c, d))
+        elseif length(Sargs) == 5
+            @eval $rtname(a::$AnyST, b::$AnyST, c::$AnyST, d::$AnyST, e::$AnyST) = cmdm($cmd, $Sres, (a, b, c, d, e))
+        elseif length(Sargs) == 6
+            @eval $rtname(a::$AnyST, b::$AnyST, c::$AnyST, d::$AnyST, e::$AnyST, f::$AnyST) = cmdm($cmd, $Sres, (a, b, c, d, e, f))
         else
-            @assert length(Sargs) == 4
-            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3]), t::$(Sargs[4])) =
-                cmdm($cmd, $Sres, (x, y, z, t))
+            @assert false
         end
     end
 end
