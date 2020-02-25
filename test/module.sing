@@ -5,3 +5,8 @@ ASSUME(0, typeof(a) == "module");
 module b = a;
 ASSUME(0, typeof(b) == "module");
 
+ASSUME(0, size(a) == 4);
+def c = interred(a);
+ASSUME(0, typeof(c) == "module");
+ASSUME(0, size(c) == 4);
+ASSUME(0, list(c[1], c[2], c[3], c[4]) == list([z], [y], [0, y^2], [x]));

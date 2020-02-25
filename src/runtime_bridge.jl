@@ -17,11 +17,11 @@ _copy(x::libSingular.matrix, ring) = libSingular.mp_Copy(x, ring.value)
 _copy(x::libSingular.number, ring) = libSingular.n_Copy(x, ring.value)
 
 _copy(x::Union{Sring,Sresolution}) = _copy(x.value)
-_copy(x::Union{Spoly,Svector,Sideal,Smatrix,Snumber}) = _copy(x.value, x.parent)
+_copy(x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber}) = _copy(x.value, x.parent)
 
 internal_void_to(::Type{<:Union{Spoly,Svector}}, ptr::Ptr) = libSingular.internal_void_to_poly_helper(ptr)
 internal_void_to(::Type{Snumber}, ptr::Ptr) = libSingular.internal_void_to_number_helper(ptr)
-internal_void_to(::Type{Sideal}, ptr::Ptr) = libSingular.internal_void_to_ideal_helper(ptr)
+internal_void_to(::Type{<:Union{Sideal,Smodule}}, ptr::Ptr) = libSingular.internal_void_to_ideal_helper(ptr)
 internal_void_to(::Type{Smatrix}, ptr::Ptr) = libSingular.internal_void_to_matrix_helper(ptr)
 internal_void_to(::Type{Sresolution}, ptr::Ptr) =
     libSingular.internal_void_to_resolution_helper(ptr)
@@ -84,7 +84,7 @@ function set_arg(lv, x::BigInt; withcopy=false, withname=false)
     lv_init!(lv, BIGINT_CMD, n.cpp_object)
 end
 
-function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smatrix,Snumber,Sring,Sresolution}; withcopy=true, withname=false)
+function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring,Sresolution}; withcopy=true, withname=false)
     val = withcopy ? _copy(x) : x.value
     lv_init!(lv, type_id(typeof(x)), val.cpp_object)
 end
@@ -173,13 +173,13 @@ end
 # cf. get_res(Slist, ...)
 function get_res(::Type{T},
                  data=get_res(type_id(T));
-                 copy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smatrix,Sresolution}
+                 copy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,Smatrix,Sresolution}
     r = rt_basering()
     x = internal_void_to(T, data)
     if copy
         x = _copy(x, r)
     end
-    if T == Sideal || T == Smatrix
+    if T == Sideal || T == Smodule || T == Smatrix
         T(x, r, true)
     else
         T(x, r)
@@ -274,22 +274,22 @@ end
 function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
     # this sets the value to NULL if basering not defined
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}))
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}))
     maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_sleftv(0), get_sleftv(1)), T)
 end
 
 function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
-    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution})) # do we need to copy for a Sring?
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution})) # do we need to copy for a Sring?
     maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2)), T)
 end
 
 function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
-    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}))
-    set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Svector,Sring,Smatrix,Sresolution}))
+    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}))
+    set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}))
     maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2), get_sleftv(3)), T)
 end
 
@@ -318,6 +318,7 @@ const convertible_types = Dict{CMDS, Type}(
     NUMBER_CMD     => Snumber,
     POLY_CMD       => Spoly,
     IDEAL_CMD      => Sideal,
+    MODUL_CMD      => Smodule,
     VECTOR_CMD     => Svector,
     LIST_CMD       => Slist,
     RESOLUTION_CMD => Sresolution,
