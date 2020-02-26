@@ -233,7 +233,9 @@ end
 function rtstd(a::Sideal)
     r = libSingular.id_Std(a.value, a.parent.value, false)
     at = SAttributes()
-    at["isSB"] = Int(1)
+    if (rtGlobal.si_opt_1 & OPT_DEGBOUND_MASK) == 0
+        at["isSB"] = Int(1)
+    end
     return Sideal(r, a.parent, true, at)
 end
 
@@ -338,6 +340,18 @@ rtrvar_auto(a) = 0
 
 ##################### system stuff ########################
 
+#### voice
+function rt_get_voice()
+    return length(rtGlobal.callstack)
+end
+
+rt_set_voice_more(a) = rt_set_voice_last(a)
+
+function rt_set_voice_last(a)
+    rt_error("cannot assign to system variable `voice`")
+end
+
+#### rtimer
 function rt_get_rtimer()
     t = time_ns()
     if t >= rtGlobal.rtimer_base
@@ -346,6 +360,118 @@ function rt_get_rtimer()
         return -Int(div(rtGlobal.rtimer_base - t, rtGlobal.rtimer_scale))
     end
 end
+
+function rt__set_rtimer(a)
+    b = rt_convert2int(a)
+    rtGlobal.rtimer_base = time_ns() - b*rtGlobal.rtimer_scale
+end
+
+function rt_set_rtimer_more(a)
+    @assert !isa(a, STuple)
+    rt__set_rtimer(a)
+    return empty_tuple
+end
+
+function rt_set_rtimer_more(a::STuple)
+    @error_check(!isempty(a), "argument mismatch in assignment")
+    rt__set_rtimer(popfirst!(a.list))
+    return a
+end
+
+function rt_set_rtimer_last(a)
+    @assert !isa(a, STuple)
+    rt__set_rtimer(a)
+    return
+end
+
+function rt_set_rtimer_last(a::STuple)
+    @error_check(length(a.list) == 1, "argument mismatch in assignment")
+    rt__set_rtimer(a.list[1])
+    return
+end
+
+#### degBound
+function rt_get_degBound()
+    @error_check(rt_basering().valid, "no ring active")
+    return rtGlobal.Kstd1_deg
+end
+
+function rt__set_degBound(a)
+    @error_check(rt_basering().valid, "no ring active")
+    b = rt_convert2int(a)
+    rtGlobal.Kstd1_deg = b
+    if b != 0
+        rtGlobal.si_opt_1 |= OPT_DEGBOUND_MASK
+    else
+        rtGlobal.si_opt_1 &= ~OPT_DEGBOUND_MASK
+    end
+end
+
+function rt_set_degBound_more(a)
+    @assert !isa(a, STuple)
+    rt__set_degBound(a)
+    return empty_tuple
+end
+
+function rt_set_degBound_more(a::STuple)
+    @error_check(!isempty(a), "argument mismatch in assignment")
+    rt__set_degBound(popfirst!(a.list))
+    return a
+end
+
+function rt_set_degBound_last(a)
+    @assert !isa(a, STuple)
+    rt__set_degBound(a)
+    return
+end
+
+function rt_set_degBound_last(a::STuple)
+    @error_check(length(a.list) == 1, "argument mismatch in assignment")
+    rt__set_degBound(a.list[1])
+    return
+end
+
+#### multBound
+function rt_get_multBound()
+    @error_check(rt_basering().valid, "no ring active")
+    return rtGlobal.Kstd1_mu
+end
+
+function rt__set_multBound(a)
+    @error_check(rt_basering().valid, "no ring active")
+    b = rt_convert2int(a)
+    rtGlobal.Kstd1_mu = b
+    if b != 0
+        rtGlobal.si_opt_1 |= OPT_MULTBOUND_MASK
+    else
+        rtGlobal.si_opt_1 &= ~OPT_MULTBOUND_MASK
+    end
+end
+
+function rt_set_multBound_more(a)
+    @assert !isa(a, STuple)
+    rt__set_multBound(a)
+    return empty_tuple
+end
+
+function rt_set_multBound_more(a::STuple)
+    @error_check(!isempty(a), "argument mismatch in assignment")
+    rt__set_multBound(popfirst!(a.list))
+    return a
+end
+
+function rt_set_multBound_last(a)
+    @assert !isa(a, STuple)
+    rt__set_multBound(a)
+    return
+end
+
+function rt_set_multBound_last(a::STuple)
+    @error_check(length(a.list) == 1, "argument mismatch in assignment")
+    rt__set_multBound(a.list[1])
+    return
+end
+
 
 
 function rtsystem(a::Sstring, b...)
@@ -391,10 +517,6 @@ function rtsystem_install(typ_::Sstring, cmd_::Sstring, proc::Sproc, nargs::Int)
         rt_error("system install failed")
     end
     return rtnothing
-end
-
-function rt_get_voice()
-    return length(rtGlobal.callstack)
 end
 
 function rtbasering()

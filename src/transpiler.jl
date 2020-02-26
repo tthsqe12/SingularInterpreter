@@ -1032,7 +1032,11 @@ function push_assignment!(rest::Symbol, last::Bool, out::Expr, left::AstNode, ri
         elseif a.rule == @RULE_elemexpr(9)
             t = a.child[1]::Int
             haskey(system_var_to_string, t) || throw(TranspileError("internal error push_assignment - elemexpr 9"))
-            push!(out.args, Expr(:(=), rest, Expr(:call, Symbol("rt_set_" * system_var_to_string[t]), right)))
+            if last
+                push!(out.args, Expr(:call, Symbol("rt_set_" * system_var_to_string[t] * "_last"), right))
+            else
+                push!(out.args, Expr(:(=), rest, Expr(:call, Symbol("rt_set_" * system_var_to_string[t] * "_more"), right)))
+            end
         elseif a.rule == @RULE_elemexpr(6)
             @assert isempty(env.declared_identifiers)
             s, ok = convert_elemexpr_name_call(a, env)
