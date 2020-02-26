@@ -26,6 +26,10 @@ internal_void_to(::Type{Smatrix}, ptr::Ptr) = libSingular.internal_void_to_matri
 internal_void_to(::Type{Sresolution}, ptr::Ptr) =
     libSingular.internal_void_to_resolution_helper(ptr)
 
+attributes(x) = nothing
+attributes(x::Union{Sideal,Smodule}) = x.attributes
+
+
 ### sleftv ###
 
 function Base.getproperty(lv::Sleftv, name::Symbol)
@@ -35,6 +39,10 @@ function Base.getproperty(lv::Sleftv, name::Symbol)
         libSingular.sleftv_data(lv)
     elseif name == :rtyp
         libSingular.sleftv_type(lv)
+    elseif name == :attribute
+        libSingular.sleftv_attr(lv)
+    elseif name == :flag
+        libSingular.sleftv_flag(lv)
     elseif name == :Init
         () -> libSingular.sleftv_init(lv)
     elseif name == :cpp_object
@@ -51,17 +59,49 @@ function Base.setproperty!(lv::Sleftv, name::Symbol, x)
         libSingular.sleftv_data(lv, x)
     elseif name == :rtyp
         libSingular.sleftv_type(lv, x)
+    elseif name == :attribute
+        libSingular.sleftv_attr(lv, x)
+    elseif name == :flag
+        libSingular.sleftv_flag(lv, x)
     else
         error("type Sleftv has not field $name")
     end
 end
 
-Base.propertynames(lv::Sleftv, private=false) = (:next, :data, :rtyp, :Init, :cpp_object)
+Base.propertynames(lv::Sleftv, private=false) = (:next, :data, :rtyp, :attribute, :flag, :Init, :cpp_object)
 
-function lv_init!(lv::Sleftv, typ, data)
+# shifted versions of the cpp couterparts
+const FLAG_STD = Cuint(1) << 0
+const FLAG_TWOSTD = Cuint(1) << 3
+const FLAG_QRING = Cuint(1) << 4
+
+function lv_init!(lv::Sleftv, typ, data, attr=nothing)
     lv.Init()
     lv.rtyp = Cint(typ)
     lv.data = data
+    if attr !== nothing
+        a = nothing
+        for (name, val) in attr
+            if name == "isSB"
+                lv.flag |= FLAG_STD
+                @assert val == 1
+            elseif name == "qringNF"
+                lv.flag |= FLAG_QRING
+                @assert val == 1
+            else
+                if a === nothing
+                    lv.attribute = a = libSingular.Sattr_cpp()
+                else
+                    # TODO: find a test for this branch, where more that 1 attribute are set
+                    a = libSingular.sattr_next(a, libSingular.Sattr_cpp())
+                end
+                libSingular.sattr_init(a)
+                libSingular.sattr_type(a, Int(type_id(typeof(val))))
+                libSingular.sattr_data(a, make_data(val))
+                libSingular.sattr_name(a, name)
+            end
+        end
+    end
 end
 
 const _sleftvs = Sleftv[]
@@ -87,7 +127,7 @@ end
 
 function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring,Sresolution}; withcopy=true, withname=false)
     val = withcopy ? _copy(x) : x.value
-    lv_init!(lv, type_id(typeof(x)), val.cpp_object)
+    lv_init!(lv, type_id(typeof(x)), val.cpp_object, attributes(x))
 end
 
 function set_arg(lv, x::Sstring; withcopy=false, withname=false)
@@ -158,18 +198,21 @@ function get_res(expectedtype::CMDS)
     res = get_sleftv(0)
     @assert res.next.cpp_object == C_NULL
     @assert res.rtyp == Int(expectedtype)
-    res.data
+    res
 end
 
 function get_res(::Type{Any})
     res = get_sleftv(0)
     @assert res.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
-    get_res(convertible_types[CMDS(res.rtyp)], res.data)
+    get_res(convertible_types[CMDS(res.rtyp)], res)
 end
 
-get_res(::Type{Int}, data=get_res(INT_CMD); withcopy=nothing) = Int(data)
+get_res(::Type{Int}, from=get_res(INT_CMD); withcopy=nothing) = Int(from.data)
 
-function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD); withcopy=nothing)
+# from::Ptr hapens when called from get_res(Sbigintmat, ...)
+function get_res(::Type{BigInt}, from=get_res(BIGINT_CMD); withcopy=nothing)
+    data::Ptr = from isa Sleftv ? from.data : from
+
     d = Int(data)
     if d & 1 != 0 # immediate int
         BigInt(d >> 2)
@@ -178,60 +221,87 @@ function get_res(::Type{BigInt}, data=get_res(BIGINT_CMD); withcopy=nothing)
     end
 end
 
+function set_attribute(x, from::Sleftv)
+    attr = attributes(x)
+    if attr === nothing && (from.flag != 0 || from.attribute.cpp_object != C_NULL)
+        @warn "please some attributes have been lost (report as a bug)"
+        return x
+    end
+    if from.flag & FLAG_STD != 0
+        attr["isSB"] = 1
+    end
+    if from.flag & FLAG_QRING != 0
+        attr["qringNF"] = 1
+    end
+    @assert from.flag & ~(FLAG_STD | FLAG_QRING) == 0
+    at = from.attribute
+    while  at.cpp_object != C_NULL
+        T = convertible_types[CMDS(libSingular.sattr_type(at))]
+        attr[unsafe_string(Ptr{Cchar}(libSingular.sattr_name(at)))] = get_res(T, libSingular.sattr_data(at))
+        at = libSingular.sattr_next(at)
+    end
+    return x
+end
+
+set_attribute(x, from::Ptr) = x
+
+getdata(x::Sleftv) = x.data
+getdata(x::Ptr) = x
+
 # TODO: check that a copy is necessary, and if yes why not other types?
 # cf. get_res(Slist, ...)
 function get_res(::Type{T},
-                 data=get_res(type_id(T));
+                 from=get_res(type_id(T));
                  withcopy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,Smatrix,Sresolution}
+
     r = rt_basering()
-    x = internal_void_to(T, data)
+    x = internal_void_to(T, getdata(from))
     if withcopy
         x = _copy(x, r)
     end
-    if T == Sideal || T == Smodule || T == Smatrix
-        T(x, r, true)
-    else
+    res = T == Sideal || T == Smodule || T == Smatrix ?
+        T(x, r, true) :
         T(x, r)
-    end
+    set_attribute(res, from)
 end
 
-function get_res(::Type{Sintvec}, data=get_res(INTVEC_CMD); withcopy=false)
+function get_res(::Type{Sintvec}, from=get_res(INTVEC_CMD); withcopy=false)
     @assert !withcopy
-    d = libSingular.lvres_array_get_dims(data, Int(INTVEC_CMD))[1]
+    d = libSingular.lvres_array_get_dims(getdata(from), Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
-    libSingular.lvres_to_jlarray(iv, data, Int(INTVEC_CMD))
+    libSingular.lvres_to_jlarray(iv, getdata(from), Int(INTVEC_CMD))
     Sintvec(iv, true)
 end
 
-function get_res(::Type{Sintmat}, data=get_res(INTMAT_CMD); withcopy=false)
+function get_res(::Type{Sintmat}, from=get_res(INTMAT_CMD); withcopy=false)
     @assert !withcopy
-    d = libSingular.lvres_array_get_dims(data, Int(INTMAT_CMD))
+    d = libSingular.lvres_array_get_dims(getdata(from), Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
-    libSingular.lvres_to_jlarray(vec(im), data, Int(INTMAT_CMD))
+    libSingular.lvres_to_jlarray(vec(im), getdata(from), Int(INTMAT_CMD))
     Sintmat(im, true)
 end
 
-function get_res(::Type{Sbigintmat}, data=get_res(BIGINTMAT_CMD); withcopy=false)
+function get_res(::Type{Sbigintmat}, from=get_res(BIGINTMAT_CMD); withcopy=false)
     @assert !withcopy
-    r, c = libSingular.lvres_array_get_dims(data, Int(BIGINTMAT_CMD))
+    r, c = libSingular.lvres_array_get_dims(getdata(from), Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
         bim[i,j] = get_res(BigInt,
-                           libSingular.lvres_bim_get_elt_ij(data, Int(BIGINTMAT_CMD), i,j))
+                           libSingular.lvres_bim_get_elt_ij(getdata(from), Int(BIGINTMAT_CMD), i,j))
     end
     Sbigintmat(bim, true)
 end
 
-function get_res(::Type{Slist}, data=get_res(LIST_CMD); withcopy=false)
+function get_res(::Type{Slist}, from=get_res(LIST_CMD); withcopy=false)
     @assert !withcopy
-    n::Int, lv0::Sleftv = libSingular.internal_void_to_lists(data)
+    n::Int, lv0::Sleftv = libSingular.internal_void_to_lists(getdata(from))
     a = Vector{Any}(undef, n)
     cnt = 0
     for i = 1:n
         lv = libSingular.sleftv_at(lv0, i-1)
         typ = CMDS(lv.rtyp)
         T = convertible_types[typ]
-        a[i] = get_res(T, lv.data, withcopy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
+        a[i] = get_res(T, lv, withcopy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
         cnt += rt_is_ring_dep(a[i])
     end
     ring = if cnt == 0
@@ -252,7 +322,7 @@ function get_res(::Type{STuple})
         data = res.data
         @assert data != C_NULL
         if res.rtyp == Int(STRING_CMD)
-            push!(a, get_res(Sstring, data))
+            push!(a, get_res(Sstring, res))
         else
             rt_error("unknown type in the result of last command")
         end
@@ -261,8 +331,8 @@ function get_res(::Type{STuple})
     STuple(a)
 end
 
-get_res(::Type{Sstring}, data=get_res(STRING_CMD); withcopy=nothing) =
-    Sstring(unsafe_string(Ptr{Cchar}(data)))
+get_res(::Type{Sstring}, from=get_res(STRING_CMD); withcopy=nothing) =
+    Sstring(unsafe_string(Ptr{Cchar}(getdata(from))))
 
 
 ### cmd ###

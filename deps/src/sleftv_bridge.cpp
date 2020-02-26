@@ -3,6 +3,9 @@
 
 typedef ssize_t jint; // julia Int
 
+// not exported from attrib.cc
+static omBin sattr_bin = omGetSpecBin(sizeof(sattr));
+
 // for calling interpreter routines from SingularInterpreter
 
 static idhdl ring_hdl = NULL;
@@ -75,6 +78,7 @@ void init_sleftv(leftv lv, void* data, int type) {
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     Singular.add_type<sleftv>("Sleftv");
+    Singular.add_type<sattr>("Sattr");
 
     Singular.method("sleftv_init", [](leftv lv) { return lv->Init(); });
     Singular.method("sleftv_type", [](leftv lv) { return lv->Typ(); });
@@ -83,10 +87,27 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("sleftv_data", [](leftv lv, void* data) { lv->data = data; });
     Singular.method("sleftv_next", [](leftv lv) { return lv->next; });
     Singular.method("sleftv_next", [](leftv lv, leftv next) { lv->next = next; });
+    Singular.method("sleftv_attr", [](leftv lv) { return lv->attribute; });
+    Singular.method("sleftv_attr", [](leftv lv, attr attribute) { lv->attribute = attribute; });
+    Singular.method("sleftv_flag", [](leftv lv) { return lv->flag; });
+    Singular.method("sleftv_flag", [](leftv lv, BITSET flag) { lv->flag = flag; });
+    // TODO: rename this one, can be confused for "attribute"
     Singular.method("sleftv_at", [](leftv lv, int i) { return lv + i; });
     // c++ allocated constructor, which will/should be deleted by Singular
     Singular.method("Sleftv_cpp", [] { return (leftv)omAllocBin(sleftv_bin); });
     Singular.set_const("sleftv_sizeof", sizeof(sleftv));
+
+    Singular.method("sattr_init", [](attr at) { return at->Init(); });
+    Singular.method("sattr_type", [](attr at) { return at->atyp; });
+    Singular.method("sattr_type", [](attr at, int typ) { at->atyp = typ; });
+    Singular.method("sattr_next", [](attr at) { return at->next; });
+    Singular.method("sattr_next", [](attr at, attr next) { at->next = next; return next; });
+    Singular.method("sattr_data", [](attr at) { return at->data; });
+    Singular.method("sattr_data", [](attr at, void* data) { at->data = data; });
+    // has to be cast to e.g. (void*) for libSingular to load
+    Singular.method("sattr_name", [](attr at) { return (void*)at->name; });
+    Singular.method("sattr_name", [](attr at, std::string name) { at->name = omStrDup(name.c_str()); });
+    Singular.method("Sattr_cpp", [] { return (attr)omAlloc0Bin(sattr_bin); });
 
     // can't be a constant, because at the time of module initialization, the constant is invalid
     // it could also be created on the Julia side via:

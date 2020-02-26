@@ -1,0 +1,11 @@
+ring r;
+
+ideal i = x, y;
+attrib(i, "isHomog", 1..2);
+module m = modulo(i, i);
+def at = attrib(m, "isHomog");
+ASSUME(0, typeof(at) == "intvec");
+ASSUME(0, at == 2:2);
+
+ideal j = std(i, 1..2); // (currently) implemented as a "bridge" function
+ASSUME(0, attrib(j, "isSB"));

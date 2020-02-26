@@ -135,6 +135,7 @@ ASSUME(0, typeof(divres[2]) == "ideal");
 
 // simplex
 // example from online docs
+kill r;
 ring r = (real,10),(x),lp;
 poly half = 1;
 half = half / 2; // TODO: delete half once "0.5" can be parsed
