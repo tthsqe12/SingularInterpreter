@@ -116,9 +116,9 @@ end
 
 ### set_arg ###
 
-function set_arg(lv, x; withcopy=true, withname=false)
+function set_arg(lv, x; withname=false)
     lv_init!(lv, type_id(typeof(x)),
-             make_data(x; withcopy=withcopy),
+             make_data(x),
              attributes(x))
     if withname
         libSingular.make_idhdl_from(lv)
@@ -126,50 +126,48 @@ function set_arg(lv, x; withcopy=true, withname=false)
     nothing
 end
 
-make_data(x::Int; kw...) = Ptr{Cvoid}(x)
+make_data(x::Int) = Ptr{Cvoid}(x)
 
-function make_data(x::BigInt; kw...)
+function make_data(x::BigInt)
     n = GC.@preserve x libSingular.n_InitMPZ_internal(pointer_from_objref(x),
                                                       libSingular.coeffs_BIGINT())
     n.cpp_object
 end
 
-function make_data(x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring,Sresolution}; withcopy=true)
-    val = withcopy ? _copy(x) : x.value
-    val.cpp_object
-end
+make_data(x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring,Sresolution}) =
+    _copy(x).cpp_object
 
-make_data(x::Sstring; kw...) =
+make_data(x::Sstring) =
     GC.@preserve x libSingular.make_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
 
-function make_data(x::Union{Sintvec, Sintmat}; kw...)
+function make_data(x::Union{Sintvec, Sintmat})
     xv = x.value
     libSingular.make_intvec(vec(xv), x isa Sintmat, size(xv, 1), size(xv, 2))
 end
 
-function make_data(x::Sbigintmat; withcopy=false)
+function make_data(x::Sbigintmat)
     a = Array{Any}(x.value) # TODO: optimize this method to avoid copying
     GC.@preserve a libSingular.make_bigintmat(vec(a), size(a, 1), size(a, 2))
 end
 
-function make_data(x::Slist; kw...)
+function make_data(x::Slist)
     list, m::Sleftv = libSingular.create_list(length(x.value))
     # m is in fact the first element of an array,
     # sleftv_at below allows to reach subsequent elements
     for (i, elt) in enumerate(x.value)
-        set_arg(libSingular.sleftv_at(m, i - 1), elt, withcopy=true)
+        set_arg(libSingular.sleftv_at(m, i - 1), elt)
     end
     list
 end
 
-set_arg1(x; withcopy=false, withname=false) =
-    set_arg(get_sleftv(1), x; withcopy=withcopy, withname=withname)
+set_arg1(x; withname=false) =
+    set_arg(get_sleftv(1), x; withname=withname)
 
-set_arg2(x; withcopy=false, withname=false) =
-    set_arg(get_sleftv(2), x; withcopy=withcopy, withname=withname)
+set_arg2(x; withname=false) =
+    set_arg(get_sleftv(2), x; withname=withname)
 
-set_arg3(x; withcopy=false, withname=false) =
-    set_arg(get_sleftv(3), x; withcopy=withcopy, withname=withname)
+set_arg3(x; withname=false) =
+    set_arg(get_sleftv(3), x; withname=withname)
 
 function set_argm(xs)
     @assert length(xs) > 0 # not implemented "yet", might not be necessary
@@ -360,23 +358,27 @@ end
 function cmd1(cmd::Union{Int,CMDS,Char}, T, x)
     # this sets the value to NULL if basering not defined
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}))
-    maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_sleftv(0), get_sleftv(1)), T)
+    set_arg1(x)
+    maybe_get_res(libSingular.iiExprArith1(Int(cmd), get_sleftv(0), get_sleftv(1)),
+                  T)
 end
 
 function cmd2(cmd::Union{Int,CMDS,Char}, T, x, y)
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
-    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution})) # do we need to copy for a Sring?
-    maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2)), T)
+    set_arg1(x, withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y)
+    maybe_get_res(libSingular.iiExprArith2(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2)),
+                  T)
 end
 
 function cmd3(cmd::Union{Int,CMDS,Char}, T, x, y, z)
     rChangeCurrRing(rt_basering())
-    set_arg1(x, withcopy=(x isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}), withname=(y isa Sintvec && x isa Sstring))
-    set_arg2(y, withcopy=(y isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}))
-    set_arg3(z, withcopy=(z isa Union{Spoly,Sideal,Smodule,Svector,Sring,Smatrix,Sresolution}))
-    maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(0), get_sleftv(1), get_sleftv(2), get_sleftv(3)), T)
+    set_arg1(x, withname=(y isa Sintvec && x isa Sstring))
+    set_arg2(y)
+    set_arg3(z)
+    maybe_get_res(libSingular.iiExprArith3(Int(cmd), get_sleftv(0), get_sleftv(1),
+                                           get_sleftv(2), get_sleftv(3)),
+                  T)
 end
 
 function cmdm(cmd::Union{Int,CMDS,Char}, T, xs)
