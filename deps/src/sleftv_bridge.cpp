@@ -95,7 +95,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     Singular.method("rCopy", &rCopy);
 
-    Singular.method("init_str", [](void* src){ return (void*)omStrDup((char*)src); });
+    Singular.method("make_str", [](void* src){ return (void*)omStrDup((char*)src); });
 
     Singular.method("set_idhdl_string",
                     [](leftv lv, const std::string& x) {
@@ -110,7 +110,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                     });
 
     // for `Vector{Int}`
-    Singular.method("init_intvec",
+    Singular.method("make_intvec",
                     [](jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2) {
                         assert(d1 * d2 == a.size());
                         assert(ismatrix || d2 == 1);

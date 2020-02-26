@@ -76,7 +76,8 @@ end
 
 ### set_arg ###
 
-set_arg(lv, x::Int; kw...) = lv_init!(lv, INT_CMD, Ptr{Cvoid}(x))
+make_data(x::Int; kw...) = Ptr{Cvoid}(x)
+set_arg(lv, x::Int; kw...) = lv_init!(lv, INT_CMD, make_data(x; kw...))
 
 function set_arg(lv, x::BigInt; withcopy=false, withname=false)
     n = GC.@preserve x libSingular.n_InitMPZ_internal(pointer_from_objref(x),
@@ -93,16 +94,18 @@ function set_arg(lv, x::Sstring; withcopy=false, withname=false)
     if withname
         libSingular.set_idhdl_string(lv, x.value)
     else
-        data = GC.@preserve x libSingular.init_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
+        data = GC.@preserve x libSingular.make_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
         lv_init!(lv, STRING_CMD, data)
     end
 end
 
-function set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false)
-    xval = x.value
-    iv = libSingular.init_intvec(vec(xval), x isa Sintmat, size(xval, 1), size(xval, 2))
-    lv_init!(lv, type_id(typeof(x)), iv)
+function make_data(x::Union{Sintvec, Sintmat}; withcopy=false)
+    xv = x.value
+    libSingular.make_intvec(vec(xv), x isa Sintmat, size(xv, 1), size(xv, 2))
 end
+
+set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false) =
+    lv_init!(lv, type_id(typeof(x)), make_data(x))
 
 function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
     a = Array{Any}(x.value) # TODO: optimize this method to avoid copying
