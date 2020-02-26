@@ -234,16 +234,18 @@ function get_res(expectedtype::CMDS)
 end
 
 # construct accepts (usually) either an Sleftv or directly a (void*) data
+# when it's from an Sleftv, we "move" the data from it, i.e. we don't do
+# a copy
 
 function construct(::Type{Any}, from::Sleftv)
     @assert from.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
     construct(convertible_types[CMDS(from.rtyp)], from)
 end
 
-construct(::Type{Int}, from; withcopy=nothing) = Int(getdata(from))
+construct(::Type{Int}, from) = Int(getdata(from))
 
 # from::Ptr hapens when called from construct(Sbigintmat, ...)
-function construct(::Type{BigInt}, from; withcopy=nothing)
+function construct(::Type{BigInt}, from)
     data = getdata(from)
 
     d = Int(data)
@@ -256,13 +258,13 @@ end
 
 # TODO: check that a copy is necessary, and if yes why not other types?
 # cf. construct(Slist, ...)
-function construct(::Type{T}, from;
-                   withcopy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,
-                                                    Smatrix,Sresolution}
+function construct(::Type{T}, from::Union{Ptr{Cvoid},Sleftv}
+                   ) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,
+                                      Smatrix,Sresolution}
 
     r = rt_basering()
     x = internal_void_to(T, getdata(from))
-    if withcopy
+    if from isa Ptr
         x = _copy(x, r)
     end
     res = T == Sideal || T == Smodule || T == Smatrix ?
@@ -271,24 +273,21 @@ function construct(::Type{T}, from;
     set_attribute(res, from)
 end
 
-function construct(::Type{Sintvec}, from; withcopy=false)
-    @assert !withcopy
+function construct(::Type{Sintvec}, from)
     d = libSingular.lvres_array_get_dims(getdata(from), Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv, getdata(from), Int(INTVEC_CMD))
     Sintvec(iv, true)
 end
 
-function construct(::Type{Sintmat}, from; withcopy=false)
-    @assert !withcopy
+function construct(::Type{Sintmat}, from)
     d = libSingular.lvres_array_get_dims(getdata(from), Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im), getdata(from), Int(INTMAT_CMD))
     Sintmat(im, true)
 end
 
-function construct(::Type{Sbigintmat}, from; withcopy=false)
-    @assert !withcopy
+function construct(::Type{Sbigintmat}, from)
     r, c = libSingular.lvres_array_get_dims(getdata(from), Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
@@ -298,8 +297,7 @@ function construct(::Type{Sbigintmat}, from; withcopy=false)
     Sbigintmat(bim, true)
 end
 
-function construct(::Type{Slist}, from; withcopy=false)
-    @assert !withcopy
+function construct(::Type{Slist}, from)
     n::Int, lv0::Sleftv = libSingular.internal_void_to_lists(getdata(from))
     a = Vector{Any}(undef, n)
     cnt = 0
@@ -307,7 +305,7 @@ function construct(::Type{Slist}, from; withcopy=false)
         lv = libSingular.sleftv_at(lv0, i-1)
         typ = CMDS(lv.rtyp)
         T = convertible_types[typ]
-        a[i] = construct(T, lv, withcopy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
+        a[i] = construct(T, lv)
         cnt += rt_is_ring_dep(a[i])
     end
     ring = if cnt == 0
@@ -336,7 +334,7 @@ function construct(::Type{STuple}, from::Sleftv)
     STuple(a)
 end
 
-construct(::Type{Sstring}, from; withcopy=nothing) =
+construct(::Type{Sstring}, from) =
     Sstring(unsafe_string(Ptr{Cchar}(getdata(from))))
 
 
