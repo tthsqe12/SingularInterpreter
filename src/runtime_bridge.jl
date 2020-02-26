@@ -189,38 +189,9 @@ function set_argm(xs)
     lv1
 end
 
-### get_res ###
+### set_attribute ###
 
-# Singular functions iiExprArith1 and friends 0-initialize the res parameter immediately
-# so the data there, if any, is not reclaimed
-# TODO: cleanup result data when appropriate between calls
-
-function get_res(expectedtype::CMDS)
-    res = get_sleftv(0)
-    @assert res.next.cpp_object == C_NULL
-    @assert res.rtyp == Int(expectedtype)
-    res
-end
-
-function get_res(::Type{Any})
-    res = get_sleftv(0)
-    @assert res.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
-    get_res(convertible_types[CMDS(res.rtyp)], res)
-end
-
-get_res(::Type{Int}, from=get_res(INT_CMD); withcopy=nothing) = Int(from.data)
-
-# from::Ptr hapens when called from get_res(Sbigintmat, ...)
-function get_res(::Type{BigInt}, from=get_res(BIGINT_CMD); withcopy=nothing)
-    data::Ptr = from isa Sleftv ? from.data : from
-
-    d = Int(data)
-    if d & 1 != 0 # immediate int
-        BigInt(d >> 2)
-    else
-        Base.GMP.MPZ.set(unsafe_load(Ptr{BigInt}(data))) # makes a copy of internals
-    end
-end
+# copy attributes from an Sleftv `from` to the corresponding Julia object `x`
 
 function set_attribute(x, from::Sleftv)
     attr = attributes(x)
@@ -238,7 +209,8 @@ function set_attribute(x, from::Sleftv)
     at = from.attribute
     while  at.cpp_object != C_NULL
         T = convertible_types[CMDS(libSingular.sattr_type(at))]
-        attr[unsafe_string(Ptr{Cchar}(libSingular.sattr_name(at)))] = get_res(T, libSingular.sattr_data(at))
+        attr[unsafe_string(Ptr{Cchar}(libSingular.sattr_name(at)))] =
+            construct(T, libSingular.sattr_data(at))
         at = libSingular.sattr_next(at)
     end
     return x
@@ -246,14 +218,49 @@ end
 
 set_attribute(x, from::Ptr) = x
 
+
+### get_res / construct ###
+
 getdata(x::Sleftv) = x.data
 getdata(x::Ptr) = x
 
+# Singular functions iiExprArith1 and friends 0-initialize the res parameter immediately
+# so the data there, if any, is not reclaimed
+# TODO: cleanup result data when appropriate between calls
+using Test
+function get_res(expectedtype::CMDS)
+    res = get_sleftv(0)
+    @assert expectedtype == STUPLE_CMD || res.next.cpp_object == C_NULL
+    @assert expectedtype ∈ (ANY_TYPE, STUPLE_CMD) || res.rtyp == Int(expectedtype)
+    res
+end
+
+# construct accepts (usually) either an Sleftv or directly a (void*) data
+
+function construct(::Type{Any}, from::Sleftv)
+    @assert from.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
+    construct(convertible_types[CMDS(from.rtyp)], from)
+end
+
+construct(::Type{Int}, from; withcopy=nothing) = Int(getdata(from))
+
+# from::Ptr hapens when called from construct(Sbigintmat, ...)
+function construct(::Type{BigInt}, from; withcopy=nothing)
+    data = getdata(from)
+
+    d = Int(data)
+    if d & 1 != 0 # immediate int
+        BigInt(d >> 2)
+    else
+        Base.GMP.MPZ.set(unsafe_load(Ptr{BigInt}(data))) # makes a copy of internals
+    end
+end
+
 # TODO: check that a copy is necessary, and if yes why not other types?
-# cf. get_res(Slist, ...)
-function get_res(::Type{T},
-                 from=get_res(type_id(T));
-                 withcopy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,Smatrix,Sresolution}
+# cf. construct(Slist, ...)
+function construct(::Type{T}, from;
+                   withcopy=false) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,
+                                                    Smatrix,Sresolution}
 
     r = rt_basering()
     x = internal_void_to(T, getdata(from))
@@ -266,7 +273,7 @@ function get_res(::Type{T},
     set_attribute(res, from)
 end
 
-function get_res(::Type{Sintvec}, from=get_res(INTVEC_CMD); withcopy=false)
+function construct(::Type{Sintvec}, from; withcopy=false)
     @assert !withcopy
     d = libSingular.lvres_array_get_dims(getdata(from), Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
@@ -274,7 +281,7 @@ function get_res(::Type{Sintvec}, from=get_res(INTVEC_CMD); withcopy=false)
     Sintvec(iv, true)
 end
 
-function get_res(::Type{Sintmat}, from=get_res(INTMAT_CMD); withcopy=false)
+function construct(::Type{Sintmat}, from; withcopy=false)
     @assert !withcopy
     d = libSingular.lvres_array_get_dims(getdata(from), Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
@@ -282,18 +289,18 @@ function get_res(::Type{Sintmat}, from=get_res(INTMAT_CMD); withcopy=false)
     Sintmat(im, true)
 end
 
-function get_res(::Type{Sbigintmat}, from=get_res(BIGINTMAT_CMD); withcopy=false)
+function construct(::Type{Sbigintmat}, from; withcopy=false)
     @assert !withcopy
     r, c = libSingular.lvres_array_get_dims(getdata(from), Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
-        bim[i,j] = get_res(BigInt,
-                           libSingular.lvres_bim_get_elt_ij(getdata(from), Int(BIGINTMAT_CMD), i,j))
+        bim[i,j] = construct(BigInt,
+                             libSingular.lvres_bim_get_elt_ij(getdata(from), Int(BIGINTMAT_CMD), i,j))
     end
     Sbigintmat(bim, true)
 end
 
-function get_res(::Type{Slist}, from=get_res(LIST_CMD); withcopy=false)
+function construct(::Type{Slist}, from; withcopy=false)
     @assert !withcopy
     n::Int, lv0::Sleftv = libSingular.internal_void_to_lists(getdata(from))
     a = Vector{Any}(undef, n)
@@ -302,7 +309,7 @@ function get_res(::Type{Slist}, from=get_res(LIST_CMD); withcopy=false)
         lv = libSingular.sleftv_at(lv0, i-1)
         typ = CMDS(lv.rtyp)
         T = convertible_types[typ]
-        a[i] = get_res(T, lv, withcopy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
+        a[i] = construct(T, lv, withcopy = typ == NUMBER_CMD || typ == POLY_CMD || typ == IDEAL_CMD)
         cnt += rt_is_ring_dep(a[i])
     end
     ring = if cnt == 0
@@ -315,24 +322,23 @@ function get_res(::Type{Slist}, from=get_res(LIST_CMD); withcopy=false)
     Slist(a, ring, cnt, nothing, true)
 end
 
-function get_res(::Type{STuple})
+function construct(::Type{STuple}, from::Sleftv)
     a = Any[]
     next = C_NULL
-    res = get_sleftv(0)
-    while res.cpp_object != C_NULL
-        data = res.data
-        @assert data != C_NULL
-        if res.rtyp == Int(STRING_CMD)
-            push!(a, get_res(Sstring, res))
+    from = get_sleftv(0)
+    while from.cpp_object != C_NULL
+        @assert from.data != C_NULL
+        if from.rtyp == Int(STRING_CMD)
+            push!(a, construct(Sstring, from))
         else
             rt_error("unknown type in the result of last command")
         end
-        res = res.next
+        from = from.next
     end
     STuple(a)
 end
 
-get_res(::Type{Sstring}, from=get_res(STRING_CMD); withcopy=nothing) =
+construct(::Type{Sstring}, from; withcopy=nothing) =
     Sstring(unsafe_string(Ptr{Cchar}(getdata(from))))
 
 
@@ -341,7 +347,7 @@ get_res(::Type{Sstring}, from=get_res(STRING_CMD); withcopy=nothing) =
 function maybe_get_res(err, T)
     # we assume the currRing didn't change on the Singular side
     if err == 0
-        r = get_res(T)
+        r = construct(T, get_res(type_id(T)))
         rChangeCurrRing(C_NULL)
         r
     else
@@ -411,7 +417,7 @@ const convertible_types = Dict{CMDS, Type}(
 # needed)
 
 for (id, T) in convertible_types
-    id ∈ (ANY_TYPE, HANDLED_TYPES) && continue
+    id ∈ (HANDLED_TYPES,) && continue
     @eval type_id(::Type{$T}) = $id
 end
 
