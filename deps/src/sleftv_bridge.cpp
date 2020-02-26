@@ -26,11 +26,11 @@ static const char* lv_string_names[3] = {"", "__string_name_1", "__string_name_2
 // idhdl == idrec* (cf. idrec.h)
 static idhdl string_idhdls[3] = {NULL, NULL, NULL};
 
-static idhdl string_idhdl(int i) {
+static idhdl get_idhdl(int i, int typ) {
     assert(1 <= i && i <=2);
     idhdl x = string_idhdls[i];
     if (x == NULL) {
-        x = IDROOT->set(lv_string_names[i], 0, STRING_CMD, false);
+        x = IDROOT->set(lv_string_names[i], 0, typ, false);
         string_idhdls[i] = x;
     }
     return x;
@@ -70,11 +70,6 @@ struct bigintmat_twin
 
 static void singular_define_table_h(jlcxx::Module & Singular);
 
-void init_sleftv(leftv lv, void* data, int type) {
-    lv->Init();
-    lv->data = data;
-    lv->rtyp = type;
-}
 void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     Singular.add_type<sleftv>("Sleftv");
@@ -118,16 +113,16 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     Singular.method("make_str", [](void* src){ return (void*)omStrDup((char*)src); });
 
-    Singular.method("set_idhdl_string",
-                    [](leftv lv, const std::string& x) {
-                        // TODO (or not): avoid copying this poor string 2 or 3 times
-                        idhdl id = string_idhdl(1); // TODO: fix this 1 !! so that it's not overwritten in the same call
+    Singular.method("make_idhdl_from",
+                    [](leftv lv) {
+                        idhdl id = get_idhdl(1, lv->rtyp); // TODO: fix this 1 !! so that it's not overwritten in the same call
                         // (for now only one argument can use this, so it's temporarily safe)
-                        IDDATA(id) = omStrDup(x.c_str());
-                        init_sleftv(lv, id, IDHDL);
+                        IDDATA(id) = (char*)lv->data;
+                        lv->data = id;
+                        lv->rtyp = IDHDL;
                         lv->name = id->id; // Hans says it's necessary to have the name both in the
-                        // idhdl and as the name field of the sleftv, but they can
-                        // be the same pointer
+                                           // idhdl and as the name field of the sleftv, but they can
+                                           // be the same pointer
                     });
 
     // for `Vector{Int}`
@@ -153,8 +148,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return (void*)iv;
                     });
 
-    Singular.method("set_sleftv_bigintmat",
-                    [](leftv lv, jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2) {
+    Singular.method("make_bigintmat",
+                    [](jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2) {
                         assert(d1 * d2 == a.size());
                         assert(d1 >= 0 && d2 >= 0);
 
@@ -172,15 +167,14 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                                 auto b = reinterpret_cast<__mpz_struct*>(a[i++]);
                                 BIMATELEM(*bim, i1, i2) = n_InitMPZ(b, coeffs_BIGINT);
                             }
-                        init_sleftv(lv, bim, BIGINTMAT_CMD);
+                        return (void*)bim;
                     });
 
-    Singular.method("set_sleftv_list",
-                    [](leftv lv, jint len) {
+    Singular.method("create_list",
+                    [](jint len) {
                         slists* list = (lists)omAllocBin(slists_bin); // segfaults with: `new slists`
                         list->Init(len);
-                        init_sleftv(lv, list, LIST_CMD);
-                        return list->m;
+                        return std::make_tuple((void*)list, list->m);
                     });
 
     Singular.method("lvres_array_get_dims",

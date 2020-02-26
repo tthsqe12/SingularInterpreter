@@ -116,49 +116,50 @@ end
 
 ### set_arg ###
 
-make_data(x::Int; kw...) = Ptr{Cvoid}(x)
-set_arg(lv, x::Int; kw...) = lv_init!(lv, INT_CMD, make_data(x; kw...))
+function set_arg(lv, x; withcopy=true, withname=false)
+    lv_init!(lv, type_id(typeof(x)),
+             make_data(x; withcopy=withcopy),
+             attributes(x))
+    if withname
+        libSingular.make_idhdl_from(lv)
+    end
+    nothing
+end
 
-function set_arg(lv, x::BigInt; withcopy=false, withname=false)
+make_data(x::Int; kw...) = Ptr{Cvoid}(x)
+
+function make_data(x::BigInt; kw...)
     n = GC.@preserve x libSingular.n_InitMPZ_internal(pointer_from_objref(x),
                                                       libSingular.coeffs_BIGINT())
-    lv_init!(lv, BIGINT_CMD, n.cpp_object)
+    n.cpp_object
 end
 
-function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring,Sresolution}; withcopy=true, withname=false)
+function make_data(x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring,Sresolution}; withcopy=true)
     val = withcopy ? _copy(x) : x.value
-    lv_init!(lv, type_id(typeof(x)), val.cpp_object, attributes(x))
+    val.cpp_object
 end
 
-function set_arg(lv, x::Sstring; withcopy=false, withname=false)
-    if withname
-        libSingular.set_idhdl_string(lv, x.value)
-    else
-        data = GC.@preserve x libSingular.make_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
-        lv_init!(lv, STRING_CMD, data)
-    end
-end
+make_data(x::Sstring; kw...) =
+    GC.@preserve x libSingular.make_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
 
-function make_data(x::Union{Sintvec, Sintmat}; withcopy=false)
+function make_data(x::Union{Sintvec, Sintmat}; kw...)
     xv = x.value
     libSingular.make_intvec(vec(xv), x isa Sintmat, size(xv, 1), size(xv, 2))
 end
 
-set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false) =
-    lv_init!(lv, type_id(typeof(x)), make_data(x))
-
-function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
+function make_data(x::Sbigintmat; withcopy=false)
     a = Array{Any}(x.value) # TODO: optimize this method to avoid copying
-    GC.@preserve a libSingular.set_sleftv_bigintmat(lv, vec(a), size(a, 1), size(a, 2))
+    GC.@preserve a libSingular.make_bigintmat(vec(a), size(a, 1), size(a, 2))
 end
 
-function set_arg(lv, x::Slist; kwargs...)
-    m::Sleftv = libSingular.set_sleftv_list(lv, length(x.value))
+function make_data(x::Slist; kw...)
+    list, m::Sleftv = libSingular.create_list(length(x.value))
     # m is in fact the first element of an array,
     # sleftv_at below allows to reach subsequent elements
     for (i, elt) in enumerate(x.value)
         set_arg(libSingular.sleftv_at(m, i - 1), elt, withcopy=true)
     end
+    list
 end
 
 set_arg1(x; withcopy=false, withname=false) =
