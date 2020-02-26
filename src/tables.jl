@@ -529,3 +529,136 @@ const builtin_typestring_to_symbol = Dict{String, Symbol}(
 )
 
 const NONE = END_RING
+
+
+#### options in rtGlobal.si_opt_1
+const OPT_PROT_MASK             = UInt32(1) << 0
+const OPT_REDSB_MASK            = UInt32(1) << 1
+const OPT_NOT_BUCKETS_MASK      = UInt32(1) << 2
+const OPT_NOT_SUGAR_MASK        = UInt32(1) << 3
+const OPT_INTERRUPT_MASK        = UInt32(1) << 4
+const OPT_SUGARCRIT_MASK        = UInt32(1) << 5
+const OPT_DEBUG_MASK            = UInt32(1) << 6
+const OPT_REDTHROUGH_MASK       = UInt32(1) << 7
+const OPT_NO_SYZ_MINIM_MASK     = UInt32(1) << 8
+const OPT_RETURN_SB_MASK        = UInt32(1) << 9
+const OPT_FASTHC_MASK           = UInt32(1) << 10
+const OPT_OLDSTD_MASK           = UInt32(1) << 20
+const OPT_STAIRCASEBOUND_MASK   = UInt32(1) << 22
+const OPT_MULTBOUND_MASK        = UInt32(1) << 23
+const OPT_DEGBOUND_MASK         = UInt32(1) << 24
+const OPT_REDTAIL_MASK          = UInt32(1) << 25
+const OPT_INTSTRATEGY_MASK      = UInt32(1) << 26
+const OPT_FINDET_MASK           = UInt32(1) << 27
+const OPT_INFREDTAIL_MASK       = UInt32(1) << 28
+const OPT_SB_1_MASK             = UInt32(1) << 29
+const OPT_NOTREGULARITY_MASK    = UInt32(1) << 30
+const OPT_WEIGHTM_MASK          = UInt32(1) << 31
+
+const valid_test_options = UInt32(1) << 0 |
+                           UInt32(1) << 1 |
+                           UInt32(1) << 2 |
+                           UInt32(1) << 3 |
+                           UInt32(1) << 4 |
+                           UInt32(1) << 5 |
+                           UInt32(1) << 6 |
+                           UInt32(1) << 7 |
+                           UInt32(1) << 8 |
+                           UInt32(1) << 9 |
+                           UInt32(1) << 10 |
+                           UInt32(1) << 11 |
+                           UInt32(1) << 12 |
+                           UInt32(1) << 13 |
+                           UInt32(1) << 14 |
+                           UInt32(1) << 15 |
+                           UInt32(1) << 16 |
+                           UInt32(1) << 17 |
+                           UInt32(1) << 18 |
+                           UInt32(1) << 19 |
+                           OPT_OLDSTD_MASK |
+                           UInt32(1) << 21 |
+                           UInt32(1) << 22 |
+                           OPT_REDTAIL_MASK |
+                           OPT_INTSTRATEGY_MASK |
+                           UInt32(1) << 27 |
+                           UInt32(1) << 28 |
+                           UInt32(1) << 29 |
+                           UInt32(1) << 30 |
+                           UInt32(1) << 31
+
+const test_options = Pair{String, UInt32}[
+    "prot"          => OPT_PROT_MASK,
+    "redSB"         => OPT_REDSB_MASK,
+    "notBuckets"    => OPT_NOT_BUCKETS_MASK,
+    "notSugar"      => OPT_NOT_SUGAR_MASK,
+    "interrupt"     => OPT_INTERRUPT_MASK,
+    "sugarCrit"     => OPT_SUGARCRIT_MASK,
+    "teach"         => OPT_DEBUG_MASK,
+    "notSyzMinim"   => OPT_NO_SYZ_MINIM_MASK,
+    "returnSB"      => OPT_RETURN_SB_MASK,
+    "fastHC"        => OPT_FASTHC_MASK,
+    "staircaseBound"=> OPT_STAIRCASEBOUND_MASK,
+    "multBound"     => OPT_MULTBOUND_MASK,
+    "degBound"      => OPT_DEGBOUND_MASK,
+    "redTail"       => OPT_REDTAIL_MASK,
+    "redThrough"    => OPT_REDTHROUGH_MASK,
+    "lazy"          => OPT_OLDSTD_MASK,
+    "intStrategy"   => OPT_INTSTRATEGY_MASK,
+    "infRedTail"    => OPT_INFREDTAIL_MASK,
+    "notRegularity" => OPT_NOTREGULARITY_MASK,
+    "weightM"       => OPT_WEIGHTM_MASK
+]
+
+#### options in rtGlobal.si_opt_2
+const V_QUIET_MASK          = UInt32(1) << 0
+const V_QRING_MASK          = UInt32(1) << 1
+const V_SHOW_MEM_MASK       = UInt32(1) << 2
+const V_YACC_MASK           = UInt32(1) << 3
+const V_REDEFINE_MASK       = UInt32(1) << 4
+const V_READING_MASK        = UInt32(1) << 5
+const V_LOAD_LIB_MASK       = UInt32(1) << 6
+const V_DEBUG_LIB_MASK      = UInt32(1) << 7
+const V_LOAD_PROC_MASK      = UInt32(1) << 8
+const V_DEF_RES_MASK        = UInt32(1) << 9
+const V_SHOW_USE_MASK       = UInt32(1) << 11
+const V_IMAP_MASK           = UInt32(1) << 12
+const V_PROMPT_MASK         = UInt32(1) << 13
+const V_NSB_MASK            = UInt32(1) << 14
+const V_CONTENTSB_MASK      = UInt32(1) << 15
+const V_CANCELUNIT_MASK     = UInt32(1) << 16
+const V_MODPSOLVSB_MASK     = UInt32(1) << 17
+const V_UPTORADICAL_MASK    = UInt32(1) << 18
+const V_FINDMONOM_MASK      = UInt32(1) << 19
+const V_COEFSTRAT_MASK      = UInt32(1) << 20
+const V_IDLIFT_MASK         = UInt32(1) << 21
+const V_LENGTH_MASK         = UInt32(1) << 22
+const V_ALLWARN_MASK        = UInt32(1) << 24
+const V_INTERSECT_ELIM_MASK = UInt32(1) << 25
+const V_INTERSECT_SYZ_MASK  = UInt32(1) << 26
+const V_DEG_STOP_MASK       = UInt32(1) << 31
+
+const verbose_options = Pair{String, UInt32}[
+    "mem"           => V_SHOW_MEM_MASK,
+    "yacc"          => V_YACC_MASK,
+    "redefine"      => V_REDEFINE_MASK,
+    "reading"       => V_READING_MASK,
+    "loadLib"       => V_LOAD_LIB_MASK,
+    "debugLib"      => V_DEBUG_LIB_MASK,
+    "loadProc"      => V_LOAD_PROC_MASK,
+    "defRes"        => V_DEF_RES_MASK,
+    "usage"         => V_SHOW_USE_MASK,
+    "Imap"          => V_IMAP_MASK,
+    "prompt"        => V_PROMPT_MASK,
+    "length"        => V_LENGTH_MASK,
+    "notWarnSB"     => V_NSB_MASK,
+    "contentSB"     => V_CONTENTSB_MASK,
+    "cancelunit"    => V_CANCELUNIT_MASK,
+    "modpsolve"     => V_MODPSOLVSB_MASK,
+    "geometricSB"   => V_UPTORADICAL_MASK,
+    "findMonomials" => V_FINDMONOM_MASK,
+    "coefStrat"     => V_COEFSTRAT_MASK,
+    "qringNF"       => V_QRING_MASK,
+    "warn"          => V_ALLWARN_MASK,
+    "intersectSyz"  => V_INTERSECT_SYZ_MASK,
+    "intersectElim" => V_INTERSECT_ELIM_MASK
+]

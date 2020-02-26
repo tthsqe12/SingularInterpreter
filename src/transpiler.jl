@@ -257,6 +257,66 @@ function convert_BRANCHTO_CMD(args, env::AstEnv)    # args has already been conv
 end
 
 
+
+function scan_OPTION_CMD(args::AstNode, env::AstEnv)
+    l = AstNode[]
+    if a.rule == @RULE_elemexpr(31)
+        push_exprlist_expr!(l, a.child[1], env)
+    end
+    if length(l) == 0
+        return
+    elseif length(l) == 1
+        if l[1].rule == @RULE_expr(2)
+            b, ok = convert_elemexpr_name_call(l[1].child[1], env)
+            if ok
+                return
+            end
+        end
+        throw(TranspileError("first argument to option is not a name"))
+    elseif length(l) == 2
+        if l[1].rule == @RULE_expr(2)
+            b, ok = convert_elemexpr_name_call(l[1].child[1], env)
+            if ok && isa(b, SName) && b.name == "set"
+                scan_expr(l[2], env)
+                return
+            end
+        end
+        throw(TranspileError("first argument to option is not the name set"))
+    else
+        throw(TranspileError("too many arguments to option"))
+    end
+end
+
+
+function convert_OPTION_CMD(a::AstNode, env::AstEnv)
+    l = AstNode[]
+    if a.rule == @RULE_elemexpr(31)
+        push_exprlist_expr!(l, a.child[2], env)
+    end
+    if length(l) == 0
+        return Expr(:call, :rt_option_string)
+    elseif length(l) == 1
+        if l[1].rule == @RULE_expr(2)
+            b, ok = convert_elemexpr_name_call(l[1].child[1], env)
+            if ok && isa(b, SName)
+                return string(b.name) == "get" ? Expr(:call, :rt_option_getvec) :
+                                                 Expr(:call, :rt_option_set, string(b.name))
+            end
+        end
+        throw(TranspileError("first argument to option is not a name"))
+    elseif length(l) == 2
+        if l[1].rule == @RULE_expr(2)
+            b, ok = convert_elemexpr_name_call(l[1].child[1], env)
+            if ok && isa(b, SName) && string(b.name) == "set"
+                return Expr(:call, :rt_option_setvec, make_nocopy(convert_expr(l[2], env)))
+            end
+        end
+        throw(TranspileError("first argument to option is not the name 'set'"))
+    else
+        throw(TranspileError("too many arguments to option"))
+    end
+end
+
 function scan_elemexpr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
     if a.rule == @RULE_elemexpr(99)
@@ -312,8 +372,13 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
         scan_expr(a.child[4], env)
     elseif a.rule == @RULE_elemexpr(30)
     elseif a.rule == @RULE_elemexpr(31)
-        env.branchto_appeared |= (a.child[1]::Int == Int(BRANCHTO_CMD))
-        env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
+        t = a.child[1]::Int
+        if t == Int(OPTION_CMD)
+            scan_OPTION_CMD(a, env)
+            return
+        end
+        env.branchto_appeared |= (t == Int(BRANCHTO_CMD))
+        env.everything_is_screwed |= in(t, cmds_that_screw_everything)
         scan_exprlist(a.child[2], env)
     elseif a.rule == @RULE_elemexpr(32)
         scan_expr(a.child[2], env)
@@ -456,12 +521,15 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         arg3 = make_nocopy(arg3)
         return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2, arg3)
     elseif a.rule == @RULE_elemexpr(30) || a.rule == @RULE_elemexpr(31)
+        t = a.child[1]::Int
+        if t == Int(OPTION_CMD)
+            return convert_OPTION_CMD(a, env)
+        end
         if a.rule == @RULE_elemexpr(31)
             args = convert_exprlist(a.child[2], env)::Array{Any}
         else
             args = Any[]
         end
-        t = a.child[1]::Int
         haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 30|31"))
         if t == Int(BRANCHTO_CMD)
             return convert_BRANCHTO_CMD(args, env)

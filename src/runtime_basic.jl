@@ -570,6 +570,99 @@ function rtkill(a::Vector{SName})
     end
 end
 
+function rtexport(a...)
+    rt_error("rtexport $(a) not implemented")
+end
+
+function rt_export(a::SName, b)
+    rt_error("rt_export $((a, b)) not implemented")
+end
+
+
+function rt_option_string()
+    r = String["//options:"]
+    if rtGlobal.si_opt_1 != 0 || rtGlobal.si_opt_2 != 0
+        tmp = rtGlobal.si_opt_1
+        for i in test_options
+            if (tmp & i.second) != 0
+                push!(r, i.first)
+                tmp &= ~i.second
+            end
+        end
+        for i in 0:31
+            if (tmp & (UInt32(1) << i)) != 0
+                push!(r, string(i))
+            end
+        end
+        tmp = rtGlobal.si_opt_2
+        for i in verbose_options
+            if (tmp & i.second) != 0
+                push!(r, i.first)
+                tmp &= ~i.second
+            end
+        end
+        for i in 1:31
+            if (tmp & (UInt32(1) << i)) != 0
+                push!(r, string(i + 32))
+            end
+        end
+    else
+        push!(r, "none")
+    end
+    return Sstring(join(r, " "))
+end
+
+function rt_option_set(s::String)
+    nos = (length(s) > 2 && s[1:2] == "no") ? s[3:end] : ""
+    if s == "none"
+        rtGlobal.si_opt_1 = 0
+        rtGlobal.si_opt_2 = 0
+    else
+        for i in test_options
+            if s == i.first
+                if (i.second & valid_test_options) != 0
+                    rtGlobal.si_opt_1 |= i.second
+                    if i.second == OPT_OLDSTD_MASK
+                        rtGlobal.si_opt_1 &= ~OPT_REDTHROUGH_MASK
+                    end
+                else
+                    rt_warn("cannot set option")
+                end
+                return rtnothing
+            elseif nos == i.first
+                if (i.second & valid_test_options) != 0
+                    rtGlobal.si_opt_1 &= ~i.second
+                else
+                    rt_warn("cannot set option")
+                end
+                return rtnothing
+            end
+        end
+        for i in verbose_options
+            if s == i.first
+                rtGlobal.si_opt_2 |= i.second
+                return rtnothing
+            elseif nos == i.first
+                rtGlobal.si_opt_2 &= ~i.second
+                return rtnothing
+            end
+        end
+        rt_error("unknown option `$(s)`")
+    end
+    return rtnothing
+end
+
+function rt_option_getvec()
+    return Sintvec(Int[rtGlobal.si_opt_1 % Int, rtGlobal.si_opt_2 % Int])
+end
+
+function rt_option_setvec(a::Sintvec)
+    @error_check(length(a.value) == 2, "option vector must have length 2")
+    rtGlobal.si_opt_1 = a.value[1] % UInt32
+    rtGlobal.si_opt_2 = a.value[2] % UInt32
+    return rtnothing
+end
+
 
 function rt_backtick(a::Sstring)
     return makeunknown(a.string)

@@ -547,6 +547,8 @@ mutable struct rtGlobalState
     last_printed::Any
     rtimer_base::UInt64
     rtimer_scale::UInt64
+    si_opt_1::UInt32
+    si_opt_2::UInt32
     vars::Dict{Symbol, Dict{Symbol, Any}}     # global ring indep vars
     callstack::Array{rtCallStackEntry}
     local_vars::Array{Pair{Symbol, Any}}
@@ -563,6 +565,8 @@ const rtGlobal = rtGlobalState(String[],
                                Snone(),
                                time_ns(),
                                1000000000,
+                               0x00000000,
+                               0x00002851,
                                Dict(:Top => Dict{Symbol, Any}()),
                                rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
@@ -575,6 +579,8 @@ function reset_runtime()
     rtGlobal.last_printed = Snone()
     rtGlobal.rtimer_base = time_ns()
     rtGlobal.rtimer_scale = 1000000000
+    rtGlobal.si_opt_1 = 0x00000000
+    rtGlobal.si_opt_2 = 0x00002851
     rtGlobal.vars = Dict(:Top => Dict{Symbol, Any}())
     rtGlobal.callstack = rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)]
     rtGlobal.local_vars = Pair{Symbol, Any}[]
