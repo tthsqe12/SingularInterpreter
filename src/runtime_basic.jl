@@ -21,41 +21,12 @@ rt_ prefix generally means it used internally and/or does not correspond to a cm
 =#
 
 # all of the singular types have trivial iterators - will be used because all arguments to functions are automatically splatted
-# TODO: more meta, less typing
-Base.iterate(a::SName) = iterate(a, 0)
-Base.iterate(a::SName, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Snone) = iterate(a, 0)
-Base.iterate(a::Snone, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Snumber) = iterate(a, 0)
-Base.iterate(a::Snumber, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sproc) = iterate(a, 0)
-Base.iterate(a::Sproc, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sstring) = iterate(a, 0)
-Base.iterate(a::Sstring, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sintvec) = iterate(a, 0)
-Base.iterate(a::Sintvec, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sintmat) = iterate(a, 0)
-Base.iterate(a::Sintmat, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sbigintmat) = iterate(a, 0)
-Base.iterate(a::Sbigintmat, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Slist) = iterate(a, 0)
-Base.iterate(a::Slist, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sring) = iterate(a, 0)
-Base.iterate(a::Sring, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Spoly) = iterate(a, 0)
-Base.iterate(a::Spoly, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Svector) = iterate(a, 0)
-Base.iterate(a::Svector, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sresolution) = iterate(a, 0)
-Base.iterate(a::Sresolution, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Sideal) = iterate(a, 0)
-Base.iterate(a::Sideal, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Smodule) = iterate(a, 0)
-Base.iterate(a::Smodule, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Smatrix) = iterate(a, 0)
-Base.iterate(a::Smatrix, state) = (state == 0 ? (a, 1) : nothing)
-Base.iterate(a::Smap) = iterate(a, 0)
-Base.iterate(a::Smap, state) = (state == 0 ? (a, 1) : nothing)
+let U = Union{SName,Snone,Snumber,Sproc,Sstring,Sintvec,Sintmat,Sbigintmat,Slist,
+              Sring,Spoly,Svector,Sresolution,Sideal,Smodule,Smatrix,Smap}
+    Base.iterate(x::U)        = (x, nothing)
+    Base.iterate(x::U, ::Any) = nothing
+end
+
 # special case for STuple, which iterates over its elements
 Base.iterate(a::STuple) = iterate(a.list)
 Base.iterate(a::STuple, state) = iterate(a.list, state)
