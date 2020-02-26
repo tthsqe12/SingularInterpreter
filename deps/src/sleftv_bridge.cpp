@@ -95,26 +95,23 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 
     Singular.method("rCopy", &rCopy);
 
-    Singular.method("set_sleftv_string",
-                    [](leftv lv, const std::string& x, bool withname) {
-                        // TODO (or not): avoid copying this poor string 2 or 3 times
+    Singular.method("init_str", [](void* src){ return (void*)omStrDup((char*)src); });
 
-                        if (withname) {
-                            idhdl id = string_idhdl(1); // TODO: fix this 1 !! so that it's not overwritten in the same call
-                                                        // (for now only one argument can use this, so it's temporarily safe)
-                            IDDATA(id) = omStrDup(x.c_str());
-                            init_sleftv(lv, id, IDHDL);
-                            lv->name = id->id; // Hans says it's necessary to have the name both in the
-                                               // idhdl and as the name field of the sleftv, but they can
-                                               // be the same pointer
-                        }
-                        else
-                            init_sleftv(lv, (void*)omStrDup(x.c_str()), STRING_CMD);
+    Singular.method("set_idhdl_string",
+                    [](leftv lv, const std::string& x) {
+                        // TODO (or not): avoid copying this poor string 2 or 3 times
+                        idhdl id = string_idhdl(1); // TODO: fix this 1 !! so that it's not overwritten in the same call
+                        // (for now only one argument can use this, so it's temporarily safe)
+                        IDDATA(id) = omStrDup(x.c_str());
+                        init_sleftv(lv, id, IDHDL);
+                        lv->name = id->id; // Hans says it's necessary to have the name both in the
+                        // idhdl and as the name field of the sleftv, but they can
+                        // be the same pointer
                     });
 
     // for `Vector{Int}`
-    Singular.method("set_sleftv_intvec",
-                    [](leftv lv, jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2) {
+    Singular.method("init_intvec",
+                    [](jlcxx::ArrayRef<ssize_t> a, bool ismatrix, int d1, int d2) {
                         assert(d1 * d2 == a.size());
                         assert(ismatrix || d2 == 1);
 
@@ -132,7 +129,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                             for (int i=0; i<a.size(); ++i)
                                 (*iv)[i] = a[i];
                         }
-                        init_sleftv(lv, iv, ismatrix ? (int)INTMAT_CMD : (int)INTVEC_CMD);
+                        return (void*)iv;
                     });
 
     Singular.method("set_sleftv_bigintmat",

@@ -90,12 +90,18 @@ function set_arg(lv, x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring
 end
 
 function set_arg(lv, x::Sstring; withcopy=false, withname=false)
-    libSingular.set_sleftv_string(lv, x.value, withname)
+    if withname
+        libSingular.set_idhdl_string(lv, x.value)
+    else
+        data = GC.@preserve x libSingular.init_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
+        lv_init!(lv, STRING_CMD, data)
+    end
 end
 
 function set_arg(lv, x::Union{Sintvec, Sintmat}; withcopy=false, withname=false)
-    x = x.value
-    libSingular.set_sleftv_intvec(lv, vec(x), x isa Matrix, size(x, 1), size(x, 2))
+    xval = x.value
+    iv = libSingular.init_intvec(vec(xval), x isa Sintmat, size(xval, 1), size(xval, 2))
+    lv_init!(lv, type_id(typeof(x)), iv)
 end
 
 function set_arg(lv, x::Sbigintmat; withcopy=false, withname=false)
