@@ -76,6 +76,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.add_type<sattr>("Sattr");
 
     Singular.method("sleftv_init", [](leftv lv) { return lv->Init(); });
+    Singular.method("sleftv_cleanup", [](leftv lv) { return lv->CleanUp(); });
     Singular.method("sleftv_type", [](leftv lv) { return lv->Typ(); });
     Singular.method("sleftv_type", [](leftv lv, int typ) { lv->rtyp = typ; });
     Singular.method("sleftv_data", [](leftv lv) { return lv->Data(); });

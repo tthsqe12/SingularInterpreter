@@ -45,6 +45,8 @@ function Base.getproperty(lv::Sleftv, name::Symbol)
         libSingular.sleftv_flag(lv)
     elseif name == :Init
         () -> libSingular.sleftv_init(lv)
+    elseif name == :CleanUp
+        () -> libSingular.sleftv_cleanup(lv)
     elseif name == :cpp_object
         getfield(lv, :cpp_object)
     else
@@ -68,7 +70,8 @@ function Base.setproperty!(lv::Sleftv, name::Symbol, x)
     end
 end
 
-Base.propertynames(lv::Sleftv, private=false) = (:next, :data, :rtyp, :attribute, :flag, :Init, :cpp_object)
+Base.propertynames(lv::Sleftv, private=false) = (:next, :data, :rtyp, :attribute, :flag,
+                                                 :Init, :CleanUp, :cpp_object)
 
 # shifted versions of the cpp couterparts
 const FLAG_STD = Cuint(1) << 0
@@ -237,15 +240,23 @@ end
 # when it's from an Sleftv, we "move" the data from it, i.e. we don't do
 # a copy
 
-function construct(::Type{Any}, from::Sleftv)
+function construct(::Type{T}, from) where T
+    res = _construct(T, from)
+    if from isa Sleftv
+        from.CleanUp()
+    end
+    res
+end
+
+function _construct(::Type{Any}, from::Sleftv)
     @assert from.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
     construct(convertible_types[CMDS(from.rtyp)], from)
 end
 
-construct(::Type{Int}, from) = Int(getdata(from))
+_construct(::Type{Int}, from) = Int(getdata(from))
 
 # from::Ptr hapens when called from construct(Sbigintmat, ...)
-function construct(::Type{BigInt}, from)
+function _construct(::Type{BigInt}, from)
     data = getdata(from)
 
     d = Int(data)
@@ -258,13 +269,16 @@ end
 
 # TODO: check that a copy is necessary, and if yes why not other types?
 # cf. construct(Slist, ...)
-function construct(::Type{T}, from::Union{Ptr{Cvoid},Sleftv}
+function _construct(::Type{T}, from::Union{Ptr{Cvoid},Sleftv}
                    ) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,
                                       Smatrix,Sresolution}
 
     r = rt_basering()
     x = internal_void_to(T, getdata(from))
-    if from isa Ptr
+    if from isa Sleftv
+        from.data = C_NULL # needed because of the cleanup, as we steal the data
+                           # (it's a "move", in c++ terms)
+    else
         x = _copy(x, r)
     end
     res = T == Sideal || T == Smodule || T == Smatrix ?
@@ -273,31 +287,31 @@ function construct(::Type{T}, from::Union{Ptr{Cvoid},Sleftv}
     set_attribute(res, from)
 end
 
-function construct(::Type{Sintvec}, from)
+function _construct(::Type{Sintvec}, from)
     d = libSingular.lvres_array_get_dims(getdata(from), Int(INTVEC_CMD))[1]
     iv = Vector{Int}(undef, d)
     libSingular.lvres_to_jlarray(iv, getdata(from), Int(INTVEC_CMD))
     Sintvec(iv, true)
 end
 
-function construct(::Type{Sintmat}, from)
+function _construct(::Type{Sintmat}, from)
     d = libSingular.lvres_array_get_dims(getdata(from), Int(INTMAT_CMD))
     im = Matrix{Int}(undef, d)
     libSingular.lvres_to_jlarray(vec(im), getdata(from), Int(INTMAT_CMD))
     Sintmat(im, true)
 end
 
-function construct(::Type{Sbigintmat}, from)
+function _construct(::Type{Sbigintmat}, from)
     r, c = libSingular.lvres_array_get_dims(getdata(from), Int(BIGINTMAT_CMD))
     bim = Matrix{BigInt}(undef, r, c)
     for i=1:r, j=1:c
-        bim[i,j] = construct(BigInt,
-                             libSingular.lvres_bim_get_elt_ij(getdata(from), Int(BIGINTMAT_CMD), i,j))
+        bim[i,j] = _construct(BigInt,
+                              libSingular.lvres_bim_get_elt_ij(getdata(from), Int(BIGINTMAT_CMD), i,j))
     end
     Sbigintmat(bim, true)
 end
 
-function construct(::Type{Slist}, from)
+function _construct(::Type{Slist}, from)
     n::Int, lv0::Sleftv = libSingular.internal_void_to_lists(getdata(from))
     a = Vector{Any}(undef, n)
     cnt = 0
@@ -318,14 +332,14 @@ function construct(::Type{Slist}, from)
     Slist(a, ring, cnt, nothing, true)
 end
 
-function construct(::Type{STuple}, from::Sleftv)
+function _construct(::Type{STuple}, from::Sleftv)
     a = Any[]
     next = C_NULL
     from = get_sleftv(0)
     while from.cpp_object != C_NULL
         @assert from.data != C_NULL
         if from.rtyp == Int(STRING_CMD)
-            push!(a, construct(Sstring, from))
+            push!(a, _construct(Sstring, from))
         else
             rt_error("unknown type in the result of last command")
         end
@@ -334,7 +348,7 @@ function construct(::Type{STuple}, from::Sleftv)
     STuple(a)
 end
 
-construct(::Type{Sstring}, from) =
+_construct(::Type{Sstring}, from) =
     Sstring(unsafe_string(Ptr{Cchar}(getdata(from))))
 
 
