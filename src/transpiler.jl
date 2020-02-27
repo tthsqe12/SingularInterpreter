@@ -1130,7 +1130,7 @@ function rt_make_ring(coeff, var, ord)
     var = rt_parse_var(var)
     @error_check(length(ord) > 0, "bad ordering specification")
     ord = [rt_parse_ord(a) for a in ord]
-    return Sring(true, libSingular.createRing(coeff, var, ord), length(rtGlobal.callstack))
+    return Sring(libSingular.createRing(coeff, var, ord))
 end
 
 rt_make_qring(a::Sring) = a
@@ -1138,11 +1138,11 @@ rt_make_qring(a::Sring) = a
 function rt_make_qring(a::Sideal)
     @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "constructing qring outside of basering")
     r = libSingular.new_qring(a.value, a.parent.value)
-    if r == C_NULL
+    if r.cpp_object == C_NULL
         rt_error("qring construction failed")
         return rtInvalidRing
     else
-        return Sring(true, r, length(rtGlobal.callstack))
+        return Sring(r)
     end
 end
 

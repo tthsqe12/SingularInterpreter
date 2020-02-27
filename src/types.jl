@@ -206,12 +206,11 @@ sing_array(x::Sbigintmat) = x.value
 mutable struct Sring
     value::libSingular.ring
     refcount::Int
-    level::Int                  # 1->created at global, 2->created in fxn called from global, ect..
     vars::Dict{Symbol, Any}     # global ring vars
     valid::Bool                 # valid==false <=> value==NULL
 
-    function Sring(valid_::Bool, value_::libSingular.ring, level::Int)
-        r = new(value_, 1, level, Dict{Symbol, Any}(), valid_)
+    function Sring(value_::libSingular.ring)
+        r = new(value_, 1, Dict{Symbol, Any}(), value_.cpp_object != C_NULL)
         finalizer(rt_ring_finalizer, r)
         return r
     end
@@ -558,7 +557,7 @@ mutable struct rtGlobalState
 end
 
 # when there is no current ring, the current ring is "invalid"
-const rtInvalidRing = Sring(false, libSingular.rDefault_null_helper(), 1)
+const rtInvalidRing = Sring(libSingular.rDefault_null_helper())
 
 const rtnothing = Snone()
 
