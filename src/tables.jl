@@ -520,12 +520,12 @@ const builtin_typestring_to_symbol = Dict{String, Symbol}(
     "number" => :Snumber,
     "poly" => :Spoly,
     "vector" => :Svector,
+    "resolution" => :Sresolution,
     "ideal" => :Sideal,
     "module" => :Smodule,
     "matrix" => :Smatrix,
-    "map" => Symbol("???"),
-    "link" => Symbol("???"),
-    "resolution" => Symbol("???")
+    "map" => :Smap,
+    "link" => Symbol("???")
 )
 
 const NONE = END_RING
