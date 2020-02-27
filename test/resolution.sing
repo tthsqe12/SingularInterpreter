@@ -17,3 +17,8 @@ def lr = list(s);
 ASSUME(0, typeof(lr) == "list");
 ASSUME(0, size(lr) == 2);
 ASSUME(0, typeof(lr[1]) == "ideal");
+
+list lr2 = s;
+ASSUME(0, typeof(lr2) == "list");
+ASSUME(0, size(lr2) == 2);
+ASSUME(0, typeof(lr2[1]) == "ideal");

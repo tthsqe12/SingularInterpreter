@@ -257,8 +257,16 @@ function rt_cast2list(a...)
     return Slist(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing, true)
 end
 
+# TODO: implement directly, like rt_cast2resolution(::Slist)
 rt_cast2list(a::Sresolution) = rtlist(a)
 
+# TODO: this is an approximation, it's almost true except the `toDel` parameter
+# of `syConvRes` is set to true
+function rt_convert2list(a::Sresolution)
+    l = rt_cast2list(a)
+    l.tmp = false
+    l
+end
 
 #### ring
 
@@ -376,7 +384,29 @@ end
 
 #### resolution
 
-function rt_convert2resolution(a::Slist)
+# TODO: enable this function, when Sresolution have attributes
+function rt_convert2resolution_future(a::Slist)
+    r = rt_cast2resolution(a)
+    iv = a.value[1].attributes["isHomog"]
+    if iv isa Sintvec
+        iv2 = Sintvec(copy(iv.value))
+        r.attributes["isHomog"] = iv2
+    end
+    r
+end
+
+rt_convert2resolution(a::Slist) = rt_cast2resolution(a)
+
+function rt_convert2resolution(a::Sresolution)
+    return a
+end
+
+function rt_convert2resolution(a)
+    rt_error("cannot convert `$(rt_typestring(a))` to `resolution`")
+    return rt_defaultconstructor_vector()
+end
+
+function rt_cast2resolution(a::Slist)
     R = rt_basering()
     @warn_check_rings(a.parent, R, "converting to a resolution outside of basering")
     rChangeCurrRing(R)
@@ -389,18 +419,6 @@ function rt_convert2resolution(a::Slist)
     Sresolution(res, R)
 end
 
-function rt_convert2resolution(a::Sresolution)
-    return a
-end
-
-function rt_convert2resolution(a)
-    rt_error("cannot convert `$(rt_typestring(a))` to `resolution`")
-    return rt_defaultconstructor_vector()
-end
-
-# TODO: need rt_cast2resolution(a...)
-
-rt_cast2resolution(a::Slist) = rtresolution(a)
 rt_cast2resolution(a::Sresolution) = a
 rt_cast2resolution(a) = rt_error("cannot convert `$(rt_typestring(a))` to `resolution`")
 
