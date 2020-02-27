@@ -728,3 +728,192 @@ function rt_assign_last(a::Smap, b::STuple)
         return a
     end
 end
+
+
+
+##################### system vars ########################
+
+#### degBound
+function rt_get_degBound()
+    @error_check(rt_basering().valid, "no ring active")
+    return rtGlobal.Kstd1_deg
+end
+
+function rt__set_degBound(a)
+    @error_check(rt_basering().valid, "no ring active")
+    a1 = rt_convert2int(a)
+    rtGlobal.Kstd1_deg = a1
+    if a1 != 0
+        rtGlobal.si_opt_1 |= OPT_DEGBOUND_MASK
+    else
+        rtGlobal.si_opt_1 &= ~OPT_DEGBOUND_MASK
+    end
+end
+
+#### multBound
+function rt_get_multBound()
+    @error_check(rt_basering().valid, "no ring active")
+    return rtGlobal.Kstd1_mu
+end
+
+function rt__set_multBound(a)
+    @error_check(rt_basering().valid, "no ring active")
+    a1 = rt_convert2int(a)
+    rtGlobal.Kstd1_mu = a1
+    if a1 != 0
+        rtGlobal.si_opt_1 |= OPT_MULTBOUND_MASK
+    else
+        rtGlobal.si_opt_1 &= ~OPT_MULTBOUND_MASK
+    end
+end
+
+#### minpoly
+function rt_get_minpoly()
+    R = rt_basering()
+    @error_check(R.valid, "no ring active")
+    return Snumber(libSingular.rGetMinpoly(R.value), R)
+end
+
+function rt__set_minpoly(a::Snumber)
+    R = rt_basering()
+    @error_check(R.valid, "no ring active")
+    if libSingular.rSetMinpoly(R.value, a.value) != 0
+        rt_error("could not set minpoly")
+    end
+    return
+end
+
+#### noether
+function rt_get_noether()
+    R = rt_basering()
+    @error_check(R.valid, "no ring active")
+    return Spoly(libSingular.rGetNoether(R.value), R)
+end
+
+function rt__set_noether(a)
+    R = rt_basering()
+    @error_check(R.valid, "no ring active")
+    libSingular.rSetNoether(R.value, rt_convert2poly_ptr(a, R))
+    return
+end
+
+#### short
+function rt_get_short()
+    R = rt_basering()
+    if R.valid
+        return Int(libSingular.rGetShortOut(R.value))
+    else
+        return 0
+    end
+end
+
+function rt__set_short(a)
+    R = rt_basering()
+    if R.valid
+        libSingular.rSetShortOut(R.value, rt_convert2int(a))
+    end
+end
+
+#### echo
+function rt_get_echo()
+    return rtGlobal.si_echo
+end
+
+function rt__set_echo(a)
+    rtGlobal.si_echo = rt_convert2int(a)
+    return
+end
+
+#### pagewidth
+function rt_get_pagewidth()
+    return rtGlobal.colmax
+end
+
+function rt__set_pagewidth(a)
+    rtGlobal.colmax = rt_convert2int(a)
+    return
+end
+
+#### printlevel
+function rt_get_printlevel()
+    return rtGlobal.printlevel
+end
+
+function rt__set_printlevel(a)
+    rtGlobal.printlevel = rt_convert2int(a)
+    return
+end
+
+#### rtimer
+function rt_get_rtimer()
+    t = time_ns()
+    if t >= rtGlobal.rtimer_base
+        return Int(div(t - rtGlobal.rtimer_base, rtGlobal.rtimer_scale))
+    else
+        return -Int(div(rtGlobal.rtimer_base - t, rtGlobal.rtimer_scale))
+    end
+end
+
+function rt__set_rtimer(a)
+    a1 = rt_convert2int(a)
+    rtGlobal.rtimer_base = time_ns() - a1*rtGlobal.rtimer_scale
+end
+
+#### timer TODO
+const rt_get_timer = rt_get_rtimer
+
+const rt__set_timer = rt__set_rtimer
+
+#### TRACE
+function rt_get_TRACE()
+    return rtGlobal.traceit
+end
+
+function rt__set_TRACE(a)
+    rtGlobal.traceit = rt_convert2int(a)
+    return
+end
+
+
+for name in ("degBound", "multBound", "minpoly", "noether", "short",
+             "echo", "pagewidth", "printlevel", "rtimer", "timer", "TRACE")
+    n = Symbol("rt__set_", name)
+    nmore = Symbol("rt_set_", name, "_more")
+    nlast = Symbol("rt_set_", name, "_last")
+    @eval begin
+        function $nmore(a)
+            @assert !isa(a, STuple)
+            $n(a)
+            return empty_tuple
+        end
+
+        function $nmore(a::STuple)
+            @error_check(!isempty(a), "argument mismatch in assignment")
+            $n(popfirst!(a.list))
+            return a
+        end
+
+        function $nlast(a)
+            @assert !isa(a, STuple)
+            $n(a)
+            return
+        end
+
+        function $nlast(a::STuple)
+            @error_check(length(a.list) == 1, "argument mismatch in assignment")
+            $n(a.list[1])
+            return
+        end
+    end
+end
+
+#### voice
+function rt_get_voice()
+    return length(rtGlobal.callstack)
+end
+
+rt_set_voice_more(a) = rt_set_voice_last(a)
+
+function rt_set_voice_last(a)
+    rt_error("cannot assign to system variable `voice`")
+end

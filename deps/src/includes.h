@@ -26,6 +26,9 @@
 #include <polys/monomials/p_polys.h>
 #include <polys/prCopy.h>
 #include <polys/simpleideals.h>
+#include <polys/ext_fields/algext.h>
+#define TRANSEXT_PRIVATES
+#include "polys/ext_fields/transext.h"
 #include <kernel/GBEngine/kstd1.h>
 #include <kernel/GBEngine/syz.h>
 #include <kernel/GBEngine/tgb.h>

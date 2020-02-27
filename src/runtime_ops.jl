@@ -84,7 +84,7 @@ end
 function rttimes(a::Snumber, b::Snumber)
     @error_check_rings(a.parent, b.parent, "cannot multiply from different basering")
     @warn_check_rings(a.parent, rt_basering(), "multiplying outside of basering")
-    r1 = libSingular.n_Mult(a.parent, b.parent, a.parent.value)
+    r1 = libSingular.n_Mult(a.value, b.value, a.parent.value)
     return Snumber(r1, a.parent)
 end
 

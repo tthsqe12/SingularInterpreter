@@ -548,6 +548,10 @@ mutable struct rtGlobalState
     rtimer_scale::UInt64
     Kstd1_deg::Int      # TODO: these need some kind of sync with libSingular
     Kstd1_mu::Int       #
+    si_echo::Int
+    colmax::Int
+    printlevel::Int
+    traceit::Int
     si_opt_1::UInt32
     si_opt_2::UInt32
     vars::Dict{Symbol, Dict{Symbol, Any}}     # global ring indep vars
@@ -568,6 +572,10 @@ const rtGlobal = rtGlobalState(String[],
                                1000000000,
                                0,
                                0,
+                               0,
+                               80,
+                               0,
+                               0,
                                0x00000000,
                                0x00002851,
                                Dict(:Top => Dict{Symbol, Any}()),
@@ -584,6 +592,10 @@ function reset_runtime()
     rtGlobal.rtimer_scale = 1000000000
     rtGlobal.Kstd1_deg = 0
     rtGlobal.Kstd1_mu = 0
+    rtGlobal.si_echo = 0
+    rtGlobal.colmax = 80
+    rtGlobal.printlevel = 0
+    rtGlobal.traceit = 0
     rtGlobal.si_opt_1 = 0x00000000
     rtGlobal.si_opt_2 = 0x00002851
     rtGlobal.vars = Dict(:Top => Dict{Symbol, Any}())

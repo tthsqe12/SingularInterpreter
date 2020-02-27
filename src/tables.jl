@@ -288,14 +288,14 @@ end
 
 const system_var_to_string = Dict{Int, String}(
     Int(VMAXDEG)        => "degBound",
-    Int(VECHO)          => "echo",
-    Int(VMINPOLY)       => "minpoly",
     Int(VMAXMULT)       => "multBound",
+    Int(VMINPOLY)       => "minpoly",
     Int(VNOETHER)       => "noether",
+    Int(VSHORTOUT)      => "short",
+    Int(VECHO)          => "echo",
     Int(VCOLMAX)        => "pagewidth",
     Int(VPRINTLEVEL)    => "printlevel",
     Int(VRTIMER)        => "rtimer",
-    Int(VSHORTOUT)      => "short",
     Int(VTIMER)         => "timer",
     Int(TRACE)          => "TRACE",
     Int(VOICE)          => "voice"

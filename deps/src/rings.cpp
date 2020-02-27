@@ -252,6 +252,154 @@ void singular_define_rings(jlcxx::Module & Singular)
     Singular.method("rBitmask",
                     [](ip_sring * r) { return (unsigned int)r->bitmask; });
 
+    Singular.method("rGetShortOut", [](ring r) {
+        return r->ShortOut;
+    });
+
+    Singular.method("rSetShortOut", [](ring r, ssize_t a) {
+        BOOLEAN shortOut = (BOOLEAN)(a);
+        if (shortOut==0)
+          r->ShortOut = 0;
+        else
+        {
+          if (r->CanShortOut)
+            r->ShortOut = 1;
+        }
+        shortOut = r->ShortOut;
+        coeffs cf = r->cf;
+        while (nCoeff_is_Extension(cf))
+        {
+          cf->extRing->ShortOut = shortOut;
+          cf = cf->extRing->cf;
+        }
+    });
+
+    Singular.method("rGetNoether", [](ring r) {
+        return p_Copy(r->ppNoether, r);
+    });
+
+    Singular.method("rSetNoether", [](ring r, poly p) {
+        p_Delete(&r->ppNoether, r);
+        r->ppNoether = p;
+    });
+
+    Singular.method("rGetMinpoly", [](ring r) {
+        if (nCoeff_is_algExt(r->cf) && !nCoeff_is_GF(r->cf))
+        {
+            const ring A = r->cf->extRing;
+            return reinterpret_cast<number>(p_Copy(A->qideal->m[0], A));
+        }
+        else
+        {
+            return n_Init(0, r->cf);
+        }
+    });
+
+    Singular.method("rSetMinpoly", [](ring r, number a) {
+
+        if (!nCoeff_is_transExt(r->cf) && (r->idroot == NULL) && n_IsZero(a, r->cf))
+        {
+            return 0;
+        }
+
+        if (!nCoeff_is_transExt(r->cf) )
+        {
+            WarnS("Trying to set minpoly over non-transcendental ground field...");
+            if(!nCoeff_is_algExt(r->cf) )
+            {
+                WerrorS("cannot set minpoly for these coeffients");
+                return 1;
+            }
+        }
+
+        if (rVar(r->cf->extRing) != 1 && !n_IsZero(a, r->cf))
+        {
+            WerrorS("only univarite minpoly allowed");
+            return 2;
+        }
+
+        BOOLEAN redefine_from_algext = FALSE;
+        if (r->idroot != NULL)
+        {
+            redefine_from_algext = r->cf->extRing->qideal != NULL;
+        }
+
+        number p = n_Copy(a, r);
+        n_Normalize(p, r);
+
+        if (n_IsZero(p, r->cf))
+        {
+            n_Delete(&p, r->cf);
+            if (nCoeff_is_transExt(r->cf))
+            {
+                return FALSE;
+            }
+            WarnS("cannot set minpoly to 0 / alg. extension?");
+            return 3;
+        }
+
+        // remove all object currently in the ring
+        while (r->idroot != NULL)
+        {
+            killhdl2(r->idroot, &(r->idroot), r);
+        }
+
+        AlgExtInfo A;
+
+        A.r = rCopy(r->cf->extRing); // Copy  ground field!
+        // if minpoly was already set:
+        if (r->cf->extRing->qideal != NULL)
+            id_Delete(&A.r->qideal, A.r);
+        ideal q = idInit(1,1);
+        if (p == NULL || NUM((fraction)p) == NULL)
+        {
+            WerrorS("Could not construct the alg. extension: minpoly==0");
+            // cleanup A: TODO
+            rDelete( A.r );
+            return 4;
+        }
+        if (!redefine_from_algext && (DEN((fraction)(p)) != NULL)) // minpoly must be a fraction with poly numerator...!!
+        {
+            poly n = DEN((fraction)(p));
+            if (!p_IsConstantPoly(n, r->cf->extRing))
+            {
+                WarnS("denominator must be constant - ignoring it");
+            }
+            p_Delete(&n, r->cf->extRing);
+            DEN((fraction)(p)) = NULL;
+        }
+
+        if (redefine_from_algext)
+            q->m[0] = (poly)p;
+        else
+            q->m[0] = NUM((fraction)p);
+        A.r->qideal = q;
+
+        // :(
+        //  NUM((fractionObject *)p) = NULL; // makes 0/ NULL fraction - which should not happen!
+        //  n_Delete(&p, r->cf); // doesn't expect 0/ NULL :(
+        if (!redefine_from_algext)
+        {
+            EXTERN_VAR omBin fractionObjectBin;
+            NUM((fractionObject *)p) = NULL; // not necessary, but still...
+            omFreeBin((ADDRESS)p, fractionObjectBin);
+        }
+
+        coeffs new_cf = nInitChar(n_algExt, &A);
+        if (new_cf == NULL)
+        {
+            WerrorS("Could not construct the alg. extension: llegal minpoly?");
+            // cleanup A: TODO
+            rDelete(A.r);
+            return 5;
+        }
+        else
+        {
+            nKillChar(r->cf);
+            r->cf = new_cf;
+        }
+        return 0;
+    });
 
     Singular.method("new_qring", [](ideal id, ring r) {
 
@@ -313,7 +461,7 @@ void singular_define_rings(jlcxx::Module & Singular)
 
         qr->qideal = qid;
         if (idElem(qid) == 0)
-            id_Delete(&qr->qideal, currRing);
+            id_Delete(&qr->qideal, r);
 
         return qr;
     });
