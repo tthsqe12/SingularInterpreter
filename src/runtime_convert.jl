@@ -257,6 +257,9 @@ function rt_cast2list(a...)
     return Slist(data, count == 0 ? rtInvalidRing : rt_basering(), count, nothing, true)
 end
 
+rt_cast2list(a::Sresolution) = rtlist(a)
+
+
 #### ring
 
 function rt_convert2ring(a::Sring)

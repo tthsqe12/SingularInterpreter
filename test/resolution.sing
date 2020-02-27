@@ -5,3 +5,8 @@ ASSUME(0, size(s) == 2);
 
 // test that list -> resolution conversion ("cast") works
 ASSUME(0, typeof(resolution(list(ideal(x)))) == "resolution");
+// test that resolution -> list conversion works
+def lr = list(s);
+ASSUME(0, typeof(lr) == "list");
+ASSUME(0, size(lr) == 2);
+ASSUME(0, typeof(lr[1]) == "ideal");
