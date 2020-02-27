@@ -154,7 +154,7 @@ function make_data(x::Sbigintmat)
 end
 
 function make_data(x::Slist)
-    list, m::Sleftv = libSingular.create_list(length(x.value))
+    list, m::Sleftv = libSingular.list_create(length(x.value))
     # m is in fact the first element of an array,
     # sleftv_at below allows to reach subsequent elements
     for (i, elt) in enumerate(x.value)

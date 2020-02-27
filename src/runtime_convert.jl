@@ -376,7 +376,18 @@ end
 
 #### resolution
 
-# TODO: need rt_convert2resolution(a::Slist)
+function rt_convert2resolution(a::Slist)
+    R = rt_basering()
+    @warn_check_rings(a.parent, R, "converting to a resolution outside of basering")
+    rChangeCurrRing(R)
+    l = make_data(a)
+    res = libSingular.convert_list2resolution(l)
+    libSingular.list_clean(l, R.value)
+    rChangeCurrRing(C_NULL)
+    res.cpp_object == C_NULL &&
+        rt_error("conversion to resolution failed")
+    Sresolution(res, R)
+end
 
 function rt_convert2resolution(a::Sresolution)
     return a

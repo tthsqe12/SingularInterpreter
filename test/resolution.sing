@@ -1,10 +1,17 @@
 ring r;
 ideal i = x^2 - y, y^2, x+y;
 resolution s = mres(i, 1);
+list ls = list(s);
 ASSUME(0, size(s) == 2);
 
-// test that list -> resolution conversion ("cast") works
+// test that list -> resolution conversion works
 ASSUME(0, typeof(resolution(list(ideal(x)))) == "resolution");
+resolution s2 = ls;
+ASSUME(0, typeof(s2) == "resolution");
+// TODO: enable when this works
+proc dummy(resolution res) { return(res); };
+// ASSUME(0, typeof(dummy(ls)) == "resolution");
+
 // test that resolution -> list conversion works
 def lr = list(s);
 ASSUME(0, typeof(lr) == "list");

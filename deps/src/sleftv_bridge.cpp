@@ -111,6 +111,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("coeffs_BIGINT", []{ return coeffs_BIGINT; });
 
     Singular.method("rCopy", &rCopy);
+    Singular.method("convert_list2resolution", [](void *v) { return syConvList((lists)v); });
 
     Singular.method("make_str", [](void* src){ return (void*)omStrDup((char*)src); });
 
@@ -171,12 +172,14 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return (void*)bim;
                     });
 
-    Singular.method("create_list",
+    Singular.method("list_create",
                     [](jint len) {
                         slists* list = (lists)omAllocBin(slists_bin); // segfaults with: `new slists`
                         list->Init(len);
                         return std::make_tuple((void*)list, list->m);
                     });
+    Singular.method("list_clean", [](void* l, ring r) { ((lists)l)->Clean(r); });
+
 
     Singular.method("lvres_array_get_dims",
                     [] (void* data, int type){
