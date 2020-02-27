@@ -17,3 +17,6 @@ ASSUME(0, var(1) == t);
 
 ASSUME(0, char(r) == 32003);
 ASSUME(0, char(s) == 0);
+
+ring r2 = 0,t,lp;
+ASSUME(0, varstr(r+r2) == "x,y,z,t");

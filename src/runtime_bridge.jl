@@ -5,8 +5,7 @@ using .libSingular: Sleftv
 rChangeCurrRing(r::Sring) = libSingular.rChangeCurrRing(r.value)
 
 function rChangeCurrRing(r::Ptr{Cvoid})
-    @assert r == C_NULL
-    libSingular.rChangeCurrRing(libSingular.rDefault_null_helper())
+    libSingular.rChangeCurrRing(internal_void_to(Sring, r))
 end
 
 _copy(x::libSingular.ring) = libSingular.rCopy(x)
@@ -20,6 +19,7 @@ _copy(x::Union{Sring,Sresolution}) = _copy(x.value)
 _copy(x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber}) = _copy(x.value, x.parent)
 
 internal_void_to(::Type{<:Union{Spoly,Svector}}, ptr::Ptr) = libSingular.internal_void_to_poly_helper(ptr)
+internal_void_to(::Type{Sring}, ptr::Ptr) = libSingular.internal_void_to_ring_helper(ptr)
 internal_void_to(::Type{Snumber}, ptr::Ptr) = libSingular.internal_void_to_number_helper(ptr)
 internal_void_to(::Type{<:Union{Sideal,Smodule}}, ptr::Ptr) = libSingular.internal_void_to_ideal_helper(ptr)
 internal_void_to(::Type{Smatrix}, ptr::Ptr) = libSingular.internal_void_to_matrix_helper(ptr)
@@ -271,7 +271,7 @@ end
 # cf. construct(Slist, ...)
 function _construct(::Type{T}, from::Union{Ptr{Cvoid},Sleftv}
                    ) where T <: Union{Spoly,Svector,Snumber,Sideal,Smodule,
-                                      Smatrix,Sresolution}
+                                      Smatrix,Sresolution,Sring}
 
     r = rt_basering()
     x = internal_void_to(T, getdata(from))
@@ -282,8 +282,10 @@ function _construct(::Type{T}, from::Union{Ptr{Cvoid},Sleftv}
         x = _copy(x, r)
     end
     res = T == Sideal || T == Smodule || T == Smatrix ?
-        T(x, r, true) :
-        T(x, r)
+              T(x, r, true) :
+          T == Sring ?
+              T(x) :
+              T(x, r)
     set_attribute(res, from)
 end
 
@@ -402,7 +404,7 @@ end
 ### generating commands from tables ###
 
 const unimplemented_input = [ANY_TYPE, STUPLE_CMD]
-const unimplemented_output = [RING_CMD, HANDLED_TYPES]
+const unimplemented_output = [HANDLED_TYPES]
 
 # types which can currently be sent/fetched as sleftv to/from Singular, modulo the
 # unimplemented lists above
