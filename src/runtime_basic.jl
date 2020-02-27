@@ -570,12 +570,55 @@ function rtkill(a::Vector{SName})
     end
 end
 
-function rtexport(a...)
-    rt_error("rtexport $(a) not implemented")
+function rtexport(a::Vector{SName})
+    for i in a
+        rtexport(i)
+    end
+    return
+end
+
+function rtexport(a::SName)
+
+    n = length(rtGlobal.callstack)
+
+    # local
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
+        if vars[i].first == a.name
+            rt_export(a, vars[i].second)
+            return
+        end
+    end
+
+    rt_error(String(a.name) * " is not a local variable to export")
 end
 
 function rt_export(a::SName, b)
-    rt_error("rt_export $((a, b)) not implemented")
+
+    n = length(rtGlobal.callstack)
+    if n < 2
+        return
+    end
+
+    c = rt_copy_own(b)
+
+    if rt_is_ring_dep(b)
+        # try to export to current ring
+        R = rtGlobal.callstack[n].current_ring
+        @error_check(R.valid, "cannot export ring-dependent type when no ring is active")
+        @warn_check(!haskey(R.vars, a.name), "redefining $(string(a.name)) by export")
+        R.vars[a.name] = c
+    else
+        # export to current package
+        P = rtGlobal.callstack[n].current_package
+        if haskey(rtGlobal.vars, P)
+            d = rtGlobal.vars[P]
+            @warn_check(!haskey(d, a.name), "redefining $(string(a.name)) by export")
+            d[a.name] = c
+        else
+            rtGlobal.vars[P] = Dict{Symbol, Any}[a.name => c]
+        end
+    end
 end
 
 
