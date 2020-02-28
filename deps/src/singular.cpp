@@ -78,6 +78,16 @@ JLCXX_MODULE define_julia_module(jlcxx::Module & Singular)
         return const_cast<const char *>(versionString());
     });
 
+    Singular.method("get_si_opt_1",  []() {return si_opt_1;});
+    Singular.method("get_si_opt_2",  []() {return si_opt_2;});
+    Singular.method("get_Kstd1_deg", []() {return Kstd1_deg;});
+    Singular.method("get_Kstd1_mu",  []() {return Kstd1_mu;});
+
+    Singular.method("set_si_opt_1",  [](unsigned int a) {si_opt_1 = a;});
+    Singular.method("set_si_opt_2",  [](unsigned int a) {si_opt_2 = a;});
+    Singular.method("set_Kstd1_deg", [](int a) {Kstd1_deg = a;});
+    Singular.method("set_Kstd1_mu",  [](int a) {Kstd1_mu = a;});
+
     singular_define_coeffs(Singular);
     singular_define_rings(Singular);
     singular_define_ideals(Singular);

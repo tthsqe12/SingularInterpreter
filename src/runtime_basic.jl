@@ -624,28 +624,28 @@ end
 
 function rt_option_string()
     r = String["//options:"]
-    if rtGlobal.si_opt_1 != 0 || rtGlobal.si_opt_2 != 0
-        tmp = rtGlobal.si_opt_1
+    opt1 = libSingular.get_si_opt_1()
+    opt2 = libSingular.get_si_opt_2()
+    if opt1 != 0 || opt2 != 0
         for i in test_options
-            if (tmp & i.second) != 0
+            if (opt1 & i.second) != 0
                 push!(r, i.first)
-                tmp &= ~i.second
+                opt1 &= ~i.second
             end
         end
         for i in 0:31
-            if (tmp & (UInt32(1) << i)) != 0
+            if (opt1 & (UInt32(1) << i)) != 0
                 push!(r, string(i))
             end
         end
-        tmp = rtGlobal.si_opt_2
         for i in verbose_options
-            if (tmp & i.second) != 0
+            if (opt2 & i.second) != 0
                 push!(r, i.first)
-                tmp &= ~i.second
+                opt2 &= ~i.second
             end
         end
         for i in 1:31
-            if (tmp & (UInt32(1) << i)) != 0
+            if (opt2 & (UInt32(1) << i)) != 0
                 push!(r, string(i + 32))
             end
         end
@@ -657,16 +657,18 @@ end
 
 function rt_option_set(s::String)
     nos = (length(s) > 2 && s[1:2] == "no") ? s[3:end] : ""
+    opt1 = libSingular.get_si_opt_1()
+    opt2 = libSingular.get_si_opt_2()
     if s == "none"
-        rtGlobal.si_opt_1 = 0
-        rtGlobal.si_opt_2 = 0
+        opt1 = 0 % UInt32
+        opt2 = 0 % UInt32
     else
         for i in test_options
             if s == i.first
                 if (i.second & valid_test_options) != 0
-                    rtGlobal.si_opt_1 |= i.second
+                    opt1 |= i.second
                     if i.second == OPT_OLDSTD_MASK
-                        rtGlobal.si_opt_1 &= ~OPT_REDTHROUGH_MASK
+                        opt1 &= ~OPT_REDTHROUGH_MASK
                     end
                 else
                     rt_warn("cannot set option")
@@ -674,7 +676,7 @@ function rt_option_set(s::String)
                 return rtnothing
             elseif nos == i.first
                 if (i.second & valid_test_options) != 0
-                    rtGlobal.si_opt_1 &= ~i.second
+                    opt1 &= ~i.second
                 else
                     rt_warn("cannot set option")
                 end
@@ -683,26 +685,29 @@ function rt_option_set(s::String)
         end
         for i in verbose_options
             if s == i.first
-                rtGlobal.si_opt_2 |= i.second
+                opt2 |= i.second
                 return rtnothing
             elseif nos == i.first
-                rtGlobal.si_opt_2 &= ~i.second
+                opt2 &= ~i.second
                 return rtnothing
             end
         end
         rt_error("unknown option `$(s)`")
     end
+    libSingular.set_si_opt_1(opt1)
+    libSingular.set_si_opt_2(opt2)
     return rtnothing
 end
 
 function rt_option_getvec()
-    return Sintvec(Int[rtGlobal.si_opt_1 % Int, rtGlobal.si_opt_2 % Int])
+    return Sintvec(Int[libSingular.get_si_opt_1() % Int,
+                       libSingular.get_si_opt_2() % Int])
 end
 
 function rt_option_setvec(a::Sintvec)
     @error_check(length(a.value) == 2, "option vector must have length 2")
-    rtGlobal.si_opt_1 = a.value[1] % UInt32
-    rtGlobal.si_opt_2 = a.value[2] % UInt32
+    libSingular.set_si_opt_1(a.value[1] % UInt32)
+    libSingular.set_si_opt_2(a.value[2] % UInt32)
     return rtnothing
 end
 
@@ -799,6 +804,7 @@ function rt_set_current_ring(a::Sring)
         end
     end
     rtGlobal.callstack[n].current_ring = a
+    libSingular.rChangeCurrRing(a.value)    # for si_opt_1 in libSingular
 end
 
 function rtcall(::Bool, f::Smap, a::Vector{SName})

@@ -210,6 +210,7 @@ void singular_define_rings(jlcxx::Module & Singular)
     Singular.method("toPolyRef", [](void * ptr) {
        return reinterpret_cast<spolyrec*>(ptr);
     });
+    Singular.method("rChangeCurrRing", &rChangeCurrRing);
     Singular.method("rDefault_null_helper", &rDefault_null_helper);
     Singular.method("p_null_helper", &p_null_helper);
 

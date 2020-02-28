@@ -736,35 +736,39 @@ end
 #### degBound
 function rt_get_degBound()
     @error_check(rt_basering().valid, "no ring active")
-    return rtGlobal.Kstd1_deg
+    return Int(libSingular.get_Kstd1_deg())
 end
 
 function rt__set_degBound(a)
     @error_check(rt_basering().valid, "no ring active")
-    a1 = rt_convert2int(a)
-    rtGlobal.Kstd1_deg = a1
-    if a1 != 0
-        rtGlobal.si_opt_1 |= OPT_DEGBOUND_MASK
+    b = rt_convert2int(a)
+    libSingular.set_Kstd1_deg(b)
+    opt1 = libSingular.get_si_opt_1()
+    if b != 0
+        opt1 |= OPT_DEGBOUND_MASK
     else
-        rtGlobal.si_opt_1 &= ~OPT_DEGBOUND_MASK
+        opt1 &= ~OPT_DEGBOUND_MASK
     end
+    libSingular.set_si_opt_1(opt1)
 end
 
 #### multBound
 function rt_get_multBound()
     @error_check(rt_basering().valid, "no ring active")
-    return rtGlobal.Kstd1_mu
+    return Int(libSingular.get_Kstd1_mu())
 end
 
 function rt__set_multBound(a)
     @error_check(rt_basering().valid, "no ring active")
-    a1 = rt_convert2int(a)
-    rtGlobal.Kstd1_mu = a1
-    if a1 != 0
-        rtGlobal.si_opt_1 |= OPT_MULTBOUND_MASK
+    b = rt_convert2int(a)
+    libSingular.set_Kstd1_mu(b)
+    opt1 = libSingular.get_si_opt_1()
+    if b != 0
+        opt1 |= OPT_MULTBOUND_MASK
     else
-        rtGlobal.si_opt_1 &= ~OPT_MULTBOUND_MASK
+        opt1 &= ~OPT_MULTBOUND_MASK
     end
+    libSingular.set_si_opt_1(opt1)
 end
 
 #### minpoly
