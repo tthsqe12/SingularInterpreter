@@ -93,9 +93,12 @@ void singular_define_matrices(jlcxx::Module & Singular)
 
     Singular.method("syKillComputation", &syKillComputation);
 
-    Singular.method("syPrint", [](syStrategy a, const std::string r) {
+    Singular.method("syPrint", [](syStrategy a, ring r, const std::string rname) {
         SPrintStart();
-        syPrint(a, r.c_str());
+        const ring origin = currRing;
+        rChangeCurrRing(r);
+        syPrint(a, rname.c_str());
+        rChangeCurrRing(origin);
         char * s = SPrintEnd();
         std::string S(s);
         omFree(s);

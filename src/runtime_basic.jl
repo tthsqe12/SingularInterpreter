@@ -292,11 +292,6 @@ function object_is_ok(a)
 end
 
 
-
-function rt_basering()
-    return rtGlobal.callstack[end].current_ring
-end
-
 ########################## lookup and friends ###################################
 
 function rt_box_it_with_ring(n::libSingular.number, r::Sring)
@@ -622,96 +617,6 @@ function rt_export(a::SName, b)
 end
 
 
-function rt_option_string()
-    r = String["//options:"]
-    opt1 = libSingular.get_si_opt_1()
-    opt2 = libSingular.get_si_opt_2()
-    if opt1 != 0 || opt2 != 0
-        for i in test_options
-            if (opt1 & i.second) != 0
-                push!(r, i.first)
-                opt1 &= ~i.second
-            end
-        end
-        for i in 0:31
-            if (opt1 & (UInt32(1) << i)) != 0
-                push!(r, string(i))
-            end
-        end
-        for i in verbose_options
-            if (opt2 & i.second) != 0
-                push!(r, i.first)
-                opt2 &= ~i.second
-            end
-        end
-        for i in 1:31
-            if (opt2 & (UInt32(1) << i)) != 0
-                push!(r, string(i + 32))
-            end
-        end
-    else
-        push!(r, "none")
-    end
-    return Sstring(join(r, " "))
-end
-
-function rt_option_set(s::String)
-    nos = (length(s) > 2 && s[1:2] == "no") ? s[3:end] : ""
-    opt1 = libSingular.get_si_opt_1()
-    opt2 = libSingular.get_si_opt_2()
-    if s == "none"
-        opt1 = 0 % UInt32
-        opt2 = 0 % UInt32
-    else
-        for i in test_options
-            if s == i.first
-                if (i.second & valid_test_options) != 0
-                    opt1 |= i.second
-                    if i.second == OPT_OLDSTD_MASK
-                        opt1 &= ~OPT_REDTHROUGH_MASK
-                    end
-                else
-                    rt_warn("cannot set option")
-                end
-                return rtnothing
-            elseif nos == i.first
-                if (i.second & valid_test_options) != 0
-                    opt1 &= ~i.second
-                else
-                    rt_warn("cannot set option")
-                end
-                return rtnothing
-            end
-        end
-        for i in verbose_options
-            if s == i.first
-                opt2 |= i.second
-                return rtnothing
-            elseif nos == i.first
-                opt2 &= ~i.second
-                return rtnothing
-            end
-        end
-        rt_error("unknown option `$(s)`")
-    end
-    libSingular.set_si_opt_1(opt1)
-    libSingular.set_si_opt_2(opt2)
-    return rtnothing
-end
-
-function rt_option_getvec()
-    return Sintvec(Int[libSingular.get_si_opt_1() % Int,
-                       libSingular.get_si_opt_2() % Int])
-end
-
-function rt_option_setvec(a::Sintvec)
-    @error_check(length(a.value) == 2, "option vector must have length 2")
-    libSingular.set_si_opt_1(a.value[1] % UInt32)
-    libSingular.set_si_opt_2(a.value[2] % UInt32)
-    return rtnothing
-end
-
-
 function rt_backtick(a::Sstring)
     return makeunknown(a.string)
 end
@@ -734,77 +639,6 @@ function rt_leavefunction()
     @expensive_assert length(rtGlobal.local_vars) >= i
     resize!(rtGlobal.local_vars, i)
     pop!(rtGlobal.callstack)
-end
-
-function rt_set_current_ring(a::Sring)
-    # call the user an idiot if changing basering would create a name conflict
-    vars_in_both = intersect(Set(keys(rtGlobal.vars[:Top])), Set(keys(a.vars)))
-    if !isempty(vars_in_both)
-        rt_error("new basering shadows the global variable(s) " *
-                 join(map(string, collect(vars_in_both)), ", ")  *
-                 " from Top")
-        return
-    end
-    n = length(rtGlobal.callstack)
-    if n > 1
-        # rearrange the local variables, who cares how fast it is
-        new_hidden_vars = Pair{Symbol, Any}[]
-        new_current_vars = Pair{Symbol, Any}[]
-        vars = rtGlobal.local_vars
-        for i in rtGlobal.callstack[n].start_all_locals:length(rtGlobal.local_vars)
-            hidden = false
-            value = vars[i].second
-            if isa(value, Slist)
-                @assert value.back === nothing
-                p = value.parent
-                if p.valid && !(p === a)
-                    hidden = true
-                end
-            elseif isa(value, SingularRingType)
-                p = value.parent
-                @assert p.valid
-                if !(p === a)
-                    hidden = true
-                end
-            end
-            if hidden
-               push!(new_hidden_vars, vars[i])
-            else
-               push!(new_current_vars, vars[i])
-            end
-        end
-        local_vars_in_both = Symbol[]
-        s = Set{Symbol}()
-        for i in new_current_vars
-            if in(i.first, s)
-                push!(local_vars_in_both, i.first)
-            else
-                push!(s, i.first)
-            end
-        end
-        if !isempty(local_vars_in_both)
-            rt_error("new basering shadows the local variable(s) " *
-                     join(map(string, local_vars_in_both), ", "))
-            return
-        end
-        # locals are good to go
-        rtGlobal.callstack[n].start_current_locals =
-               rtGlobal.callstack[n].start_all_locals + length(new_hidden_vars)
-        resize!(rtGlobal.local_vars, rtGlobal.callstack[n].start_all_locals - 1)
-        append!(rtGlobal.local_vars, new_hidden_vars)
-        append!(rtGlobal.local_vars, new_current_vars)
-        # also check the current package like :Top above
-        pack = rtGlobal.callstack[n].current_package
-        vars_in_both = intersect(Set(keys(rtGlobal.vars[pack])), Set(keys(a.vars)))
-        if !isempty(vars_in_both)
-            rt_error("new basering shadows the global variable(s) " *
-                     join(map(string, collect(vars_in_both)), ", ")  *
-                     " from " * string(pack))
-            return
-        end
-    end
-    rtGlobal.callstack[n].current_ring = a
-    libSingular.rChangeCurrRing(a.value)    # for si_opt_1 in libSingular
 end
 
 function rtcall(::Bool, f::Smap, a::Vector{SName})

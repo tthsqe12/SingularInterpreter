@@ -267,12 +267,6 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return err;
                     });
 
-    Singular.method("rChangeCurrRing", [](ring r) {
-                                           ring old = currRing;
-                                           rChangeCurrRing(r);
-                                           return old;
-                                       });
-
     Singular.method("rChangeCurrRing",
                     [](ring r, std::string name) {
                         assert(name == std::string("?R?"));

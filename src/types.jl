@@ -546,10 +546,14 @@ mutable struct rtGlobalState
     last_printed::Any
     rtimer_base::UInt64
     rtimer_scale::UInt64
+    Kstd1_deg::Int
+    Kstd1_mu::Int
     si_echo::Int
     colmax::Int
     printlevel::Int
     traceit::Int
+    si_opt_1::UInt32
+    si_opt_2::UInt32
     vars::Dict{Symbol, Dict{Symbol, Any}}     # global ring indep vars
     callstack::Array{rtCallStackEntry}
     local_vars::Array{Pair{Symbol, Any}}
@@ -569,32 +573,18 @@ const rtGlobal = rtGlobalState(String[],
                                time_ns(),
                                1000000000,
                                0,
+                               32000,
+                               0,
                                80,
                                0,
                                0,
+                               0x00000000,
+                               0x00002851,
                                Dict(:Top => Dict{Symbol, Any}()),
                                rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
                                Dict{String, Function}())
 
-function reset_runtime()
-    rtGlobal.optimize_locals = true
-    rtGlobal.last_printed = rtnothing
-    rtGlobal.rtimer_base = time_ns()
-    rtGlobal.rtimer_scale = 1000000000
-    rtGlobal.si_echo = 0
-    rtGlobal.colmax = 80
-    rtGlobal.printlevel = 0
-    rtGlobal.traceit = 0
-    rtGlobal.vars = Dict(:Top => Dict{Symbol, Any}())
-    rtGlobal.callstack = rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)]
-    rtGlobal.local_vars = Pair{Symbol, Any}[]
-    rtGlobal.newstruct_casts = Dict{String, Function}()
-    libSingular.set_si_opt_1(0x00000000)
-    libSingular.set_si_opt_2(0x00002851)
-    libSingular.set_Kstd1_deg(0)
-    libSingular.set_Kstd1_mu(32000)
-end
 
 
 ###### these macros do not work without esc !!!!

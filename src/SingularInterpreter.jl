@@ -54,6 +54,7 @@ end
 include("LibSingular.jl")
 
 include("types.jl")
+include("runtime_global.jl")
 include("tables.jl")
 include("transpiler.jl")
 include("runtime_basic.jl")

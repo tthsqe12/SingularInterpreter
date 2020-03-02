@@ -228,18 +228,6 @@ function rtmaxideal(a::Int)
 end
 
 
-#### std ####
-
-function rtstd(a::Sideal)
-    r = libSingular.id_Std(a.value, a.parent.value, false)
-    at = SAttributes()
-    if (libSingular.get_si_opt_1() & OPT_DEGBOUND_MASK) == 0
-        at["isSB"] = Int(1)
-    end
-    return Sideal(r, a.parent, true, at)
-end
-
-
 #### size ####
 
 function rtsize(a::Int)

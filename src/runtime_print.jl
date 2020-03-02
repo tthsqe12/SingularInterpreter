@@ -71,11 +71,13 @@ function rt_print(a::Slist)
 end
 
 function rt_print(a::Sring)
+    sync_begin()    # for options
     return libSingular.rPrint_helper(a.value)
 end
 
 function rt_print(a::Snumber)
     @warn_check_rings(a.parent, rt_basering(), "printing a number outside of basering")
+    sync_begin()    # for options
     libSingular.StringSetS("")
     libSingular.n_Write(a.value, a.parent.value)
     return libSingular.StringEndS()
@@ -83,26 +85,28 @@ end
 
 function rt_print(a::Spoly)
     @warn_check_rings(a.parent, rt_basering(), "printing a polynomial outside of basering")
+    sync_begin()    # for options
     s = libSingular.p_String(a.value, a.parent.value)
     return s
 end
 
 function rt_print(a::Svector)
     @warn_check_rings(a.parent, rt_basering(), "printing a vector outside of basering")
+    sync_begin()    # for options
     s = libSingular.p_String(a.value, a.parent.value)
     return s
 end
 
 function rt_print(a::Sresolution)
     @warn_check_rings(a.parent, rt_basering(), "printing a resolution outside of basering")
-    libSingular.rChangeCurrRing(rt_basering().value, "?R?")
-    s = libSingular.syPrint(a.value, "?R?") # TODO let Sring store a name
-    rChangeCurrRing(C_NULL)
+    sync_begin()    # for options
+    s = libSingular.syPrint(a.value, a.parent.value, "?R?") # TODO let Sring store a name
     return s
 end
 
 function rt_print(a::Sideal)
     @warn_check_rings(a.parent, rt_basering(), "printing an ideal outside of basering")
+    sync_begin()    # for options
     s = ""
     n = Int(libSingular.ngens(a.value))
     first = true
@@ -121,6 +125,7 @@ end
 
 function rt_print(a::Smodule)
     @warn_check_rings(a.parent, rt_basering(), "printing a module outside of basering")
+    sync_begin()    # for options
     s = ""
     n = Int(libSingular.ngens(a.value))
     first = true
@@ -139,6 +144,7 @@ end
 
 function rt_print(a::Smatrix)
     @warn_check_rings(a.parent, rt_basering(), "printing a matrix outside of basering")
+    sync_begin()    # for options
     s = ""
     nrows = libSingular.nrows(a.value)
     ncols = libSingular.ncols(a.value)
@@ -160,6 +166,7 @@ end
 
 function rt_print(a::Smap)
     @warn_check_rings(a.parent, rt_basering(), "printing a map outside of basering")
+    sync_begin()    # for options
     s = ""
     n = Int(libSingular.ma_ncols(a.value))
     first = true
