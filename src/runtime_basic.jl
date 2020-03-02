@@ -294,6 +294,43 @@ end
 
 ########################## lookup and friends ###################################
 
+# reverse_lookup takes an object and tries to find its name as a Symbol.
+# Upon failure it returns Symbol("_")
+# This extremely dodgy function is only intended only for printing purposes.
+function rt_reverse_lookup(a)
+    # search all local variables from most local to least local
+    for i in length(rtGlobal.local_vars):-1:1
+        c = rt_reverse_lookup(a, rtGlobal.local_vars[i])
+        if c != Symbol("")
+            return c
+        end
+    end
+    # search all global variables in whatever order
+    for p in rtGlobal.vars
+        for i in p.second
+            c = rt_reverse_lookup(a, i)
+            if c != Symbol("")
+                return c
+            end
+        end
+    end
+    return Symbol("")
+end
+
+function rt_reverse_lookup(a, b::Pair)
+    if b.second === a
+        return b.first
+    elseif isa(b.second, Sring)
+        for i in b.second.vars
+            if i.second === a
+                return i.first
+            end
+        end
+    end
+    return Symbol("")
+end
+
+
 function rt_box_it_with_ring(n::libSingular.number, r::Sring)
     return Snumber(n, r)
 end

@@ -55,14 +55,17 @@ function rt_print(a::Sintvec)
 end
 
 function rt_print(a::Slist)
+    name = string(rt_reverse_lookup(a))
+    name = isempty(name) ? "list" : name
     s = ""
     A = a.value
     first = true
     for i in 1:length(A)
-        h = (first ? "list[" : "    [") * string(i) * "]: "
+        h = name * "[" * string(i) * "]: "
         s *= h
         s *= rt_indent_string(rt_print(A[i]), length(h)) * (i < length(A) ? "\n" : "")
         first = false
+        name = " "^length(name)
     end
     if first
         s = "empty list"
@@ -100,22 +103,27 @@ end
 function rt_print(a::Sresolution)
     @warn_check_rings(a.parent, rt_basering(), "printing a resolution outside of basering")
     sync_begin()    # for options
-    s = libSingular.syPrint(a.value, a.parent.value, "?R?") # TODO let Sring store a name
+    name = string(rt_reverse_lookup(a.parent))
+    name = isempty(name) ? "ring" : name
+    s = libSingular.syPrint(a.value, a.parent.value, name)
     return s
 end
 
 function rt_print(a::Sideal)
     @warn_check_rings(a.parent, rt_basering(), "printing an ideal outside of basering")
     sync_begin()    # for options
+    name = string(rt_reverse_lookup(a))
+    name = isempty(name) ? "ideal" : name
     s = ""
     n = Int(libSingular.ngens(a.value))
     first = true
     for i in 1:n
         p = libSingular.getindex(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
-        h = (first ? "ideal[" : "     [") * string(i) * "]: "
+        h = name * "[" * string(i) * "]: "
         s *= h * t * (i < n ? "\n" : "")
         first = false
+        name = " "^length(name)
     end
     if first
         s = "empty ideal"
@@ -126,15 +134,18 @@ end
 function rt_print(a::Smodule)
     @warn_check_rings(a.parent, rt_basering(), "printing a module outside of basering")
     sync_begin()    # for options
+    name = string(rt_reverse_lookup(a))
+    name = isempty(name) ? "module" : name
     s = ""
     n = Int(libSingular.ngens(a.value))
     first = true
     for i in 1:n
         p = libSingular.getindex(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
-        h = (first ? "module[" : "      [") * string(i) * "]: "
+        h = name * "[" * string(i) * "]: "
         s *= h * t * (i < n ? "\n" : "")
         first = false
+        name = " "^length(name)
     end
     if first
         s = "empty module"
@@ -145,7 +156,8 @@ end
 function rt_print(a::Smatrix)
     @warn_check_rings(a.parent, rt_basering(), "printing a matrix outside of basering")
     sync_begin()    # for options
-    s = ""
+    name = string(rt_reverse_lookup(a))
+    name = isempty(name) ? "matrix" : name
     nrows = libSingular.nrows(a.value)
     ncols = libSingular.ncols(a.value)
     first = true
@@ -153,9 +165,10 @@ function rt_print(a::Smatrix)
         for j in 1:ncols
             p = libSingular.mp_getindex(a.value, i, j)
             t = libSingular.p_String(p, a.parent.value)
-            h = (first ? "matrix[" : "      [") * string(i) * ", " * string(j) * "]: "
+            h = name * "[" * string(i) * ", " * string(j) * "]: "
             s *= h * t * ((i < nrows || j < ncols) ? "\n" : "")
             first = false
+            name = " "^length(name)
         end
     end
     if first
@@ -167,15 +180,18 @@ end
 function rt_print(a::Smap)
     @warn_check_rings(a.parent, rt_basering(), "printing a map outside of basering")
     sync_begin()    # for options
+    name = string(rt_reverse_lookup(a))
+    name = isempty(name) ? "map" : name
     s = ""
     n = Int(libSingular.ma_ncols(a.value))
     first = true
     for i in 1:n
         p = libSingular.ma_getindex0(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
-        h = (first ? "map[" : "   [") * string(i) * "]: "
+        h = name * "[" * string(i) * "]: "
         s *= h * t * (i < n ? "\n" : "")
         first = false
+        name = " "^length(name)
     end
     if first
         s = "empty map"
