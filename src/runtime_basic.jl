@@ -295,7 +295,7 @@ end
 ########################## lookup and friends ###################################
 
 # reverse_lookup takes an object and tries to find its name as a Symbol.
-# Upon failure it returns Symbol("_")
+# Upon failure it returns Symbol("")
 # This extremely dodgy function is only intended only for printing purposes.
 function rt_reverse_lookup(a)
     # search all local variables from most local to least local
