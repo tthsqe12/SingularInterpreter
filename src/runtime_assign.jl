@@ -26,7 +26,7 @@ function rtassign_more(a::SName, b)
 
     # local
     vars = rtGlobal.local_vars
-    for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
+    for i in rtGlobal.callstack[n].start_current_locals:length(vars)
         if vars[i].first == a.name
             newvalue, rest = rt_assign_more(vars[i].second, b)
             vars[i] = Pair(vars[i].first, newvalue)
@@ -72,7 +72,7 @@ function rtassign_last(a::SName, b)
 
     # local
     vars = rtGlobal.local_vars
-    for i in rtGlobal.callstack[n].start_current_locals:length(rtGlobal.local_vars)
+    for i in rtGlobal.callstack[n].start_current_locals:length(vars)
         if vars[i].first == a.name
             vars[i] = Pair(vars[i].first, rt_assign_last(vars[i].second, b))
             return

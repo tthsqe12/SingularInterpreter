@@ -258,10 +258,10 @@ end
 
 
 
-function scan_OPTION_CMD(args::AstNode, env::AstEnv)
+function scan_OPTION_CMD(a::AstNode, env::AstEnv)
     l = AstNode[]
     if a.rule == @RULE_elemexpr(31)
-        push_exprlist_expr!(l, a.child[1], env)
+        push_exprlist_expr!(l, a.child[2], env)
     end
     if length(l) == 0
         return
@@ -276,7 +276,7 @@ function scan_OPTION_CMD(args::AstNode, env::AstEnv)
     elseif length(l) == 2
         if l[1].rule == @RULE_expr(2)
             b, ok = convert_elemexpr_name_call(l[1].child[1], env)
-            if ok && isa(b, SName) && b.name == "set"
+            if ok && isa(b, SName) && string(b.name) == "set"
                 scan_expr(l[2], env)
                 return
             end
@@ -756,10 +756,10 @@ end
 function convert_returncmd(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_returncmd(0) < 100
     env.ok_to_return || throw(TranspileError("cannot return from the top level"))
+    r = Expr(:block)
     if a.rule == @RULE_returncmd(1)
         b::Array{Any} = convert_exprlist(a.child[1], env)
         t = gensym()
-        r = Expr(:block)
         if length(b) == 1
             c = b[1]
             if isa(c, Symbol)
@@ -773,14 +773,14 @@ function convert_returncmd(a::AstNode, env::AstEnv)
         else
             push!(r.args, Expr(:(=), t, Expr(:call, :rt_maketuple, make_tuple_array_copy(b)...)))
         end
-        push!(r.args, Expr(:call, :rt_leavefunction))
-        push!(r.args, Expr(:return, t))
-        return r
     elseif a.rule == @RULE_returncmd(2)
-        return Expr(:return, :nothing)
+        t = :rtnothing
     else
         throw(TranspileError("internal error in convert_returncmd"))
     end
+    push!(r.args, Expr(:call, :rt_leavefunction))
+    push!(r.args, Expr(:return, t))
+    return r
 end
 
 function scan_add_declaration(s::String, typ::String, env::AstEnv)
