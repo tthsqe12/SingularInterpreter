@@ -228,7 +228,6 @@ getdata(x::Ptr) = x
 # Singular functions iiExprArith1 and friends 0-initialize the res parameter immediately
 # so the data there, if any, is not reclaimed
 # TODO: cleanup result data when appropriate between calls
-using Test
 function get_res(expectedtype::CMDS)
     res = get_sleftv(0)
     @assert expectedtype == STUPLE_CMD || res.next.cpp_object == C_NULL
@@ -666,9 +665,6 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
             @eval $rtauto(x::$(Sargs[1])) = cmd1($cmd, $Sres, x)
         elseif length(Sargs) == 2
             @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2])) = cmd2($cmd, $Sres, x, y)
-        elseif length(Sargs) == 3
-            @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3])) =
-                cmd3($cmd, $Sres, x, y, z)
         elseif length(Sargs) == 3
             @eval $rtauto(x::$(Sargs[1]), y::$(Sargs[2]), z::$(Sargs[3])) =
                 cmd3($cmd, $Sres, x, y, z)
