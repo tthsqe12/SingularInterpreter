@@ -120,6 +120,7 @@ function rt_print(a::Sideal)
     for i in 1:n
         p = libSingular.getindex(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
+        libSingular.p_Delete(p, a.parent.value)
         h = name * "[" * string(i) * "]: "
         s *= h * t * (i < n ? "\n" : "")
         first = false
@@ -142,6 +143,7 @@ function rt_print(a::Smodule)
     for i in 1:n
         p = libSingular.getindex(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
+        libSingular.p_Delete(p, a.parent.value)
         h = name * "[" * string(i) * "]: "
         s *= h * t * (i < n ? "\n" : "")
         first = false
@@ -165,6 +167,7 @@ function rt_print(a::Smatrix)
         for j in 1:ncols
             p = libSingular.mp_getindex(a.value, i, j)
             t = libSingular.p_String(p, a.parent.value)
+            libSingular.p_Delete(p, a.parent.value)
             h = name * "[" * string(i) * ", " * string(j) * "]: "
             s *= h * t * ((i < nrows || j < ncols) ? "\n" : "")
             first = false
@@ -188,6 +191,7 @@ function rt_print(a::Smap)
     for i in 1:n
         p = libSingular.ma_getindex0(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
+        libSingular.p_Delete(p, a.parent.value)
         h = name * "[" * string(i) * "]: "
         s *= h * t * (i < n ? "\n" : "")
         first = false
@@ -227,6 +231,9 @@ function rt_printout(a)
     @assert !isa(a, STuple)
     @assert !isa(a, Snone)
     rtGlobal.last_printed = rt_copy_own(a)
+    if pretty_output.enabled
+        push!(pretty_output.vals, print_pretty(a))
+    end
     println(rt_print(a))
 end
 
@@ -235,6 +242,10 @@ function rt_printout(a::STuple)
     for i in 1:n
         if i == n
             rtGlobal.last_printed = rt_copy_own(a.list[i])
+        end
+        push!(everything_printed.vals, rtGlobal.last_printed)
+        if pretty_output.enabled
+            push!(pretty_output.vals, print_pretty(a.list[i]))
         end
         println(rt_print(a.list[i]))
     end
@@ -248,3 +259,51 @@ end
 function rt_printouttype(a)
     println("add correct type printing here")
 end
+
+###########################################
+
+function print_pretty(a)
+    return "???"
+end
+
+function print_pretty(a::Union{Int, BigInt})
+    return string(a)
+end
+
+function print_pretty(a::Spoly)
+    s = libSingular.p_String(a.value, a.parent.value)
+    s = replace(s, "(" => "_{")
+    s = replace(s, ")" => "}")
+    s = replace(s, "*" => " ")
+    return s
+end
+
+function print_pretty(a::Sideal)
+    s = "\\left\\langle "
+    n = Int(libSingular.ngens(a.value))
+    first = true
+    for i in 1:n
+        if !first
+            s *= ","
+        end
+        s *= print_pretty(rtgetindex(a, i))
+        first = false
+    end
+    s *= " \\right\\rangle"
+    return s
+end
+
+
+function Base.show(io::IO, ::MIME"text/latex", a::PrintReaper)
+    first = true
+    print(io, "\\begin{array}{l}")
+    for i in a.vals
+        if !first
+            print(io, "\\\\")
+        end
+        print(io, i)
+        first = false
+    end
+    print(io, "\\end{array}")
+end
+

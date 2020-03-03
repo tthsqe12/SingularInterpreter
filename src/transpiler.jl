@@ -2605,8 +2605,14 @@ function execute(s::String; debuglevel::Int = 0)
         resize!(rtGlobal.callstack, 1)
         empty!(rtGlobal.local_vars)
 
+        empty!(pretty_output.vals)
+        pretty_output.enabled = isdefined(Main, :IJulia) && Main.IJulia.inited
         eval(expr)
-        return nothing
+        if isempty(pretty_output.vals)
+            return nothing
+        else
+            return pretty_output
+        end
     end
 end
 

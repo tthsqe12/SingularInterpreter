@@ -588,6 +588,13 @@ const rtGlobal = rtGlobalState(String[],
                                Pair{Symbol, Any}[],
                                Dict{String, Function}())
 
+# we need to catch everything printed so we can return it to the user
+mutable struct PrintReaper
+    enabled::Bool
+    vals::Array{String}
+end
+const pretty_output = PrintReaper(false, String[])
+
 
 
 ###### these macros do not work without esc !!!!
