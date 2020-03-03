@@ -321,7 +321,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
 #define ALLOW_PLURAL 0
 #define ALLOW_RING 0
 #define ALLOW_ZZ 0
-#define NO_CONVERSION 0
+#define NO_CONVERSION 1
 #define NO_NC 0
 #define NO_RING 0
 #define NO_ZERODIVISOR 0
@@ -392,13 +392,13 @@ static void singular_define_table_h(jlcxx::Module & Singular) {
     Singular.method("dArith1",
                     [](int i) {
                         sValCmd1 r = dArith1[i];
-                        return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg);
+                        return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg, bool(r.valid_for));
                     });
 
     Singular.method("dArith2",
                     [](int i) {
                         sValCmd2 r = dArith2[i];
-                        return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg1, (jint)r.arg2);
+                        return std::make_tuple((jint)r.cmd, (jint)r.res, (jint)r.arg1, (jint)r.arg2, bool(r.valid_for));
                     });
 
     Singular.method("dArith3",

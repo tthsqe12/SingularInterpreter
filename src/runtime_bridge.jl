@@ -488,34 +488,40 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
 
     i = 0
     while true
-        (cmd, res, arg) = libSingular.dArith1(i)
+        (cmd, res, arg, nc) = libSingular.dArith1(i) # nc = NO_CONVERSION, which currently concerns only
+                                                     # dArith1 and dArith2
         cmd == 0 && break # end of dArith1
         i += 1
         res = get(overrides, (cmd, res, arg), res)
         todo[cmd => (arg,)] = res # unconditional, might overwrite a previous entry resulting from
                                   # conversion(s)
-        for argi in get(type_conversions, arg, ())
-            # conversions work according to the table order, so the first one might be the correct one,
-            # but at run-time, it might fail and try other possibilities, so we keep them all
-            restypes = get!(todo, cmd => (argi,), Int[])
-            if restypes isa Vector # if not, it's an Int which is then the only admissible "res" type
-                push!(restypes, res)
+        if !nc
+            for argi in get(type_conversions, arg, ())
+                # conversions work according to the table order, so the first one might be the correct one,
+                # but at run-time, it might fail and try other possibilities, so we keep them all
+                restypes = get!(todo, cmd => (argi,), Int[])
+                if restypes isa Vector # if not, it's an Int which is then the only admissible "res" type
+                    push!(restypes, res)
+                end
             end
         end
     end
 
     i = 0
     while true
-        (cmd, res, arg1, arg2) = libSingular.dArith2(i)
+        (cmd, res, arg1, arg2, nc) = libSingular.dArith2(i)
         cmd == 0 && break # end of dArith2
         i += 1
         res = get(overrides, (cmd, res, arg1, arg2), res)
         todo[cmd => (arg1, arg2)] = res
-        for arg1i in get(type_conversions, arg1, (arg1,))
-            for arg2i in get(type_conversions, arg2, (arg2,))
-                restypes = get!(todo, cmd => (arg1i, arg2i), Int[])
-                if restypes isa Vector
-                    push!(restypes, res)
+
+        if !nc
+            for arg1i in get(type_conversions, arg1, (arg1,))
+                for arg2i in get(type_conversions, arg2, (arg2,))
+                    restypes = get!(todo, cmd => (arg1i, arg2i), Int[])
+                    if restypes isa Vector
+                        push!(restypes, res)
+                    end
                 end
             end
         end
