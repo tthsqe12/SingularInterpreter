@@ -321,7 +321,7 @@ function _construct(::Type{Slist}, from)
         lv = libSingular.sleftv_at(lv0, i-1)
         typ = CMDS(lv.rtyp)
         T = convertible_types[typ]
-        a[i] = construct(T, lv)
+        a[i] = rt_copy_own(construct(T, lv))
         cnt += rt_is_ring_dep(a[i])
     end
     ring = if cnt == 0

@@ -220,12 +220,12 @@ function rt_convert2list(a::Slist)
 end
 
 function rt_convert2list(a::Union{Int, BigInt, Sproc, Sintvec, Sintmat, Sbigintmat})
-    return Slist(Any[a], rtInvalidRing, 0, nothing, false)
+    return Slist(Any[rt_copy_own(a)], rtInvalidRing, 0, nothing, false)
 end
 
 function rt_convert2list(a::Union{Snumber, Spoly, Svector})
     @warn_check_rings(a.parent, rt_basering(), "object encountered from a foreign ring")
-    return Slist(Any[a], a.parent, 1, nothing, false)
+    return Slist(Any[rt_copy_own(a)], a.parent, 1, nothing, false)
 end
 
 function rt_convert2list(a::STuple)

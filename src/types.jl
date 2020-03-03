@@ -224,6 +224,9 @@ function rt_ring_finalizer(a::Sring)
     end
 end
 
+function show(io::IO, a::Sring)
+    print(io, "Sring(0x" * Base.hex(UInt(a.value.cpp_object), 0, false) * ")")
+end
 
 #### singular type "list"       mutable in the singular language
 # note: Lists can have anything in them - including polynomials from different
