@@ -1,6 +1,13 @@
 ##################### the lazy way: use sleftv's ##########
 using .libSingular: Sleftv
 
+# This decides whether we generate one method for each combination of arguments,
+# or only catch-all methods. CATCH_ALL == true generates a lot fewer methods,
+# but doesn't lead to significantly faster precompilation. But it can be
+# convenient when some assertions fail to switch this to true as return
+# types are then not checked against what is pretended in the table.h file
+# (cf. "overrides" amending tables).
+const CATCH_ALL = false
 
 rChangeCurrRing(r::Sring) = libSingular.rChangeCurrRing(r.value)
 
@@ -230,7 +237,10 @@ getdata(x::Ptr) = x
 # TODO: cleanup result data when appropriate between calls
 function get_res(expectedtype::CMDS)
     res = get_sleftv(0)
-    @assert expectedtype == STUPLE_CMD || res.next.cpp_object == C_NULL
+
+    @assert expectedtype == STUPLE_CMD || res.next.cpp_object == C_NULL ||
+         expectedtype == ANY_TYPE && CATCH_ALL
+
     @assert expectedtype ∈ (ANY_TYPE, STUPLE_CMD) || res.rtyp == Int(expectedtype)
     res
 end
@@ -248,8 +258,12 @@ function construct(::Type{T}, from) where T
 end
 
 function _construct(::Type{Any}, from::Sleftv)
-    @assert from.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
-    construct(convertible_types[CMDS(from.rtyp)], from)
+    @assert CATCH_ALL || from.next.cpp_object == C_NULL # TODO: handle when it's a tuple!
+    if from.next.cpp_object != C_NULL
+        construct(STuple, from)
+    else
+        construct(convertible_types[CMDS(from.rtyp)], from)
+    end
 end
 
 _construct(::Type{Int}, from) = Int(getdata(from))
@@ -634,26 +648,35 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
             # fall-back to rtauto so that definitions here don't overwrite
             # these which are manually implemented
             if length(args) == 1
-                @eval begin
+                if CATCH_ALL
+                    @eval $rtname(x::$AnyST) = cmd1($cmd, Any, x)
+                else @eval begin
                     $rtname(x) = $rtauto(x)
 
                     if !($name in ("rvar",)) # TODO: fix this ugly hack (`rtrvar_auto` already implemented manually)
                         $rtauto(x) = rt_error(string($name, "(`$(rt_typestring(x))`) failed", $expected))
                     end
                 end
+                end
             elseif length(args) == 2
-                @eval begin
+                if CATCH_ALL
+                    @eval $rtname(x::$AnyST, y::$AnyST) = cmd2($cmd, Any, x, y)
+                else @eval begin
                     $rtname(x, y) = $rtauto(x, y)
                     $rtauto(x, y) = rt_error(string($name,
                                         "(`$(rt_typestring(x))`, `$(rt_typestring(y))`) failed",
                                                     $expected))
                 end
+                end
             elseif length(args) == 3
-                @eval begin
+                if CATCH_ALL
+                    @eval $rtname(x::$AnyST, y::$AnyST, z::$AnyST) = cmd3($cmd, Any, x, y, z)
+                else @eval begin
                     $rtname(x, y, z) = $rtauto(x, y, z)
                     $rtauto(x, y, z) = rt_error(string($name,
                                            "(`$(rt_typestring(x))`, `$(rt_typestring(y)), `$(rt_typestring(z))`) failed",
                                                     $expected))
+                end
                 end
             else
                 @assert length(args) == 0 || length(args) ∈ 4:6
@@ -661,6 +684,8 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
             end
             push!(seen, (cmd, length(args)))
         end
+
+        1 <= length(Sargs) <= 3 && CATCH_ALL && continue
         if length(Sargs) == 1
             @eval $rtauto(x::$(Sargs[1])) = cmd1($cmd, $Sres, x)
         elseif length(Sargs) == 2
