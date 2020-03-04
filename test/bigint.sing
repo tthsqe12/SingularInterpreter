@@ -1,0 +1,12 @@
+ring r;
+bigint bi = 1;
+number n;
+
+ASSUME(0, bi == 1);
+ASSUME(0, bi == bigint(1));
+ASSUME(0, typeof(bigint(2)) == "bigint");
+// TODO: implement
+// ASSUME(0, bigint(n) == 0);
+// ASSUME(0, typeof(bigint(n)) == "bigint");
+// ASSUME(0, bigint(x-x) == 0);
+// ASSUME(0, typeof(bigint(x-x)) == "bigint");

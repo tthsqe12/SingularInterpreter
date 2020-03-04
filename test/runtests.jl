@@ -3,7 +3,7 @@ using Test
 using SingularInterpreter
 using SingularInterpreter: rtcolon, rtequalequal, rtnot, rtand, rtor, Sintvec, Sstring
 
-for a in ["int", "string", "intvec", "intmat", "bigintmat", "list", "ring",
+for a in ["int", "string", "intvec", "intmat", "bigintmat", "list", "ring", "bigint",
           "number", "poly", "vector", "ideal", "module", "matrix", "map",
           "assign", "tuple", "proc", "resolution", "commands", "sleftv", "attributes"]
     SingularInterpreter.reset_runtime()
