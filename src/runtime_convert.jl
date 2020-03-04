@@ -85,7 +85,21 @@ function rt_convert2bigint(a)
     return BigInt(0)
 end
 
-const rt_cast2bigint = rt_convert2bigint
+rt_cast2bigint(x) = rt_convert2bigint(x)
+
+function rt_cast2bigint(a::Snumber)
+    R = a.parent
+    @warn_check_rings(R, rt_basering(), "converting from a number outside of basering")
+    c = libSingular.get_coeffs(R.value)
+    b = libSingular.coeffs_BIGINT()
+    nmap = libSingular.n_SetMap(c, b)
+    if nmap != C_NULL
+        n = libSingular.nApplyMapFunc(nmap, a.value, c, b)
+        construct(BigInt, n.cpp_object)
+    else
+        rt_error("cannot convert this `number` to `bigint`")
+    end
+end
 
 #### string
 

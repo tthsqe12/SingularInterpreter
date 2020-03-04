@@ -109,6 +109,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     // it could also be created on the Julia side via:
     // coeffs_BIGINT = libSingular.nInitChar(libSingular.n_Q, Ptr{Nothing}(0))
     Singular.method("coeffs_BIGINT", []{ return coeffs_BIGINT; });
+    Singular.method("get_coeffs", [](ring r) { return r->cf; });
 
     Singular.method("rCopy", &rCopy);
     Singular.method("convert_list2resolution", [](void *v) { return syConvList((lists)v); });
