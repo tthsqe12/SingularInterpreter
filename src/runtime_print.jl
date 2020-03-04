@@ -7,6 +7,7 @@ function rt_indent_string(s::String, indent::Int)
 end
 
 function rt_format_matrix(a::Array{String, 2})
+    isempty(a) && return ""
     nrows, ncols = size(a)
     b = map(s->split(s, r"\n|\r|\0"), a) # matrix of arrays of substrings
     col_widths = [(j < ncols ? 1 : 0) + maximum([maximum(map(length, b[i,j])) for i in 1:nrows]) for j in 1:ncols]
