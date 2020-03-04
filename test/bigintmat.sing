@@ -44,3 +44,7 @@ bigintmat m2[2][2] = 1, 3, 2, 4;
 ASSUME(0, transpose(m) == m2);
 m2 = 2, 1, 0, 1;
 ASSUME(0, bareiss(m) == m2);
+
+// test fixed bug in bridge, should not segfault
+bigintmat m3[0][0];
+def m3transp = transpose(m3); // CHECK: should be implemented as a "bridge" function

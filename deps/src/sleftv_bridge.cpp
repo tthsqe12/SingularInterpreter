@@ -159,7 +159,11 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         bim -> m_coeffs = coeffs_BIGINT;
                         bim -> row = d1;
                         bim -> col = d2;
-                        bim -> v = (number*)omAlloc(sizeof(number)*(d1 * d2));
+                        int l = d1 * d2;
+                        if (l > 0)
+                            bim -> v = (number*)omAlloc(sizeof(number)*l);
+                        else
+                            bim -> v = NULL;
                         return reinterpret_cast<void*>(bim);
                     });
     Singular.method("make_bigintmat_init",
