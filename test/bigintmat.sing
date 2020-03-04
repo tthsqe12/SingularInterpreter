@@ -50,3 +50,5 @@ bigintmat m3[0][0];
 def m3transp = transpose(m3); // CHECK: should be implemented as a "bridge" function
 bigintmat m4[2][1];
 ASSUME(0, size(transpose(m4)) == 2);
+bigintmat m5[1][2];
+ASSUME(0, size(transpose(m5)) == 2);

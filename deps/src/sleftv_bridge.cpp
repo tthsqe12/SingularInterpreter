@@ -169,7 +169,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("make_bigintmat_init",
                     [](void* _bim, int d1, int d2, void* _b, int i1, int i2) {
                         assert(1 <= i1 && i1 <= d1);
-                        assert(1 <= i2 && i2 <= d1);
+                        assert(1 <= i2 && i2 <= d2);
                         auto bim = reinterpret_cast<bigintmat*>(_bim);
                         auto b = reinterpret_cast<__mpz_struct*>(_b);
                         BIMATELEM(*bim, i1, i2) = n_InitMPZ(b, coeffs_BIGINT);
