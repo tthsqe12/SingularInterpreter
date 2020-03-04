@@ -156,8 +156,14 @@ function make_data(x::Union{Sintvec, Sintmat})
 end
 
 function make_data(x::Sbigintmat)
-    a = Array{Any}(x.value) # TODO: optimize this method to avoid copying
-    GC.@preserve a libSingular.make_bigintmat(vec(a), size(a, 1), size(a, 2))
+    a = x.value
+    d1, d2 = size(a)
+    bim = libSingular.make_bigintmat_allocate(d1, d2)
+    GC.@preserve a for i1=1:d1, i2=1:d2
+        libSingular.make_bigintmat_init(bim, d1, d2,
+                                        pointer_from_objref(a[i1, i2]), i1, i2)
+    end
+    bim
 end
 
 function make_data(x::Slist)

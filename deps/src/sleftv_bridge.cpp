@@ -150,26 +150,25 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         return (void*)iv;
                     });
 
-    Singular.method("make_bigintmat",
-                    [](jlcxx::ArrayRef<jl_value_t*> a, int d1, int d2) {
-                        assert(d1 * d2 == a.size());
+    Singular.method("make_bigintmat_allocate",
+                    [](int d1, int d2) {
                         assert(d1 >= 0 && d2 >= 0);
-
-                        auto bim_ = new bigintmat_twin; // we initialize by hand do avoid useless
+                        auto bim = new bigintmat_twin; // we initialize by hand do avoid useless
                                                         // zero-initialization
                         // cf. bigintmat.h
-                        bim_ -> m_coeffs = coeffs_BIGINT;
-                        bim_ -> row = d1;
-                        bim_ -> col = d2;
-                        int l = d1 * d2;
-                        bim_ -> v = (number *)omAlloc(sizeof(number)*l);
-                        auto bim = reinterpret_cast<bigintmat*>(bim_);
-                        for (int i = 0, i2=1; i2 <= d2; ++i2)
-                            for (int i1=1; i1 <= d1; ++i1) {
-                                auto b = reinterpret_cast<__mpz_struct*>(a[i++]);
-                                BIMATELEM(*bim, i1, i2) = n_InitMPZ(b, coeffs_BIGINT);
-                            }
-                        return (void*)bim;
+                        bim -> m_coeffs = coeffs_BIGINT;
+                        bim -> row = d1;
+                        bim -> col = d2;
+                        bim -> v = (number*)omAlloc(sizeof(number)*(d1 * d2));
+                        return reinterpret_cast<void*>(bim);
+                    });
+    Singular.method("make_bigintmat_init",
+                    [](void* _bim, int d1, int d2, void* _b, int i1, int i2) {
+                        assert(1 <= i1 && i1 <= d1);
+                        assert(1 <= i2 && i2 <= d1);
+                        auto bim = reinterpret_cast<bigintmat*>(_bim);
+                        auto b = reinterpret_cast<__mpz_struct*>(_b);
+                        BIMATELEM(*bim, i1, i2) = n_InitMPZ(b, coeffs_BIGINT);
                     });
 
     Singular.method("list_create",
