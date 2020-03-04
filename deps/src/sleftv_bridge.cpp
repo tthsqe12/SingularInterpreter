@@ -199,7 +199,7 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                         case BIGINTMAT_CMD:
                             bim = (bigintmat*)data;
                             r = bim->rows();
-                            c = bim->rows();
+                            c = bim->cols();
                             break;
                         default:
                             assert(false);
