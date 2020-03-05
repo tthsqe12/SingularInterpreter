@@ -101,6 +101,12 @@ function rt_cast2bigint(a::Snumber)
     end
 end
 
+# this function could almost be integrated in rt_cast2bigint(::Snumber),
+# but we need to test that it's a constant, and the corresponding p_IsConstant
+# function is unfortunately declared static in libsingular
+rt_cast2bigint(a::Spoly) = rtbigint(a)
+
+
 #### string
 
 function rt_convert2string(a::Sstring)

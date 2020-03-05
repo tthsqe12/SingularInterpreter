@@ -7,6 +7,6 @@ ASSUME(0, bi == bigint(1));
 ASSUME(0, typeof(bigint(2)) == "bigint");
 ASSUME(0, bigint(n) == 0);
 ASSUME(0, typeof(bigint(n)) == "bigint");
-// TODO: implement
-// ASSUME(0, bigint(x-x) == 0);
-// ASSUME(0, typeof(bigint(x-x)) == "bigint");
+ASSUME(0, bigint(x-x) == 0);
+ASSUME(0, typeof(bigint(x-x)) == "bigint");
+ASSUME(0, bigint(2*x/x) == 2);
