@@ -219,7 +219,7 @@ function rttimes(b::Union{Int, BigInt}, a::Snumber)
     b1 = libSingular.n_Init(b, a.parent.value)
     r1 = libSingular.n_Mult(b1, a.value, a.parent.value)
     libSingular.n_Delete(b1, a.parent.value)
-    return SNumber(r1, a.parent)
+    return Snumber(r1, a.parent)
 end
 
 # op(poly, int)
