@@ -1045,6 +1045,7 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
                                         Expr(:(::), :b, :STuple)),
         Expr(:return, Expr(:call, Symbol("rt_convert2"*newtypename), Expr(:ref, Expr(:(.), :b, QuoteNode(:list)), 1), :b))
     ))
+
     # print
     b = Expr(:block, Expr(:(=), :s, ""))
     for i in 1:length(sp)
@@ -1066,6 +1067,16 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     push!(b.args, Expr(:return, :s))
     push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newtype)),
         b
+    ))
+
+    # print_pretty
+    b = Expr(:ref, :String)
+    for i in 1:length(sp)
+        push!(b.args, sp[i][2])
+        push!(b.args, Expr(:call, :print_pretty, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2])))))
+    end
+    push!(r.args, Expr(:function, Expr(:call, :print_pretty, Expr(:(::), :f, newtype)),
+        Expr(:return, Expr(:call, :format_pretty_newstruct, newtypename, b))
     ))
 
     # rt_typedata

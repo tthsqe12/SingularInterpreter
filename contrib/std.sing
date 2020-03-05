@@ -1,0 +1,5 @@
+LIB "standard.lib";
+ring r = 0, (x, y, z), dp;
+ideal i = x^6, y^4, x*y*z;
+intvec w = 2, 3, 6;
+weightKB(i, 12, list(w));

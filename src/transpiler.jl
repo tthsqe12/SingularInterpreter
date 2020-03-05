@@ -2714,7 +2714,7 @@ function loadconvert_assign(a::AstNode, env::AstLoadEnv)
         c = c.child[1]
         @error_check(c.rule == @RULE_stringexpr(1), "???")
         c = c.child[1]::String
-        println(b, " -> ", c)
+        #println(b, " -> ", c)
     else
         rt_error("internal error in loadconvert_assign")
     end

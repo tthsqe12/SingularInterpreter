@@ -322,7 +322,29 @@ function format_pretty_matrix(a::Array{String, 2})
             push!(s, " \\\\\n")
         end
     end
-    push!(s, "\n\\end{array} \\right)\n")
+    push!(s, "\n\\end{array} \\right)")
+    return join(s)
+end
+
+function format_pretty_newstruct(typename::String, a::Vector{String})
+    n = length(a)
+    @assert(n > 0)
+    @assert((n % 2) == 0)
+    s = String[]
+    push!(s, "\\begin{array}{l}\n")
+    push!(s, "\\text{" * typename * "} \\\\\n")
+    push!(s, "\\left[ \\begin{array}{ll}\n")
+    for i in 1:2:n
+        push!(s, "\\text{")
+        push!(s, a[i])
+        push!(s, ": } & ")
+        push!(s, a[i + 1])
+        if i + 1 < n
+            push!(s, " \\\\\n")
+        end
+    end
+    push!(s, "\n\\end{array} \\right.")
+    push!(s, "\\end{array}\n")
     return join(s)
 end
 
@@ -333,7 +355,7 @@ end
 function print_pretty(a::Sintvec)
     s = "\\left[ \\begin{array}{c}\n"
     s *= join(map(string, a.value), " \\\\\n")
-    s *= "\n\\end{array} \\right]\n"
+    s *= "\n\\end{array} \\right]"
     return s
 end
 
@@ -355,6 +377,9 @@ function print_pretty(a::Slist)
         end
         s *= print_pretty(i)
         first = false
+    end
+    if first
+        return "\\text{empty list}"
     end
     s *= "\\end{array} \\right."
 end
