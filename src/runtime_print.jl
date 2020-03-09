@@ -241,7 +241,6 @@ function rt_printout(a::STuple)
         if i == n
             rtGlobal.last_printed = rt_copy_own(a.list[i])
         end
-        push!(everything_printed.vals, rtGlobal.last_printed)
         if pretty_output.enabled
             push!(pretty_output.vals, print_pretty(a.list[i]))
         end
@@ -437,4 +436,3 @@ function Base.show(io::IO, ::MIME"text/latex", a::PrintReaper)
          "\\end{equation}\n"
     print(io, s)
 end
-
