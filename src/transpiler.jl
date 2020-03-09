@@ -185,6 +185,7 @@ function convert_ERROR_CMD(arg1, env::AstEnv)
     return Expr(:call, :rtERROR, arg1, String(env.package) * "::" * env.fxn_name)
 end
 
+
 function convert_EXECUTE_CMD(arg1, env::AstEnv)
     arg1 = convert_expr(arg1, env)
     arg1 = make_nocopy(arg1)
@@ -194,6 +195,7 @@ function convert_EXECUTE_CMD(arg1, env::AstEnv)
                 Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, arg1)),
                 Expr(:if, t2, Expr(:return, t1)))
 end
+
 
 function convert_BRANCHTO_CMD(args, env::AstEnv)    # args has already been converted
     @assert env.branchto_appeared
@@ -257,12 +259,7 @@ function convert_BRANCHTO_CMD(args, env::AstEnv)    # args has already been conv
 end
 
 
-
-function scan_OPTION_CMD(a::AstNode, env::AstEnv)
-    l = AstNode[]
-    if a.rule == @RULE_elemexpr(31)
-        push_exprlist_expr!(l, a.child[2], env)
-    end
+function scan_OPTION_CMD(l::Vector{AstNode}, env::AstEnv)
     if length(l) == 0
         return
     elseif length(l) == 1
@@ -287,12 +284,7 @@ function scan_OPTION_CMD(a::AstNode, env::AstEnv)
     end
 end
 
-
-function convert_OPTION_CMD(a::AstNode, env::AstEnv)
-    l = AstNode[]
-    if a.rule == @RULE_elemexpr(31)
-        push_exprlist_expr!(l, a.child[2], env)
-    end
+function convert_OPTION_CMD(l::Vector{AstNode}, env::AstEnv)
     if length(l) == 0
         return Expr(:call, :rt_option_string)
     elseif length(l) == 1
@@ -316,6 +308,49 @@ function convert_OPTION_CMD(a::AstNode, env::AstEnv)
         throw(TranspileError("too many arguments to option"))
     end
 end
+
+
+function scan_FETCH_CMD_IMAP_CMD(t::Int, l::Array{AstNode}, env::AstEnv)
+    @assert t == Int(IMAP_CMD) || t == Int(FETCH_CMD)
+    if length(l) < 2
+        throw(TranspileError(cmd_to_string[t] * " needs at least 2 arguments"))
+    end
+    scan_expr(l[1])
+    if l[2].rule == @RULE_expr(2)
+        b, ok = scan_elemexpr_name_call(l[2].child[1], env)
+        if ok
+            if isa(b, SName)
+                push!(env.screwed_names, string(b.name))
+            end
+            for i in 3:length(l)
+                scan_expr(l[i], env)
+            end
+            return
+        end
+    end
+    throw(TranspileError(cmd_to_string[t] * " needs a name in the second argument"))
+end
+
+function convert_FETCH_CMD_IMAP_CMD(t::Int, l::Array{AstNode}, env::AstEnv)
+    @assert t == Int(IMAP_CMD) || t == Int(FETCH_CMD)
+    if length(l) < 2
+        throw(TranspileError(cmd_to_string[t] * " needs at least 2 arguments"))
+    end
+    r = Expr(:call, Symbol("rt" * cmd_to_string[t]))
+    push!(r.args, make_nocopy(convert_expr(l[1], env)))
+    if l[2].rule == @RULE_expr(2)
+        b, ok = convert_elemexpr_name_call(l[2].child[1], env)
+        if ok
+            push!(r.args, b)
+            for i in 3:length(l)
+                push!(r.args, make_nocopy(convert_expr(l[i], env)))
+            end
+            return r
+        end
+    end
+    throw(TranspileError(cmd_to_string[t] * " needs a name in the second argument"))
+end
+
 
 function scan_elemexpr(a::AstNode, env::AstEnv)
     @assert 0 < a.rule - @RULE_elemexpr(0) < 100
@@ -362,7 +397,11 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
         env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
         scan_expr(a.child[2], env)
     elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
-        env.everything_is_screwed |= in(a.child[1]::Int, cmds_that_screw_everything)
+        t = a.child[1]::Int
+        if t == Int(FETCH_CMD) || t == Int(IMAP_CMD)
+            return scan_FETCH_CMD2(a.child[2], a.child[3], env)
+        end
+        env.everything_is_screwed |= in(t, cmds_that_screw_everything)
         scan_expr(a.child[2], env)
         scan_expr(a.child[3], env)
     elseif @RULE_elemexpr(26) <= a.rule <= @RULE_elemexpr(29)
@@ -373,8 +412,15 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
     elseif a.rule == @RULE_elemexpr(30)
     elseif a.rule == @RULE_elemexpr(31)
         t = a.child[1]::Int
+        l = AstNode[]
+        if a.rule == @RULE_elemexpr(31)
+            push_exprlist_expr!(l, a.child[2], env)
+        end
         if t == Int(OPTION_CMD)
-            scan_OPTION_CMD(a, env)
+            scan_OPTION_CMD(l, env)
+            return
+        elseif t == Int(FETCH_CMD) || t == Int(IMAP_CMD)
+            scan_FETCH_CMD_IMAP_CMD(t, l, env)
             return
         end
         env.branchto_appeared |= (t == Int(BRANCHTO_CMD))
@@ -477,16 +523,17 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
         return convert_stringexpr(a.child[1], env)
     elseif @RULE_elemexpr(11) <= a.rule && a.rule <= @RULE_elemexpr(17)
         # construction of a builtin type T via T(...)
-        haskey(cmd_to_builtin_type_string, a.child[1]::Int) || throw(TranspileError("internal error in convert_elemexpr 11-17"))
-        t = cmd_to_builtin_type_string[a.child[1]::Int]
+        t = a.child[1]::Int
+        haskey(cmd_to_builtin_type_string, t) || throw(TranspileError("internal error in convert_elemexpr 11-17"))
+        s = Symbol("rt_cast2" * cmd_to_builtin_type_string[t])
         if a.rule == @RULE_elemexpr(14) || a.rule == @RULE_elemexpr(17)
-            return Expr(:call, Symbol("rt_cast2"*t))
+            return Expr(:call, s)
         elseif a.rule == @RULE_elemexpr(13) || a.rule == @RULE_elemexpr(16)
             b = convert_exprlist(a.child[2], env)::Array{Any}
-            return Expr(:call, Symbol("rt_cast2"*t), make_tuple_array_nocopy(b)...)
+            return Expr(:call, s, make_tuple_array_nocopy(b)...)
         else
             b = convert_expr(a.child[2], env)
-            return Expr(:call, Symbol("rt_cast2"*t), make_nocopy(b))
+            return Expr(:call, s, make_nocopy(b))
         end
     elseif @RULE_elemexpr(18) <= a.rule <= @RULE_elemexpr(21)
         t = a.child[1]::Int
@@ -496,47 +543,45 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
             return convert_ERROR_CMD(a.child[2], env)
         elseif t == Int(EXECUTE_CMD)
             return convert_EXECUTE_CMD(a.child[2], env)
-        else
-            haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 18|19|20|21"))
-            arg1 = convert_expr(a.child[2], env)
-            arg1 = make_nocopy(arg1)
-            return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1)
         end
+        arg1 = make_nocopy(convert_expr(a.child[2], env))
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1)
     elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
-        arg1 = convert_expr(a.child[2], env)
-        arg2 = convert_expr(a.child[3], env)
         t = a.child[1]::Int
-        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 22|23|24|25"))
-        arg1 = make_nocopy(arg1)
-        arg2 = make_nocopy(arg2)
+        if t == Int(FETCH_CMD) || t == Int(IMAP_CMD)
+            return convert_FETCH_CMD_IMAP_CMD(t, AstNode[a.child[2], a.child[3]], env)
+        end
+        arg1 = make_nocopy(convert_expr(a.child[2], env))
+        arg2 = make_nocopy(convert_expr(a.child[3], env))
         return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2)
     elseif @RULE_elemexpr(26) <= a.rule <= @RULE_elemexpr(29)
-        arg1 = convert_expr(a.child[2], env)
-        arg2 = convert_expr(a.child[3], env)
-        arg3 = convert_expr(a.child[4], env)
         t = a.child[1]::Int
-        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 26|27|28|29"))
-        arg1 = make_nocopy(arg1)
-        arg2 = make_nocopy(arg2)
-        arg3 = make_nocopy(arg3)
+        arg1 = make_nocopy(convert_expr(a.child[2], env))
+        arg2 = make_nocopy(convert_expr(a.child[3], env))
+        arg3 = make_nocopy(convert_expr(a.child[4], env))
         return Expr(:call, Symbol("rt" * cmd_to_string[t]), arg1, arg2, arg3)
     elseif a.rule == @RULE_elemexpr(30) || a.rule == @RULE_elemexpr(31)
         t = a.child[1]::Int
-        if t == Int(OPTION_CMD)
-            return convert_OPTION_CMD(a, env)
+        # prepare to convert arguments using special evaluation rules (for names)
+        l = AstNode[]
+        if a.rule == @RULE_elemexpr(31)
+            push_exprlist_expr!(l, a.child[2], env)
         end
+        if t == Int(OPTION_CMD)
+            return convert_OPTION_CMD(l, env)
+        elseif t == Int(FETCH_CMD) || t == Int(IMAP_CMD)
+            return convert_FETCH_CMD_IMAP_CMD(t, l, env)
+        end
+        # convert arguments using normal evaluation rules
+        args = Any[]
         if a.rule == @RULE_elemexpr(31)
             args = convert_exprlist(a.child[2], env)::Array{Any}
-        else
-            args = Any[]
         end
-        haskey(cmd_to_string, t) || throw(TranspileError("internal error in convert_elemexpr 30|31"))
         if t == Int(BRANCHTO_CMD)
             return convert_BRANCHTO_CMD(args, env)
-        else
-            args = make_tuple_array_nocopy(args)
-            return Expr(:call, Symbol("rt" * cmd_to_string[t]), args...)
         end
+        args = make_tuple_array_nocopy(args)
+        return Expr(:call, Symbol("rt" * cmd_to_string[t]), args...)
     elseif a.rule == @RULE_elemexpr(32)
         typ = cmd_to_builtin_type_string[a.child[1].child[1]::Int]
         return Expr(:call, Symbol("rt_cast2"*typ), make_nocopy(a.child[2]),

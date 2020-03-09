@@ -1,3 +1,42 @@
+#### imap ####
+
+function rtimap(a::Sring, b::SName)
+    rt_error("rtimap($(a), $(b)) is not implemented")
+    return rtnothing
+end
+
+rtimap(a, b::Vector{SName}) = rtimap(a, rt_get_sole_name(b))
+
+function rtimap(a...)
+    rt_error("imap(`" * join(map(rt_typestring, a), "`, `") *"`) failed")
+    return rtnothing
+end
+
+#### fetch ####
+
+function rtfetch(a::Sring, b::SName)
+    rt_error("rtfetch($(a), $(b)) is not implemented")
+    return rtnothing
+end
+
+function rtfetch(a::Sring, b::SName, c::Sintvec)
+    rt_error("rtfetch($(a), $(b), $(c)) is not implemented")
+    return rtnothing
+end
+
+function rtfetch(a::Sring, b::SName, c::Sintvec, d::Sintvec)
+    rt_error("rtfetch($(a), $(b), $(c), $(d)) is not implemented")
+    return rtnothing
+end
+
+rtfetch(a, b::Vector{SName}, c...) = rtfetch(a, rt_get_sole_name(b), c...)
+
+function rtfetch(a...)
+    rt_error("fetch(`" * join(map(rt_typestring, a), "`, `") *"`) failed")
+    return rtnothing
+end
+
+
 #### attrib/killattrib ####
 
 function rtattrib(a)

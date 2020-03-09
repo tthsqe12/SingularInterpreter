@@ -653,6 +653,14 @@ function rt_export(a::SName, b)
     end
 end
 
+function rt_get_sole_name(a::SName)
+    return a
+end
+
+function rt_get_sole_name(a::Vector{SName})
+    @error_check(length(a) == 1, "expected single name instead of a list of names")
+    return a[1]
+end
 
 function rt_backtick(a::Sstring)
     return makeunknown(a.string)
@@ -679,8 +687,7 @@ function rt_leavefunction()
 end
 
 function rtcall(::Bool, f::Smap, a::Vector{SName})
-    @error_check(length(a) == 1, "maps can only be called on one name")
-    return rtcall(false, f, a[1])
+    return rtcall(false, f, rt_get_sole_name(a[1]))
 end
 
 function rtcall(::Bool, f::Smap, a::SName)
@@ -835,6 +842,7 @@ end
 
 ##################### typeof ##################################################
 
+rt_typedata(::SName)       = "name"
 rt_typedata(::Snone)       = "none"
 rt_typedata(::Sproc)       = "proc"
 rt_typedata(::Int)         = "int"
