@@ -395,17 +395,12 @@ function rtsystem_install(typ_::Sstring, cmd_::Sstring, proc::Sproc, nargs::Int)
     cmd = cmd_.value
     if cmd == "print" && nargs == 1
         newtype  = Symbol(newstructprefix * typ)
-        eval(Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newtype)),
-                    Expr(:return,
-                        Expr(:(.),
-                            Expr(:call,
-                                :rt_convert2string,
-                                Expr(:call, proc.func, :f)
-                                ),
-                            QuoteNode(:value)
-                            )
-                        )
-                 ))
+        @show newtype
+        eval(quote
+            function Base.show(io::IO, f::$newtype)
+                print(io, rt_convert2string($(proc.func)(f)).value)
+            end
+            end)
     else
         rt_error("system install failed")
     end

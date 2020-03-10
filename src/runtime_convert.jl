@@ -119,12 +119,12 @@ function rt_convert2string(a)
 end
 
 function rt_cast2string(a::STuple)
-    return Sstring(join([rt_print(i) for i in a.list], "\n"))
+    return Sstring(join(a.list, "\n"))
 end
 
 function rt_cast2string(a...)
     #TODO low priority: singular prints the bodies of proc's
-    return Sstring(join([rt_print(i) for i in a], "\n"))
+    return Sstring(join(a, "\n"))
 end
 
 #### intvec

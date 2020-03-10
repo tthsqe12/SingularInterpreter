@@ -15,7 +15,7 @@ rt_ prefix generally means it used internally and/or does not correspond to a cm
     SINGULAR        JULIA
     print(a)        rtprint(a)
     a + b + c       rtplus(rtplus(a, b), c)
-    a;              rt_printout(a)
+    a;              display(a)
     minpoly = p;    rt_set_minpoly(p)
     p + minpoly     rtplus(p, rt_get_minpoly())
 =#
@@ -1055,27 +1055,19 @@ function rt_convert_newstruct_decl(newtypename::String, args::String)
     ))
 
     # print
-    b = Expr(:block, Expr(:(=), :s, ""))
-    for i in 1:length(sp)
-        if i == 1
-            push!(b.args, Expr(:(*=), :s, newtypename * "." * sp[i][2] * ": "))
-        else
-            push!(b.args, Expr(:(*=), :s, " "^length(newtypename) * "." * sp[i][2] * ": "))
+    push!(r.args, quote
+        function Base.show(io::IO, f::$newtype)
+            for i = 1:length($sp)
+                if i == 1
+                    print(io, $newtypename, '.', $sp[i][2], ": ")
+                else
+                    print(io, " "^length($newtypename), '.', $sp[i][2], ": ")
+                end
+                print(io, rt_indent_string(string(getfield(f, Symbol($sp[i][2]))), length($newtypename) + 1 + length($sp[i][2]) + 2))
+                i < length($sp) && println(io)
+            end
         end
-        push!(b.args, Expr(:(*=), :s,
-                            Expr(:call, :rt_indent_string,
-                                    Expr(:call, :rt_print, Expr(:(.), :f, QuoteNode(Symbol(sp[i][2])))),
-                                    length(newtypename) + 1 + length(sp[i][2]) + 2
-                                )
-                          ))
-        if i < length(sp)
-            push!(b.args, Expr(:(*=), :s, "\n"))
-        end
-    end
-    push!(b.args, Expr(:return, :s))
-    push!(r.args, Expr(:function, Expr(:call, :rt_print, Expr(:(::), :f, newtype)),
-        b
-    ))
+          end)
 
     # print_pretty
     b = Expr(:ref, :String)

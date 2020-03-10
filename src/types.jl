@@ -201,6 +201,8 @@ end
 
 sing_array(x::Sbigintmat) = x.value
 
+Base.size(s::Union{Sintmat,Sbigintmat}) = size(s.value)
+Base.getindex(s::Union{Sintmat,Sbigintmat}, i, j) = s.value[i, j]
 
 #### singular type "ring"       immutable in the singular language, but also holds identifiers of ring-dependent types
 mutable struct Sring
@@ -224,7 +226,7 @@ function rt_ring_finalizer(a::Sring)
     end
 end
 
-function show(io::IO, a::Sring)
+function showinternal(io::IO, a::Sring)
     print(io, "Sring(0x" * Base.hex(UInt(a.value.cpp_object), 0, false) * ")")
 end
 
@@ -428,6 +430,8 @@ function rt_matrix_finalizer(a::Smatrix)
     rt_ring_finalizer(a.parent)
 end
 
+Base.getindex(s::Smatrix, i, j) = rtgetindex(s, i, j)
+Base.size(s::Smatrix) = size(s.value)
 
 #### singular type "map"     mutable like a 1d array of poly in the singular language
 mutable struct Smap
@@ -587,14 +591,6 @@ const rtGlobal = rtGlobalState(String[],
                                rtCallStackEntry[rtCallStackEntry(1, 1, rtInvalidRing, :Top)],
                                Pair{Symbol, Any}[],
                                Dict{String, Function}())
-
-# we need to catch everything printed so we can return it to the user
-mutable struct PrintReaper
-    enabled::Bool
-    vals::Array{String}
-end
-const pretty_output = PrintReaper(false, String[])
-
 
 
 ###### these macros do not work without esc !!!!

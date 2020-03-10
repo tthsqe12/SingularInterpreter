@@ -1,251 +1,177 @@
 ############ printing #########################################################
-# Printing seems to be a mess in singular. For now we just have rt_printout,
-# rt_print, and rt_cast2string, which all produce nice 2-dimensional output
+# Printing seems to be a mess in singular. For now we just have show
+# and rt_cast2string, which all produce nice 2-dimensional output
 
 function rt_indent_string(s::String, indent::Int)
     join(split(s, r"\n|\r|\0"), "\n" * " "^indent)
 end
 
-function rt_format_matrix(a::Array{String, 2})
-    isempty(a) && return ""
+function Base.show(io::IO, a::Union{Sintmat, Sbigintmat})
+    isempty(a.value) && return
     nrows, ncols = size(a)
-    b = map(s->split(s, r"\n|\r|\0"), a) # matrix of arrays of substrings
+    b = map(s->split(string(s), r"\n|\r|\0"), a.value) # matrix of arrays of substrings
     col_widths = [(j < ncols ? 1 : 0) + maximum([maximum(map(length, b[i,j])) for i in 1:nrows]) for j in 1:ncols]
     row_heights = [maximum(map(length, b[i,1:end])) for i in 1:nrows]
-    r = String[]
     for i in 1:nrows
         for k in 1:row_heights[i]
             for j in 1:ncols
-                push!(r, rpad(k <= length(b[i,j]) ? b[i,j][k] : "", col_widths[j]))
+                print(io, rpad(k <= length(b[i,j]) ? b[i,j][k] : "", col_widths[j]))
             end
             if i < nrows || k < row_heights[i]
-                push!(r, "\n")
+                print(io, "\n")
             end
         end
     end
-    return join(r)
 end
 
-function rt_print(a::Snone)
-    return ""
-end
+show(io::IO, a::Snone) = nothing
 
-function rt_print(a::SName)
-    return rt_print(rt_lookup(a))
-end
+show(io::IO, a::Sproc) = print(io,
+                               "package:  ", a.package, "\n",
+                               "procname: ", a.name)
 
-function rt_print(a::Sproc)
-    return "package:  " * string(a.package) * "\n" *
-           "procname: " * a.name
-end
+show(io::IO, a::Sstring) = print(io, a.value)
 
-function rt_print(a::Union{Int, BigInt})
-    return string(a)
-end
+show(io::IO, a::Sintvec) = join(io, a.value, ", ")
 
-function rt_print(a::Sstring)
-    return a.value
-end
-
-function rt_print(a::Union{Sintmat, Sbigintmat})
-    return rt_format_matrix(map(string, a.value))
-end
-
-function rt_print(a::Sintvec)
-    return join(map(string, a.value), ", ")
-end
-
-function rt_print(a::Slist)
+function Base.show(io::IO, a::Slist)
     name = string(rt_reverse_lookup(a))
     name = isempty(name) ? "list" : name
-    s = ""
     A = a.value
-    first = true
+    isempty(A) && return print(io, "empty list")
     for i in 1:length(A)
         h = name * "[" * string(i) * "]: "
-        s *= h
-        s *= rt_indent_string(rt_print(A[i]), length(h)) * (i < length(A) ? "\n" : "")
-        first = false
+        print(io, h)
+        print(io, rt_indent_string(string(A[i]), length(h)) * (i < length(A) ? "\n" : ""))
         name = " "^length(name)
     end
-    if first
-        s = "empty list"
-    end
-    return s
 end
 
-function rt_print(a::Sring)
+function Base.show(io::IO, a::Sring)
     sync_begin()    # for options
-    return libSingular.rPrint_helper(a.value)
+    print(io, libSingular.rPrint_helper(a.value))
 end
 
-function rt_print(a::Snumber)
+function Base.show(io::IO, a::Snumber)
     @warn_check_rings(a.parent, rt_basering(), "printing a number outside of basering")
     sync_begin()    # for options
     libSingular.StringSetS("")
     libSingular.n_Write(a.value, a.parent.value)
-    return libSingular.StringEndS()
+    print(io, libSingular.StringEndS())
 end
 
-function rt_print(a::Spoly)
+function Base.show(io::IO, a::Spoly)
     @warn_check_rings(a.parent, rt_basering(), "printing a polynomial outside of basering")
     sync_begin()    # for options
-    s = libSingular.p_String(a.value, a.parent.value)
-    return s
+    print(io, libSingular.p_String(a.value, a.parent.value))
 end
 
-function rt_print(a::Svector)
+function Base.show(io::IO, a::Svector)
     @warn_check_rings(a.parent, rt_basering(), "printing a vector outside of basering")
     sync_begin()    # for options
-    s = libSingular.p_String(a.value, a.parent.value)
-    return s
+    print(io, libSingular.p_String(a.value, a.parent.value))
 end
 
-function rt_print(a::Sresolution)
+function Base.show(io::IO, a::Sresolution)
     @warn_check_rings(a.parent, rt_basering(), "printing a resolution outside of basering")
     sync_begin()    # for options
     name = string(rt_reverse_lookup(a.parent))
     name = isempty(name) ? "ring" : name
-    s = libSingular.syPrint(a.value, a.parent.value, name)
-    return s
+    print(io, libSingular.syPrint(a.value, a.parent.value, name))
 end
 
-function rt_print(a::Sideal)
+function Base.show(io::IO, a::Sideal)
     @warn_check_rings(a.parent, rt_basering(), "printing an ideal outside of basering")
     sync_begin()    # for options
     name = string(rt_reverse_lookup(a))
     name = isempty(name) ? "ideal" : name
-    s = ""
     n = Int(libSingular.ngens(a.value))
-    first = true
+    n < 1 && return print(io, "empty ideal")
     for i in 1:n
         p = libSingular.getindex(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
         h = name * "[" * string(i) * "]: "
-        s *= h * t * (i < n ? "\n" : "")
-        first = false
+        print(io, h, t, i < n ? "\n" : "")
         name = " "^length(name)
     end
-    if first
-        s = "empty ideal"
-    end
-    return s
 end
 
-function rt_print(a::Smodule)
+function Base.show(io::IO, a::Smodule)
     @warn_check_rings(a.parent, rt_basering(), "printing a module outside of basering")
     sync_begin()    # for options
     name = string(rt_reverse_lookup(a))
     name = isempty(name) ? "module" : name
-    s = ""
     n = Int(libSingular.ngens(a.value))
-    first = true
+    n < 1 && return print(io, "empty module")
     for i in 1:n
         p = libSingular.getindex(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
         h = name * "[" * string(i) * "]: "
-        s *= h * t * (i < n ? "\n" : "")
-        first = false
+        print(io, h, t, i < n ? "\n" : "")
         name = " "^length(name)
     end
-    if first
-        s = "empty module"
-    end
-    return s
 end
 
-function rt_print(a::Smatrix)
+function Base.show(io::IO, a::Smatrix)
     @warn_check_rings(a.parent, rt_basering(), "printing a matrix outside of basering")
     sync_begin()    # for options
     name = string(rt_reverse_lookup(a))
     name = isempty(name) ? "matrix" : name
-    s = ""
     nrows = libSingular.nrows(a.value)
     ncols = libSingular.ncols(a.value)
-    first = true
+    nrows < 1 && return print(io, "empty matrix")
     for i in 1:nrows
         for j in 1:ncols
             p = libSingular.mp_getindex(a.value, i, j)
             t = libSingular.p_String(p, a.parent.value)
             h = name * "[" * string(i) * ", " * string(j) * "]: "
-            s *= h * t * ((i < nrows || j < ncols) ? "\n" : "")
-            first = false
+            print(io, h, t, (i < nrows || j < ncols) ? "\n" : "")
             name = " "^length(name)
         end
     end
-    if first
-        s = "empty matrix"
-    end
-    return s
 end
 
-function rt_print(a::Smap)
+function Base.show(io::IO, a::Smap)
     @warn_check_rings(a.parent, rt_basering(), "printing a map outside of basering")
     sync_begin()    # for options
     name = string(rt_reverse_lookup(a))
     name = isempty(name) ? "map" : name
-    s = ""
     n = Int(libSingular.ma_ncols(a.value))
-    first = true
+    n < 1 && return print(io, "empty map")
     for i in 1:n
         p = libSingular.ma_getindex0(a.value, Cint(i - 1))
         t = libSingular.p_String(p, a.parent.value)
         h = name * "[" * string(i) * "]: "
-        s *= h * t * (i < n ? "\n" : "")
-        first = false
+        print(io, h, t, i < n ? "\n" : "")
         name = " "^length(name)
     end
-    if first
-        s = "empty map"
-    end
-    return s
 end
 
 # just for fun - rtprint and rt_printout have special cases for tuples
-function rt_print(a::STuple)
-    return join([rt_print(i) for i in a.list], "\n")
-end
-
-# the "print" function in Singular returns a string and does not print
-function rtprint(::Snone)
-    return ""
-end
+show(io::IO, a::STuple) = join(io, a.list, "\n")
 
 function rtprint(a)
     @assert !isa(a, STuple)
-    return Sstring(rt_print(a))
+    return Sstring(string(a))
 end
 
-function rtprint(a::STuple)
-    return STuple([Sstring(rt_print(i)) for i in a.list])
-end
+# TODO: not matching original Singular
+rtprint(a::STuple) = STuple(Any[Sstring(string(i)) for i in a.list])
 
 # the semicolon in Singular is the method to actually print something
-function rt_printout(::Snone)
-    return  # we will probably be printing nothing often - very important to not print anything in this case
-end
+# we will probably be printing nothing often - very important to not print anything in this case
+rt_printout(::Snone) = nothing
 
 function rt_printout(a)
     @assert !isa(a, STuple)
     @assert !isa(a, Snone)
     rtGlobal.last_printed = rt_copy_own(a)
-    if pretty_output.enabled
-        push!(pretty_output.vals, print_pretty(a))
-    end
-    println(rt_print(a))
+    display(a)
 end
 
 function rt_printout(a::STuple)
-    n = length(a.list)
-    for i in 1:n
-        if i == n
-            rtGlobal.last_printed = rt_copy_own(a.list[i])
-        end
-        if pretty_output.enabled
-            push!(pretty_output.vals, print_pretty(a.list[i]))
-        end
-        println(rt_print(a.list[i]))
-    end
+    foreach(display, a.list)
+    rtGlobal.last_printed = rt_copy_own(a.list[end])
 end
 
 function rt_get_last_printed()
@@ -303,26 +229,23 @@ function format_pretty_poly(s::String)
     return join(r)
 end
 
-function format_pretty_matrix(a::Array{String, 2})
+function show_latex(io::IO, a::Union{Smatrix,Sintmat,Sbigintmat})
     nrows, ncols = size(a)
-    if !(nrows > 0 && ncols > 0)
-        return "empty matrix"
-    end
-    s = String[]
-    push!(s, "\\left( \\begin{array}{" * "c"^ncols * "}\n")
+    !(nrows > 0 && ncols > 0) && return print(io, raw"\text{empty matrix}")
+    print(io, "\\left( \\begin{array}{" * "c"^ncols * "}\n")
     for i in 1:nrows
         for j in 1:ncols
-            push!(s, a[i, j])
+            show_latex(io, a[i, j])
             if j < ncols
-                push!(s, " & ")
+                print(io, " & ")
             end
         end
         if i < nrows
-            push!(s, " \\\\\n")
+            print(io, " \\\\\n")
         end
     end
-    push!(s, "\n\\end{array} \\right)")
-    return join(s)
+
+    print(io, "\n\\end{array} \\right)")
 end
 
 function format_pretty_newstruct(typename::String, a::Vector{String})
@@ -347,92 +270,49 @@ function format_pretty_newstruct(typename::String, a::Vector{String})
     return join(s)
 end
 
-function print_pretty(a::Union{Int, BigInt})
-    return string(a)
+function show_latex(io::IO, a::Sintvec)
+    print(io, "\\left[ \\begin{array}{c}\n")
+    join(io, a.value, " \\\\\n")
+    print(io, "\n\\end{array} \\right]")
 end
 
-function print_pretty(a::Sintvec)
-    s = "\\left[ \\begin{array}{c}\n"
-    s *= join(map(string, a.value), " \\\\\n")
-    s *= "\n\\end{array} \\right]"
-    return s
-end
-
-function print_pretty(a::Union{Sintmat, Sbigintmat})
-    return format_pretty_matrix(map(string, a.value))
-end
-
-function print_pretty(a::Sring)
+function show_latex(io::IO, a::Sring)
     name = string(rt_reverse_lookup(a))
-    return isempty(name) ? "\\text{some ring}" : "\\text{ring }" * name
+    print(io, isempty(name) ? "\\text{some ring}" : "\\text{ring }" * name)
 end
 
-function print_pretty(a::Slist)
-    s = "\\left\\{ \\begin{array}{l}"
-    first = true
-    for i in a.value
-        if !first
-            s *= " \\\\\n"
-        end
-        s *= print_pretty(i)
-        first = false
-    end
-    if first
-        return "\\text{empty list}"
-    end
-    s *= "\\end{array} \\right."
+function show_latex(io::IO, a::Slist)
+    isempty(a.value) && return print(io, "\\text{empty list}")
+    print(io, "\\left\\{ \\begin{array}{l}\n")
+    join(io, (sprint(show_latex, x, context=io) for x in a.value),
+         "\\\\\n")
+    print(io, "\\end{array} \\right.")
 end
 
-function print_pretty(a::Union{Spoly, Svector})
+function show_latex(io::IO, a::Union{Spoly, Svector})
     s = libSingular.p_String(a.value, a.parent.value)
-    return format_pretty_poly(s)
+    print(io, format_pretty_poly(s))
 end
 
-function print_pretty(a::Union{Sideal, Smodule})
-    s = "\\left\\langle "
+function show_latex(io::IO, a::Union{Sideal, Smodule})
+    print(io, raw"\left\langle ")
     n = Int(libSingular.ngens(a.value))
-    first = true
-    for i in 1:n
-        if !first
-            s *= ","
-        end
-        s *= print_pretty(rtgetindex(a, i))
-        first = false
-    end
-    s *= " \\right\\rangle"
-    return s
+    join(io, (sprint(show_latex, rtgetindex(a, i), context=io) for i=1:n), ',')
+    print(io, " \\right\\rangle")
 end
 
-function print_pretty(a::Smatrix)
-    nrows = libSingular.nrows(a.value)
-    ncols = libSingular.ncols(a.value)
-    m = Array{String, 2}(undef, nrows, ncols)
-    for i in 1:nrows
-        for j in 1:ncols
-            m[i, j] = print_pretty(rtgetindex(a, i, j))
-        end
+show_latex(io::IO, a::Union{Int,BigInt}) = print(io, a)
+
+# TODO: improve
+show_latex(io::IO, a::Union{Sstring,Sproc}) = print(io, "\\text{", a, "}")
+show_latex(io::IO, a::Smap) = show(io, a)
+
+function Base.show(io::IO, ::MIME"text/latex", a::Union{Sproc,Sideal,Smodule,Spoly,Svector,Slist,Sring,Sintvec,Smatrix,Sintmat,Sbigintmat})
+    latex_math = get(io, :latex_math, false)
+    if !latex_math
+        print(io, raw"\[")
+        io = IOContext(io, :latex_math => true)
     end
-    return format_pretty_matrix(m)
-end
-
-
-function print_pretty(a)
-    return "???"
-end
-
-
-function Base.show(io::IO, ::MIME"text/latex", a::PrintReaper)
-    s = "\\begin{equation}\n" *
-        "\\begin{array}{l}\n"
-    first = true
-    for i in a.vals
-        if !first
-            s *= " \\\\\n"
-        end
-        s *= i
-        first = false
-    end
-    s *= "\\end{array}\n" *
-         "\\end{equation}\n"
-    print(io, s)
+    show_latex(io, a)
+    !latex_math && print(io, raw"\]")
 end
