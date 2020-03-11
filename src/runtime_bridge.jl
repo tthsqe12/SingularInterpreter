@@ -144,8 +144,15 @@ function make_data(x::BigInt)
     n.cpp_object
 end
 
-make_data(x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sring,Sresolution}) =
+make_data(x::Union{Spoly,Svector,Sideal,Smodule,Smatrix,Snumber,Sresolution}) =
     _copy(x).cpp_object
+
+function make_data(x::Sring)
+    # the refcount will be decremented in the Singular library when done, and
+    # deleted if the refcount is 0; so increment it instead of having to copy the ring
+    libSingular.ring_inc_ref(x.value)
+    x.value.cpp_object
+end
 
 make_data(x::Sstring) =
     GC.@preserve x libSingular.make_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
