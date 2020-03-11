@@ -14,19 +14,19 @@ end
 
 #### fetch ####
 
-function rtfetch(a::Sring, b::SName)
-    rt_error("rtfetch($(a), $(b)) is not implemented")
-    return rtnothing
-end
+function rtfetch(a::Sring, b::SName, c::Sintvec...)
+    obj = get(a.vars, b.name, nothing)
+    obj === nothing &&
+        rt_error("identifier $(b.name) not found in ring")
+    libSingular.set_idhdl(a.value, make_str(String(b.name)),
+                          Int(type_id(typeof(obj))), make_data(obj))
+    if isempty(c)
+        cmd2(FETCH_CMD, typeof(obj), a, b)
+    else
+        @assert length(c) <= 2
+        cmdm(FETCH_CMD, typeof(obj), (a, b, c...))
+    end
 
-function rtfetch(a::Sring, b::SName, c::Sintvec)
-    rt_error("rtfetch($(a), $(b), $(c)) is not implemented")
-    return rtnothing
-end
-
-function rtfetch(a::Sring, b::SName, c::Sintvec, d::Sintvec)
-    rt_error("rtfetch($(a), $(b), $(c), $(d)) is not implemented")
-    return rtnothing
 end
 
 rtfetch(a, b::Vector{SName}, c...) = rtfetch(a, rt_get_sole_name(b), c...)

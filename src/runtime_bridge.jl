@@ -50,6 +50,8 @@ function Base.getproperty(lv::Sleftv, name::Symbol)
         libSingular.sleftv_attr(lv)
     elseif name == :flag
         libSingular.sleftv_flag(lv)
+    elseif name == :name
+        libSingular.sleftv_name(lv)
     elseif name == :Init
         () -> libSingular.sleftv_init(lv)
     elseif name == :CleanUp
@@ -72,12 +74,14 @@ function Base.setproperty!(lv::Sleftv, name::Symbol, x)
         libSingular.sleftv_attr(lv, x)
     elseif name == :flag
         libSingular.sleftv_flag(lv, x)
+    elseif name == :name
+        libSingular.sleftv_name(lv, x)
     else
         error("type Sleftv has not field $name")
     end
 end
 
-Base.propertynames(lv::Sleftv, private=false) = (:next, :data, :rtyp, :attribute, :flag,
+Base.propertynames(lv::Sleftv, private=false) = (:next, :data, :rtyp, :attribute, :flag, :name,
                                                  :Init, :CleanUp, :cpp_object)
 
 # shifted versions of the cpp couterparts
@@ -127,9 +131,14 @@ end
 ### set_arg ###
 
 function set_arg(lv, x; withname=false)
-    lv_init!(lv, type_id(typeof(x)),
-             make_data(x),
-             attributes(x))
+    if x isa SName
+        lv.Init()
+        lv.name = make_str(String(x.name))
+    else
+        lv_init!(lv, type_id(typeof(x)),
+                 make_data(x),
+                 attributes(x))
+    end
     if withname
         libSingular.make_idhdl_from(lv)
     end
@@ -154,8 +163,10 @@ function make_data(x::Sring)
     x.value.cpp_object
 end
 
-make_data(x::Sstring) =
-    GC.@preserve x libSingular.make_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, x.value))))
+make_str(str::String) =
+    GC.@preserve str libSingular.make_str(Ptr{Cvoid}(pointer(Base.unsafe_convert(Cstring, str))))
+
+make_data(x::Sstring) = make_str(x.value)
 
 function make_data(x::Union{Sintvec, Sintmat})
     xv = x.value
@@ -590,8 +601,9 @@ let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
     )
     while true
         (cmd, res, nargs) = libSingular.dArithM(i)
-        cmd == 0 && break
         i += 1
+        cmd == 0 && break
+        cmd == Int(FETCH_CMD) && continue # handled separately
         res = get(overridesM, (cmd, res, nargs), res)
         if nargs < 0
             @assert nargs >= -2

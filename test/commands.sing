@@ -149,3 +149,11 @@ def simp = simplex(sm, 4, 4, 2, 1, 1);
 ASSUME(0, typeof(simp) == "list");
 ASSUME(0, typeof(simp[1]) == "matrix");
 // etc.
+
+// fetch
+ring r_fetch = (0,a,b,c),(x,y,z),lp;
+poly p = (a+b^2+c^3)*x^2 + y^3;
+ring s_fetch = (0,A,B,C),(X,Y,Z),dp;
+ASSUME(0, fetch(r_fetch, p) == Y^3+(A+B^2+C^3)*X^2);
+ASSUME(0, fetch(r_fetch, p, 3..1) == Y^3+(A+B^2+C^3)*Z^2);
+ASSUME(0, fetch(r_fetch, p, 3..1, 3..1) == X^3*Z^2+Y^2*Z^2+Y^3+Z^3);

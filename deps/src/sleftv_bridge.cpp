@@ -87,6 +87,8 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
     Singular.method("sleftv_attr", [](leftv lv, attr attribute) { lv->attribute = attribute; });
     Singular.method("sleftv_flag", [](leftv lv) { return lv->flag; });
     Singular.method("sleftv_flag", [](leftv lv, BITSET flag) { lv->flag = flag; });
+    Singular.method("sleftv_name", [](leftv lv) { return lv->Name(); });
+    Singular.method("sleftv_name", [](leftv lv, void* name) { lv->name = (char*)name; });
     // TODO: rename this one, can be confused for "attribute"
     Singular.method("sleftv_at", [](leftv lv, int i) { return lv + i; });
     // c++ allocated constructor, which will/should be deleted by Singular
@@ -127,6 +129,15 @@ void singular_define_sleftv_bridge(jlcxx::Module & Singular) {
                                            // idhdl and as the name field of the sleftv, but they can
                                            // be the same pointer
                     });
+
+    Singular.method("set_idhdl",
+                    [](ring r, void* name, int typ, void* data) {
+                        idhdl id = r->idroot->set((char*)name, 0, typ, false);
+                        IDDATA(id) = (char*)data;
+                        r->idroot = id;
+                    });
+
+    Singular.method("ring_inc_ref", [](ring r) { r->ref += 1; });
 
     // for `Vector{Int}`
     Singular.method("make_intvec",
