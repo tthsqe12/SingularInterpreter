@@ -2300,7 +2300,7 @@ function convert_procarg!(arglist::Vector{Any}, body::Expr, a::AstNode, env::Ast
         # our argument tuple might contain uncopied references
         # the copy will turn the tuple into a bona fide singular object, which is expected by rt_convert2T
         inside = Expr(:vect, Expr(:(...), Symbol("#"*s)))
-        inside = Expr(:call, STuple, Expr(:call, :map, :rt_copy_tmp, collect))
+        inside = Expr(:call, STuple, Expr(:call, :map, :rt_copy_tmp, inside))
         inside = Expr(:call, Symbol("rt_convert2"*t), inside)
         if haskey(env.declared_identifiers, s)
             push!(body.args, Expr(:(=), Symbol(s), inside))
