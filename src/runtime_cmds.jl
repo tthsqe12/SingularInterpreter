@@ -1,8 +1,12 @@
 #### imap ####
 
 function rtimap(a::Sring, b::SName)
-    rt_error("rtimap($(a), $(b)) is not implemented")
-    return rtnothing
+    obj = rt_lookup_in_ring(a, b)
+    libSingular.set_idhdl(a.value, make_str(String(b.name)),
+                          Int(type_id(typeof(obj))), make_data(obj))
+    res = cmd2(IMAP_CMD, typeof(obj), a, b)
+    # TODO: remove the idhdl?
+    return res
 end
 
 rtimap(a, b::Vector{SName}) = rtimap(a, rt_get_sole_name(b))
@@ -15,18 +19,13 @@ end
 #### fetch ####
 
 function rtfetch(a::Sring, b::SName, c::Sintvec...)
-    obj = get(a.vars, b.name, nothing)
-    obj === nothing &&
-        rt_error("identifier $(b.name) not found in ring")
+    obj = rt_lookup_in_ring(a, b)
     libSingular.set_idhdl(a.value, make_str(String(b.name)),
                           Int(type_id(typeof(obj))), make_data(obj))
-    if isempty(c)
-        cmd2(FETCH_CMD, typeof(obj), a, b)
-    else
-        @assert length(c) <= 2
-        cmdm(FETCH_CMD, typeof(obj), (a, b, c...))
-    end
-
+    res = isempty(c) ? cmd2(FETCH_CMD, typeof(obj), a, b) :
+                       cmdm(FETCH_CMD, typeof(obj), (a, b, c...))
+    # TODO: remove the idhdl?
+    return res
 end
 
 rtfetch(a, b::Vector{SName}, c...) = rtfetch(a, rt_get_sole_name(b), c...)

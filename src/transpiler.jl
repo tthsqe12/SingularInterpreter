@@ -315,7 +315,7 @@ function scan_FETCH_CMD_IMAP_CMD(t::Int, l::Array{AstNode}, env::AstEnv)
     if length(l) < 2
         throw(TranspileError(cmd_to_string[t] * " needs at least 2 arguments"))
     end
-    scan_expr(l[1])
+    scan_expr(l[1], env)
     if l[2].rule == @RULE_expr(2)
         b, ok = scan_elemexpr_name_call(l[2].child[1], env)
         if ok
@@ -399,7 +399,8 @@ function scan_elemexpr(a::AstNode, env::AstEnv)
     elseif @RULE_elemexpr(22) <= a.rule <= @RULE_elemexpr(25)
         t = a.child[1]::Int
         if t == Int(FETCH_CMD) || t == Int(IMAP_CMD)
-            return scan_FETCH_CMD2(a.child[2], a.child[3], env)
+            scan_FETCH_CMD_IMAP_CMD(t, AstNode[a.child[2], a.child[3]], env)
+            return
         end
         env.everything_is_screwed |= in(t, cmds_that_screw_everything)
         scan_expr(a.child[2], env)

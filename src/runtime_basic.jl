@@ -653,6 +653,27 @@ function rt_export(a::SName, b)
     end
 end
 
+function rt_get_from_ring(a::Sring, b::SName, default)
+    n = length(rtGlobal.callstack)
+    # from all local variables look for something called b.name from a
+    vars = rtGlobal.local_vars
+    for i in rtGlobal.callstack[n].start_all_locals:length(rtGlobal.local_vars)
+        if vars[i].first == b.name &&
+           isa(vars[i].second, Union{SingularRingType, Slist}) &&
+           vars[i].second.parent === a
+            return vars[i].second
+        end
+    end
+    # global
+    return get(a.vars, b.name, default)
+end
+
+function rt_lookup_in_ring(a::Sring, b::SName)
+    c = rt_get_from_ring(a, b, nothing)
+    @error_check(!isa(c, Nothing), "identifier $(b.name) not found in ring")
+    return c
+end
+
 function rt_get_sole_name(a::SName)
     return a
 end
@@ -686,26 +707,12 @@ function rt_leavefunction()
     pop!(rtGlobal.callstack)
 end
 
-function rtcall(::Bool, f::Smap, a::Vector{SName})
-    return rtcall(false, f, rt_get_sole_name(a[1]))
+function rtcall(::Bool, a::Smap, b::Vector{SName})
+    return rt_call(a, rt_lookup_in_ring(a.source, rt_get_sole_name(b[1])))
 end
 
-function rtcall(::Bool, f::Smap, a::SName)
-    n = length(rtGlobal.callstack)
-    # from all local variables look for something called a.name from f.source
-    vars = rtGlobal.local_vars
-    for i in rtGlobal.callstack[n].start_all_locals:length(rtGlobal.local_vars)
-        if vars[i].first == a.name && isa(vars[i].second, SingularRingType) &&
-                                      vars[i].second.parent === f.source
-            return rt_call(f, vars[i].second)
-        end
-    end
-    # global
-    if haskey(f.source.vars, a.name)
-        return rt_call(f, f.source.vars[a.name])
-    end
-    rt_error("could not apply the map to the name $(string(a.name))")
-    return rtnothing
+function rtcall(::Bool, a::Smap, b::SName)
+    return rt_call(a, rt_lookup_in_ring(a.source, b))
 end
 
 function rt_call(f::Smap, a::SingularRingType)
