@@ -75,8 +75,7 @@ function rtsetindex_last(a::Slist, i::Int, b)
 end
 
 function rtsetindex_last(a::Slist, i::Int, b::STuple)
-    @error_check(length(b.list) == 1, "argument mismatch in assignment")
-    rt_setindex(a, i, b.list[1])
+    rt_setindex(a, i, rt_assign_last(a.value[i], b))
     return
 end
 
