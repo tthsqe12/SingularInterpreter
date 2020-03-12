@@ -501,6 +501,11 @@ end
 function rtdefined(a::SName)
 
     n = length(rtGlobal.callstack)
+    R = rtGlobal.callstack[n].current_ring
+
+    if a.name == :basering
+        return Int(R.valid ? n : 0)
+    end
 
     # local
     vars = rtGlobal.local_vars
@@ -510,11 +515,9 @@ function rtdefined(a::SName)
         end
     end
 
-    R = rtGlobal.callstack[n].current_ring
-
     # global ring dependent
     if haskey(R.vars, a.name)
-        return 1
+        return Int(1)
     end
 
     # global ring independent
@@ -522,7 +525,7 @@ function rtdefined(a::SName)
         if haskey(rtGlobal.vars, p)
             d = rtGlobal.vars[p]
             if haskey(d, a.name)
-                return 1
+                return Int(1)
             end
         end
     end
@@ -531,10 +534,10 @@ function rtdefined(a::SName)
     ok, p = libSingular.lookupIdentifierInRing(String(a.name), R.value)
     if ok
         rt_box_it_with_ring(p, R) # consume p  TODO clean this up
-        return -1
+        return Int(-1)
     end
 
-    return 0
+    return Int(0)
 end
 
 function rtdefined(a::Vector{SName})
