@@ -248,7 +248,7 @@ function rt_convert2list(a::Slist)
     return rt_copy_own(a)
 end
 
-function rt_convert2list(a::Union{Int, BigInt, Sproc, Sintvec, Sintmat, Sbigintmat})
+function rt_convert2list(a::Union{Int, BigInt, Sproc, Sintvec, Sintmat, Sbigintmat, Sring})
     return Slist(Any[rt_copy_own(a)], rtInvalidRing, 0, nothing, false)
 end
 
