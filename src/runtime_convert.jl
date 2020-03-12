@@ -299,6 +299,8 @@ function rt_convert2ring(a)
     return rtInvalidRing
 end
 
+rt_cast2ring(a) = rtring(a)
+
 #### number
 
 function rt_convert2number(a::Snumber)

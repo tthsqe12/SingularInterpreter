@@ -596,7 +596,7 @@ function convert_elemexpr(a::AstNode, env::AstEnv, nested::Bool = false)
                                           convert_rlist(a.child[3], env),
                                           convert_ordering(a.child[4], env))
     elseif a.rule == @RULE_elemexpr(35)
-        return Expr(:call, :rt_make_ring_from_ringlist, make_nocopy(convert_expr(a.child[2], env)))
+        return Expr(:call, :rt_cast2ring, make_nocopy(convert_expr(a.child[2], env)))
     elseif a.rule == @RULE_elemexpr(37)
         b = convert_exprlist(a.child[1], env)
         if length(b) == 1
@@ -1166,11 +1166,6 @@ function push_exprlist_expr!(l::Array{AstNode}, a::AstNode, env::AstEnv)
     end
 end
 
-function rt_make_ring_from_ringlist(a::Slist)
-    error("rt_make_ring_from_ringlist not implement")
-    return rtInvalidRing
-end
-
 function rt_make_ring(coeff, var, ord)
     coeff = rt_parse_coeff(coeff)
     var = rt_parse_var(var)
@@ -1182,7 +1177,7 @@ end
 rt_make_qring(a::Sring) = a
 
 function rt_make_qring(a::Sideal)
-    @warn_check(a.parent.value.cpp_object == rt_basering().value.cpp_object, "constructing qring outside of basering")
+    @warn_check_rings(a.parent, rt_basering(), "constructing qring outside of basering")
     r = libSingular.new_qring(a.value, a.parent.value)
     if r.cpp_object == C_NULL
         rt_error("qring construction failed")
