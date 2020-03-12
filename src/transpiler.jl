@@ -193,7 +193,8 @@ function convert_EXECUTE_CMD(arg1, env::AstEnv)
     t2 = gensym()
     return Expr(:block,
                 Expr(:(=), Expr(:tuple, t1, t2), Expr(:call, :rtexecute, arg1)),
-                Expr(:if, t2, Expr(:return, t1)))
+                Expr(:if, t2, Expr(:return, t1)),
+                rtnothing)
 end
 
 
