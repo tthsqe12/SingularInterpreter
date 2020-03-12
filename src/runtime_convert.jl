@@ -87,24 +87,30 @@ end
 
 rt_cast2bigint(x) = rt_convert2bigint(x)
 
-function rt_cast2bigint(a::Snumber)
+# cf. iparith.cc
+function rt_cast2bigint(a::Union{Snumber,Spoly})
     R = a.parent
     @warn_check_rings(R, rt_basering(), "converting from a number outside of basering")
+    if a isa Spoly
+        a.value.cpp_object == C_NULL && return big(0)
+        if libSingular.pNext(a.value).cpp_object != C_NULL ||
+            libSingular.p_IsConstant(a.value, R.value) == 0
+            rt_error("poly must be constant")
+        end
+        i = libSingular.pGetCoeff(a.value)
+    else
+        i = a.value
+    end
     c = libSingular.get_coeffs(R.value)
     b = libSingular.coeffs_BIGINT()
     nmap = libSingular.n_SetMap(c, b)
     if nmap != C_NULL
-        n = libSingular.nApplyMapFunc(nmap, a.value, c, b)
+        n = libSingular.nApplyMapFunc(nmap, i, c, b)
         construct(BigInt, n.cpp_object)
     else
         rt_error("cannot convert this `number` to `bigint`")
     end
 end
-
-# this function could almost be integrated in rt_cast2bigint(::Snumber),
-# but we need to test that it's a constant, and the corresponding p_IsConstant
-# function is unfortunately declared static in libsingular
-rt_cast2bigint(a::Spoly) = rtbigint(a)
 
 
 #### string

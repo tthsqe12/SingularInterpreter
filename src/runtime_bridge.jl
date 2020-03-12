@@ -490,13 +490,12 @@ let i = 0
     end
 end
 
-# cf. table.jl, for now we just do that for ring/resolution/lists/bigint, for which
+# cf. table.jl, for now we just do that for ring/resolution/lists, for which
 # conversions are annoying to re-implement
 const cmd_to_builtin_type_string_limited = Dict(
     Int(RING_CMD)       => "ring",
     Int(RESOLUTION_CMD) => "resolution",
     Int(LIST_CMD)       => "list",
-    Int(BIGINT_CMD)     => "bigint",
 )
 
 let seen = Set{Tuple{Int,Int}}([(Int(PRINT_CMD), 1),
