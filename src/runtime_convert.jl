@@ -26,6 +26,9 @@ function rt_convert2def(a::STuple)
     return rt_convert2def(a.list[1])
 end
 
+function rt_cast2def(a...)
+    return rtnothing
+end
 
 #### proc
 

@@ -2687,8 +2687,9 @@ function loadconvert_proccmd(a::AstNode, env::AstLoadEnv)
         # procedures return nothing by default
         push!(body.args, Expr(:call, :rt_leavefunction))
         push!(body.args, Expr(:return, :rtnothing))
+        jcode = Expr(:function, Expr(:call, internalfunc, args...), body)
 
-        jfunction = eval(Expr(:function, Expr(:call, internalfunc, args...), body))
+        jfunction = eval(jcode)
         our_proc_object = Sproc(jfunction, s, env.package)
 
         export_packages = [env.package]
