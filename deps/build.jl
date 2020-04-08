@@ -1,6 +1,7 @@
 import CxxWrap
 import Libdl
 import Nemo
+import CMake
 
 const oldwdir = pwd()
 const pkgdir = realpath(joinpath(@__DIR__, ".."))
@@ -145,7 +146,7 @@ cd(cmake_build_path)
 
 print("Initializing cmake")
 
-run(`cmake -DJulia_EXECUTABLE=$julia_exec -DJlCxx_DIR=$jlcxx_cmake_dir -DJuliaIncludeDir=$julia_include -DJULIA_LIB_DIR=$julia_lib -Dnemo_includes=$nemovdir/include -Dsingular_includes=$vdir/include -Dsingular_libdir=$vdir/lib -DCMAKE_INSTALL_LIBDIR=$vdir/lib .`)
+run(`$(CMake.cmake) -DJulia_EXECUTABLE=$julia_exec -DJlCxx_DIR=$jlcxx_cmake_dir -DJuliaIncludeDir=$julia_include -DJULIA_LIB_DIR=$julia_lib -Dnemo_includes=$nemovdir/include -Dsingular_includes=$vdir/include -Dsingular_libdir=$vdir/lib -DCMAKE_INSTALL_LIBDIR=$vdir/lib .`)
 
 print("Running cmake")
 
